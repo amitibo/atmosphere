@@ -1,0 +1,84 @@
+blue 1.45 0.00 0.000772 1.00 0.431 spherical_nonabsorbing_0.06 (sulfate, sea salt, organic)
+green 1.45 0.00 0.000396 1.00 0.352
+red 1.45 0.00 0.000217 1.00 0.287
+nir 1.45 0.00 9.09e-05 1.00 0.207
+blue 1.45 0.00 0.0207 1.00 0.654 spherical_nonabsorbing_0.12 (sulfate, sea salt, organic)
+green 1.45 0.00 0.0134 1.00 0.609
+red 1.45 0.00 0.00885 1.00 0.563
+nir 1.45 0.00 0.00467 1.00 0.488
+blue 1.45 0.00 0.216 1.00 0.726 spherical_nonabsorbing_0.26 (sulfate, sea salt, organic)
+green 1.45 0.00 0.182 1.00 0.717
+red 1.45 0.00 0.150 1.00 0.703
+nir 1.45 0.00 0.105 1.00 0.674
+blue 1.45 0.00 1.02 1.00 0.718 spherical_nonabsorbing_0.57 (sulfate, sea salt, organic)
+green 1.45 0.00 1.04 1.00 0.722
+red 1.45 0.00 1.03 1.00 0.725
+nir 1.45 0.00 0.952 1.00 0.726
+blue 1.45 0.00 4.02 1.00 0.741 spherical_nonabsorbing_1.28 (sea salt, organic)
+green 1.45 0.00 4.19 1.00 0.728
+red 1.45 0.00 4.35 1.00 0.721
+nir 1.45 0.00 4.59 1.00 0.718
+blue 1.45 0.00 15.9 1.00 0.786 spherical_nonabsorbing_2.80 (sea salt, organic)
+green 1.45 0.00 16.2 1.00 0.775
+red 1.45 0.00 16.5 1.00 0.763
+nir 1.45 0.00 17.0 1.00 0.747
+blue 1.45 0.0147 0.0212 0.911 0.659 spherical_absorbing_0.12_ssa_green_0.9 (sulfate, sea salt, organic)
+green 1.45 0.0147 0.0141 0.900 0.612
+red 1.45 0.0147 0.00953 0.885 0.564
+nir 1.45 0.0147 0.00527 0.853 0.487
+blue 1.45 0.0325 0.0219 0.821 0.664 spherical_absorbing_0.12_ssa_green_0.8 (sulfate, sea salt, organic)
+green 1.45 0.0325 0.0149 0.800 0.614
+red 1.45 0.0325 0.0103 0.773 0.564
+nir 1.45 0.0325 0.00599 0.720 0.486
+blue 1.50 0.00410 2.84 0.919 0.705 grains_mode1_h1 (dust)
+green 1.51 0.00210 3.17 0.977 0.711
+red 1.51 0.000650 3.37 0.994 0.729
+nir 1.51 0.000470 3.42 0.997 0.747
+blue 1.51 0.00411 15.3 0.810 0.791 spheroidal_mode2_h1 (dust)
+green 1.51 0.00210 15.5 0.902 0.772
+red 1.51 0.000650 15.8 0.971 0.741
+nir 1.51 0.000470 16.3 0.983 0.720
+blue 1.45 0.00375 0.000806 0.950 0.431 spherical_absorbing_0.06_ssa_green_0.94 (sulfate, sea salt, organic)
+green 1.45 0.00317 0.000419 0.940 0.351
+red 1.45 0.00303 0.000235 0.920 0.287
+nir 1.45 0.00199 9.97e-05 0.910 0.207
+blue 1.45 0.0115 0.000876 0.860 0.430 spherical_absorbing_0.06_ssa_green_0.84 (sulfate, sea salt, organic)
+green 1.45 0.00940 0.000464 0.840 0.351
+red 1.45 0.00762 0.000263 0.820 0.286
+nir 1.45 0.00565 0.000116 0.780 0.207
+blue 1.45 0.00795 0.0209 0.950 0.657 spherical_absorbing_0.12_ssa_green_0.94 (sulfate, sea salt, organic)
+green 1.45 0.00846 0.0138 0.940 0.611
+red 1.45 0.00986 0.00931 0.920 0.563
+nir 1.45 0.00848 0.00502 0.910 0.488
+blue 1.45 0.0244 0.0216 0.860 0.662 spherical_absorbing_0.12_ssa_green_0.84 (sulfate, sea salt, organic)
+green 1.45 0.0249 0.0145 0.840 0.613
+red 1.45 0.0245 0.00998 0.820 0.564
+nir 1.45 0.0238 0.00564 0.780 0.487
+blue 1.45 0.0420 0.0222 0.780 0.665 spherical_absorbing_0.12_ssa_green_0.74 (sulfate, sea salt, organic)
+green 1.45 0.0454 0.0154 0.740 0.614
+red 1.45 0.0493 0.0111 0.690 0.563
+nir 1.45 0.0528 0.00680 0.610 0.484
+blue 1.45 0.00770 0.214 0.950 0.737 spherical_absorbing_0.26_ssa_green_0.94 (sulfate, sea salt, organic)
+green 1.45 0.0102 0.181 0.940 0.727
+red 1.45 0.0141 0.150 0.920 0.713
+nir 1.45 0.0154 0.107 0.910 0.681
+blue 1.45 0.00385 1.02 0.950 0.732 spherical_absorbing_0.57_ssa_green_0.94 (sulfate, sea salt, organic)
+green 1.45 0.00600 1.04 0.940 0.739
+red 1.45 0.00990 1.02 0.920 0.746
+nir 1.45 0.0136 0.940 0.910 0.746
+blue 1.45 0.0167 0.0213 0.900 0.660 spherical_absorbing_0.12_ssa_0.9_flat (sulfate, sea salt, organic)
+green 1.45 0.0146 0.0141 0.900 0.612
+red 1.45 0.0126 0.00943 0.900 0.564
+nir 1.45 0.00950 0.00506 0.900 0.488
+blue 1.45 0.0373 0.0220 0.800 0.664 spherical_absorbing_0.12_ssa_0.8_flat (sulfate, sea salt, organic)
+green 1.45 0.0325 0.0149 0.800 0.614
+red 1.45 0.0279 0.0101 0.800 0.564
+nir 1.45 0.0212 0.00554 0.800 0.487
+blue 1.45 0.0188 0.0214 0.889 0.660 spherical_absorbing_0.12_ssa_green_0.9_rising (sulfate, sea salt, organic)
+green 1.45 0.0146 0.0141 0.900 0.612
+red 1.45 0.0105 0.00934 0.915 0.563
+nir 1.45 0.00480 0.00487 0.947 0.488
+blue 1.45 0.0422 0.0222 0.779 0.665 spherical_absorbing_0.12_ssa_green_0.8_rising (sulfate, sea salt, organic)
+green 1.45 0.0325 0.0149 0.800 0.614
+red 1.45 0.0235 0.00993 0.826 0.564
+nir 1.45 0.0117 0.00515 0.880 0.487

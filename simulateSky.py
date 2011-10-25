@@ -205,6 +205,14 @@ def main():
     args = parser.parse_args()
 
     #
+    # Load the misr data base
+    #
+    with open('misr.pkl', 'rb') as f:
+        misr = pickle.load(f)
+    
+    particle = misr['spherical_nonabsorbing_0.06']
+    
+    #
     # Set the params of the run
     #
     width = 20
@@ -218,9 +226,9 @@ def main():
 
     aerosol_params = attrClass(
                 ANGLE_ACCURACY=2,
-                k_RGB=np.array((0.000772, 0.000396, 0.000217)) * 10**-12,
-                w_RGB=(1.0, 1.0, 1.0),
-                g_RGB=(0.432, 0.352, 0.287),
+                k_RGB=np.array(particle['k']) * 10**-12,
+                w_RGB=particle['w'],
+                g_RGB=(particle['g']),
                 F_sol_RGB=(255, 236, 224)
                 )
                 
