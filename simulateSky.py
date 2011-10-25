@@ -28,9 +28,13 @@ Note: 5250 C = 5520 K
 
 """
 from __future__ import division
+from utils import createResultFolder, attrClass
 import numpy as np
+import argparse
 import math
 import matplotlib.pyplot as plt
+import pickle
+import os
 
 
 def calcOP(x0, y0, angle, width, height):
@@ -75,6 +79,7 @@ def calcOP(x0, y0, angle, width, height):
 
     return indices.astype(np.int), lengths
 
+
 def createAtmosphere(width, height, lower_visibiliy=10000, upper_visibiliy=50000, K=0.0005*10**-12, noise=0):
     """Create the particle density distribution in the atmosphere"""
     
@@ -84,6 +89,7 @@ def createAtmosphere(width, height, lower_visibiliy=10000, upper_visibiliy=50000
     log_scale = np.logspace(np.log(upper_n), np.log(lower_n), height, base=np.e)
     return np.ones((height, width)) * log_scale.reshape((-1, 1))
 
+
 def calcHG(dangles, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
@@ -91,43 +97,26 @@ def calcHG(dangles, g):
     
     HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(dangles))**(3/2) / (4*np.pi)
     return HG
-    
-def main():
-    """Main function"""
-    
-    #
-    # Parameters of the atmosphere
-    #
-    dz = 100
-    width = 1000
-    height  = 200
-    sun_angle = np.pi/6
-    camera_x = width/2
-    ANGLE_ACCURACY = 2
 
-    #
-    # Atmospheric data:
-    #
-    k_RGB = np.array((0.000772, 0.000396, 0.000217)) * 10**-12
-    w_RGB = (1.0, 1.0, 1.0)
-    g_RGB = (0.432, 0.352, 0.287)
-    F_sol_RGB = (255, 236, 224)
+
+def calcSkyOP(params, results_folder):
+    """Calc the optical path for each voxel in the sky."""
     
     #
     # Create the distribution of particles in the atmosphere.
     #
     print 'Calculate the Atmosphere...\n'
-    n_ATM = createAtmosphere(width, height)
+    n_ATM = createAtmosphere(params.width, params.height)
     
     #
     # First calcualte the SR optical path to each voxel.
     #
     print 'Calculate the SR optical path to each voxel...\n'
-    l_SR = np.zeros((height, width))
-    for i in range(height):
-        for j in range(width):
-            indices, lengths = calcOP(j+0.5, i+0.5, sun_angle, width, height)
-            l_SR[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*dz
+    l_SR = np.zeros((params.height, params.width))
+    for i in range(params.height):
+        for j in range(params.width):
+            indices, lengths = calcOP(j+0.5, i+0.5, params.sun_angle, params.width, params.height)
+            l_SR[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*params.dz
 
     #
     # Calculate the optical distance from each voxel to each
@@ -137,22 +126,44 @@ def main():
     print 'Calculate the LOS optical path to each voxel...\n'
     vox_angles = np.zeros_like(l_SR)
     l_LOS = np.zeros_like(l_SR)
-    for i in range(height):
-        for j in range(width):
-            cam_angle = -math.atan2(j+0.5 - camera_x, height-(i+0.5))
+    for i in range(params.height):
+        for j in range(params.width):
+            cam_angle = -math.atan2(j+0.5 - params.camera_x, params.height-(i+0.5))
             vox_angles[i, j] = cam_angle
-            indices, lengths = calcOP(j+0.5, i+0.5, cam_angle, width, height)
-            l_LOS[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*dz
+            indices, lengths = calcOP(j+0.5, i+0.5, cam_angle, params.width, params.height)
+            l_LOS[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*params.dz
 
+    sky = {
+        'n_ATM': n_ATM,
+        'l_SR': l_SR,
+        'l_LOS': l_LOS,
+        'vox_angles': vox_angles
+    }
+    
+    file_path = os.path.join(results_folder, 'sky.pkl')
+    with open(file_path, 'wb') as f:
+        pickle.dump(sky, f)
+    
+    return sky
+
+
+def calcCamIR(sun_angle, sky, params, results_folder):
+
+    n_ATM = sky['n_ATM']
+    l_SR = sky['l_SR']
+    l_LOS = sky['l_LOS']
+    vox_angles = sky['vox_angles']
+    
     #
     # Calculate the radiance from each voxel.
     # I calculate the accuracy 
     print 'Calculate the radiance for each voxel...\n'
+    cam_resolution = 10**params.ANGLE_ACCURACY
     dangles = sun_angle+np.pi-vox_angles 
-    angle_indices = np.round((vox_angles/np.pi+0.5)*10**ANGLE_ACCURACY)    
-    cam_radiance = np.zeros((1, 10**ANGLE_ACCURACY+1, 3))
+    angle_indices = np.round((vox_angles/np.pi+0.5)*cam_resolution)    
+    cam_radiance = np.zeros((1, cam_resolution+1, 3))
 
-    for ch_ind, (k, w, g, F_sol) in enumerate(zip(k_RGB, w_RGB, g_RGB, F_sol_RGB)):
+    for ch_ind, (k, w, g, F_sol) in enumerate(zip(params.k_RGB, params.w_RGB, params.g_RGB, params.F_sol_RGB)):
         #
         # Calculate the Heney-Greenstein function.
         #
@@ -167,18 +178,70 @@ def main():
     #
     # Tile the 2D camera to 3D camera.
     #
-    cam_radiance = np.tile(cam_radiance, (10**ANGLE_ACCURACY, 1, 1))  
+    cam_radiance = np.tile(cam_radiance, (cam_resolution, 1, 1))  
     np.save('cam.npy', cam_radiance)
     
     #
     # Stretch the values.
     #
-    print np.max(cam_radiance)
     cam_radiance = (cam_radiance/np.max(cam_radiance)*255).astype(np.uint8)
     
+    #
+    # Plot the results
+    #
+    plt.figure()
     plt.imshow(cam_radiance)
+    plt.title('Sky Simulation')
+    plt.savefig(os.path.join(results_folder, 'sky.png'))
     plt.show()
+
     
+def main():
+    #
+    # Parse the command line
+    #
+    parser = argparse.ArgumentParser(description='Simulate the sky.')
+    parser.add_argument('--folder', type=str, default='', help='Load previously calculated sky optical paths.')
+    args = parser.parse_args()
+
+    #
+    # Set the params of the run
+    #
+    width = 20
+    sky_params = attrClass(
+                dz=100,
+                width=width,
+                height=20,
+                sun_angle=np.pi/6,
+                camera_x=width/2
+                )
+
+    aerosol_params = attrClass(
+                ANGLE_ACCURACY=2,
+                k_RGB=np.array((0.000772, 0.000396, 0.000217)) * 10**-12,
+                w_RGB=(1.0, 1.0, 1.0),
+                g_RGB=(0.432, 0.352, 0.287),
+                F_sol_RGB=(255, 236, 224)
+                )
+                
+    united_params = attrClass()
+    united_params.__dict__.update(sky_params.__dict__)
+    united_params.__dict__.update(aerosol_params.__dict__)
+    
+    #
+    # Run the simulation
+    #
+    results_folder = createResultFolder('simulateSky_results', params=united_params)
+    if not args.folder:
+        sky = calcSkyOP(sky_params, results_folder)
+    else:
+        file_name = os.path.join(args.folder, 'sky.pkl')
+        with open(file_name, 'rb') as f:
+            sky = pickle.load(f)
+            
+    calcCamIR(sky_params.sun_angle, sky, aerosol_params, results_folder)
+
+
 if __name__ == '__main__':
     main()
     
