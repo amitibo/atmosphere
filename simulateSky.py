@@ -75,14 +75,19 @@ def calcOP(x0, y0, angle, width, height):
 
     return indices.astype(np.int), lengths
 
-def createAtmosphere(width, height, upper_n=0.04, lower_n=0.2, noise=0):
+def createAtmosphere(width, height, lower_visibiliy=10000, upper_visibiliy=50000, K=0.0005*10**-12, noise=0):
     """Create the particle density distribution in the atmosphere"""
+    
+    upper_n = 1/upper_visibiliy/K
+    lower_n = 1/lower_visibiliy/K
     
     log_scale = np.logspace(np.log(upper_n), np.log(lower_n), height, base=np.e)
     return np.ones((height, width)) * log_scale.reshape((-1, 1))
 
 def calcHG(dangles, g):
-    """Calculate the Heney-Greenstein function for each voxel"""
+    """Calculate the Henyey-Greenstein function for each voxel.
+    The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
+    """
     
     HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(dangles))**(3/2) / (4*np.pi)
     return HG
@@ -95,7 +100,7 @@ def main():
     #
     dz = 100
     width = 1000
-    height  = 100
+    height  = 200
     sun_angle = np.pi/6
     camera_x = width/2
     ANGLE_ACCURACY = 2
@@ -103,7 +108,7 @@ def main():
     #
     # Atmospheric data:
     #
-    k_RGB = (0.000772, 0.000396, 0.000217)
+    k_RGB = np.array((0.000772, 0.000396, 0.000217)) * 10**-12
     w_RGB = (1.0, 1.0, 1.0)
     g_RGB = (0.432, 0.352, 0.287)
     F_sol_RGB = (255, 236, 224)
@@ -159,11 +164,17 @@ def main():
         for i, v in zip(angle_indices.flatten(), vox_iradiance.flatten()):
             cam_radiance[0, i, ch_ind] += v
     
+    #
+    # Tile the 2D camera to 3D camera.
+    #
     cam_radiance = np.tile(cam_radiance, (10**ANGLE_ACCURACY, 1, 1))  
+    np.save('cam.npy', cam_radiance)
     
+    #
+    # Stretch the values.
+    #
     print np.max(cam_radiance)
-    cam_radiance = cam_radiance.astype(np.uint8)
-    print np.max(cam_radiance)
+    cam_radiance = (cam_radiance/np.max(cam_radiance)*255).astype(np.uint8)
     
     plt.imshow(cam_radiance)
     plt.show()
