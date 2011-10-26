@@ -80,7 +80,7 @@ def calcOP(x0, y0, angle, width, height):
     return indices.astype(np.int), lengths
 
 
-def createAtmosphere(width, height, lower_visibiliy=10000, upper_visibiliy=50000, K=0.0005*10**-12, noise=0):
+def createAtmosphere(width, height, lower_visibiliy=30000, upper_visibiliy=100000, K=0.0005*10**-12, noise=0):
     """Create the particle density distribution in the atmosphere"""
     
     upper_n = 1/upper_visibiliy/K
@@ -131,7 +131,7 @@ def calcSkyOP(params, results_folder):
             cam_angle = -math.atan2(j+0.5 - params.camera_x, params.height-(i+0.5))
             vox_angles[i, j] = cam_angle
             indices, lengths = calcOP(j+0.5, i+0.5, cam_angle, params.width, params.height)
-            l_LOS[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*params.dz
+            l_LOS[params.height-1-i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*params.dz
 
     sky = {
         'sun_angle': params.sun_angle,
@@ -211,7 +211,7 @@ def main():
     #
     # Set the params of the run
     #
-    width = 1000
+    width = 2000
     sky_params = attrClass(
                 dz=100,
                 width=width,
