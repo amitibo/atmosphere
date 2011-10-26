@@ -134,6 +134,7 @@ def calcSkyOP(params, results_folder):
             l_LOS[i, j] = np.sum(n_ATM.flatten()[indices] * lengths)*params.dz
 
     sky = {
+        'sun_angle': params.sun_angle,
         'n_ATM': n_ATM,
         'l_SR': l_SR,
         'l_LOS': l_LOS,
@@ -147,8 +148,9 @@ def calcSkyOP(params, results_folder):
     return sky
 
 
-def calcCamIR(sun_angle, sky, params, results_folder):
+def calcCamIR(sky, params, autoscale=True):
 
+    sun_angle = sky['sun_angle']
     n_ATM = sky['n_ATM']
     l_SR = sky['l_SR']
     l_LOS = sky['l_LOS']
@@ -184,17 +186,10 @@ def calcCamIR(sun_angle, sky, params, results_folder):
     #
     # Stretch the values.
     #
-    cam_radiance = (cam_radiance/np.max(cam_radiance)*255).astype(np.uint8)
+    if autoscale:
+        cam_radiance = (cam_radiance/np.max(cam_radiance)*255).astype(np.uint8)
     
-    #
-    # Plot the results
-    #
-    plt.figure()
-    plt.imshow(cam_radiance)
-    plt.title('Sky Simulation')
-    plt.savefig(os.path.join(results_folder, 'sky.png'))
-    plt.show()
-
+    return cam_radiance
     
 def main():
     #
@@ -210,16 +205,17 @@ def main():
     with open('misr.pkl', 'rb') as f:
         misr = pickle.load(f)
     
-    particle = misr['spherical_nonabsorbing_0.06']
+    PARTICLE_NAME = 'spherical_nonabsorbing_0.06'
+    particle = misr[PARTICLE_NAME]
     
     #
     # Set the params of the run
     #
-    width = 20
+    width = 1000
     sky_params = attrClass(
                 dz=100,
                 width=width,
-                height=20,
+                height=100,
                 sun_angle=np.pi/6,
                 camera_x=width/2
                 )
@@ -247,8 +243,16 @@ def main():
         with open(file_name, 'rb') as f:
             sky = pickle.load(f)
             
-    calcCamIR(sky_params.sun_angle, sky, aerosol_params, results_folder)
+    cam_radiance = calcCamIR(sky, aerosol_params)
 
+    #
+    # Plot the results
+    #
+    plt.figure()
+    plt.imshow(cam_radiance)
+    plt.title('Sky Simulation for %s' % PARTICLE_NAME)
+    plt.savefig(os.path.join(results_folder, 'sky.png'))
+    plt.show()
 
 if __name__ == '__main__':
     main()
