@@ -77,6 +77,9 @@ class skyAnalayzer(HasTraits):
             
         #
         # Prepare all the plots.
+        # ArrayPlotData - A class that holds a list of numpy arrays.
+        # Plot - Represents a correlated set of data, renderers, and axes in a single screen region.
+        # VPlotContainer - A plot container that stacks plot components vertically.
         #
         self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
         plot_img = Plot(self.plotdata)
@@ -87,7 +90,7 @@ class skyAnalayzer(HasTraits):
     def scaleImg(self):
         tmpimg = self.sky_img*10**self.tr_scaling
         tmpimg[tmpimg > 255] = 255
-        return (tmpimg).astype(np.uint8)
+        return tmpimg.astype(np.uint8)
                    
     @on_trait_change('tr_scaling')
     def _updateImgScale(self):
@@ -136,8 +139,9 @@ def calcCamIR(sky_params, autoscale=False):
    
     for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
         Iradiance = L_sun * calc_attenuation(H, Distances, sky_params.sun_angle, Phi_LS, lambda_)
-        for i, v in zip(angle_indices.flatten(), Iradiance.flatten()):
-            cam_radiance[0, i, ch_ind] += v
+        for i, v, d in zip(angle_indices.flatten(), Iradiance.flatten(), Distances.flatten()):
+            if d > sky_params.dist_treshold:
+                cam_radiance[0, i, ch_ind] += v
 
     #
     # Tile the 2D camera to 3D camera.
@@ -160,10 +164,11 @@ def main():
     sky_params = attrClass(
                 width=1e5,
                 height=1e4,
-                dxh=20,
+                dxh=10,
                 sun_angle=np.pi/6,
                 camera_x=1e5/2,
-                cam_resolution=180
+                cam_resolution=360,
+                dist_treshold=1000
                 )
 
     #
