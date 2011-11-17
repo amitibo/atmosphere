@@ -38,7 +38,7 @@ def main(folder):
     
     class skyAnalayzer(HasTraits):
         tr_particles = Enum(particles_list, desc='Name of particle')
-        tr_scaling = Range(0.0, 10.0, 0.0, desc='Radiance scaling logarithmic')
+        tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
         tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
     
         traits_view  = View(
