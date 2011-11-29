@@ -40,6 +40,7 @@ from enthought.traits.ui.api import View, Item, VGroup
 from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer
 from enthought.enable.component_editor import ComponentEditor
 import numpy as np
+from scipy.interpolate import griddata
 import argparse
 import math
 import matplotlib.pyplot as plt
@@ -58,6 +59,7 @@ eps = np.finfo(float).eps
 
 class skyAnalayzer(HasTraits):
     tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
+    tr_sun_angle = Range(-np.pi, np.pi, 0.0, desc='Zenith of the sun')
     tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
     
     traits_view  = View(
@@ -73,6 +75,7 @@ class skyAnalayzer(HasTraits):
         super( skyAnalayzer, self ).__init__()
 
         self.sky_img = sky
+        self.sky_img[self.sky_img<0] = 0
         self.tr_sky_max = np.max(self.sky_img)
             
         #
@@ -97,15 +100,8 @@ class skyAnalayzer(HasTraits):
         self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
 
-def show_img(data):
-
-    plt.figure()
-    res = plt.imshow(data)
-    plt.colorbar(res)
-
-
 def calc_H_Phi_LS(sky_params):
-    """Calc phi"""
+    """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
     h, w = np.round(np.array((sky_params.height, sky_params.width)) / sky_params.dxh)
     X, H = np.meshgrid(np.arange(w)*sky_params.dxh, np.arange(h)[::-1]*sky_params.dxh)
@@ -117,7 +113,10 @@ def calc_H_Phi_LS(sky_params):
 
 
 def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_):
-
+    """Calc the attenuation of the Sun's radiance per sky voxel.
+The calculation takes into account the path from the top of the sky to the voxel
+and the path from the voxel to the camera."""
+    
     e_H = np.exp(-H/h_star)
     alpha = 1.09e-3 * lambda_**-4.05
     temp = -alpha * ((1 - e_H) / np.cos(Phi_LS) + e_H / np.cos(sun_angle))
@@ -128,25 +127,50 @@ def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_):
     print lambda_, np.max(attenuation)
     return attenuation
 
-    
-def calcCamIR(sky_params, autoscale=False):
 
+def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
+    """Interpolate a uniform polar grid of a nonuniform polar data"""
+    
+    max_R = np.max(Distances)
+    
+    grid_phi, grid_R = \
+        np.mgrid[np.pi/2:-np.pi/2:np.complex(0, angle_res), 0:max_R:np.complex(0, dist_res)]
+    
+    points = np.vstack((Distances.flatten(), Angles.flatten())).T
+    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method='linear', fill_value=0)
+    
+    jac = np.linspace(0, max_R, dist_res)
+    
+    camera_projection = np.sum(polar_attenuation * jac, axis = 1)
+    
+    return camera_projection
+
+
+def calcCamIR(sky_params, autoscale=False):
+    """Calculate the Iradiance at the camera"""
+    
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
 
-    Phi_scatter = sky_params.sun_angle + np.pi - Phi_LS 
-    angle_indices = np.round((Phi_LS/np.pi + 0.5) * sky_params.cam_resolution)    
-    cam_radiance = np.zeros((1, sky_params.cam_resolution+1, 3))
+    cam_radiance = np.zeros((sky_params.angle_res, 3))
    
+    #
+    # Caluclate the iradiance separately for each color channel.
+    #
     for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
         Iradiance = L_sun * calc_attenuation(H, Distances, sky_params.sun_angle, Phi_LS, lambda_)
-        for i, v, d in zip(angle_indices.flatten(), Iradiance.flatten(), Distances.flatten()):
-            if d > sky_params.dist_treshold:
-                cam_radiance[0, i, ch_ind] += v
+        
+        cam_radiance[:, ch_ind] = cameraProject(
+                                    Iradiance,
+                                    Distances,
+                                    Phi_LS,
+                                    sky_params.dist_res,
+                                    sky_params.angle_res
+                                    )
 
     #
     # Tile the 2D camera to 3D camera.
     #
-    cam_radiance = np.tile(cam_radiance, (sky_params.cam_resolution, 1, 1))  
+    cam_radiance = np.tile(cam_radiance.reshape(1, sky_params.angle_res, 3), (sky_params.angle_res, 1, 1))  
     
     #
     # Stretch the values.
@@ -164,11 +188,11 @@ def main():
     sky_params = attrClass(
                 width=1e5,
                 height=1e4,
-                dxh=10,
-                sun_angle=np.pi/6,
+                dxh=50,
+                sun_angle=-np.pi/3,
                 camera_x=1e5/2,
-                cam_resolution=360,
-                dist_treshold=1000
+                angle_res=180,
+                dist_res=100
                 )
 
     #
@@ -176,6 +200,9 @@ def main():
     #
     cam_radiance = calcCamIR(sky_params)
     
+    #
+    # Show the results in a GUI.
+    #
     skyAnalayzer(cam_radiance).configure_traits()
 
 
