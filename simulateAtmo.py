@@ -55,11 +55,11 @@ L_sun_RGB=(255, 236, 224)
 RGB_wavelength = (700e-3, 530e-3, 470e-3)
 h_star = 8000
 eps = np.finfo(float).eps
-SUN_ANGLES = np.linspace(-np.pi, np.pi, 10)
+SUN_ANGLES = np.linspace(-np.pi/2, np.pi/2, 10)
 
 class skyAnalayzer(HasTraits):
     tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_sun_angle = Range(SUN_ANGLES[0], SUN_ANGLES[-1], 0.0, desc='Zenith of the sun')
+    tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
     tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
     
     traits_view  = View(
@@ -137,10 +137,10 @@ def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
     max_R = np.max(Distances)
     
     grid_phi, grid_R = \
-        np.mgrid[np.pi/2:-np.pi/2:np.complex(0, angle_res), 0:max_R:np.complex(0, dist_res)]
+        np.mgrid[-np.pi/2:np.pi/2:np.complex(0, angle_res), 0:max_R:np.complex(0, dist_res)]
     
     points = np.vstack((Distances.flatten(), Angles.flatten())).T
-    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method='linear', fill_value=0)
+    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method='cubic', fill_value=0)
     polar_attenuation[polar_attenuation<0] = 0
     
     jac = np.linspace(0, max_R, dist_res)
