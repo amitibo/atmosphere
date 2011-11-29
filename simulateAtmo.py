@@ -55,28 +55,28 @@ L_sun_RGB=(255, 236, 224)
 RGB_wavelength = (700e-3, 530e-3, 470e-3)
 h_star = 8000
 eps = np.finfo(float).eps
-
+SUN_ANGLES = np.linspace(-np.pi, np.pi, 10)
 
 class skyAnalayzer(HasTraits):
     tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_sun_angle = Range(-np.pi, np.pi, 0.0, desc='Zenith of the sun')
+    tr_sun_angle = Range(SUN_ANGLES[0], SUN_ANGLES[-1], 0.0, desc='Zenith of the sun')
     tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
     
     traits_view  = View(
                         VGroup(
                             Item('plot_sky', editor=ComponentEditor(), show_label=False),
                             Item('tr_sky_max', label='Maximal value', style='readonly'),
-                            Item('tr_scaling', label='Radiance Scaling')
+                            Item('tr_scaling', label='Radiance Scaling'),
+                            Item('tr_sun_angle', label='Index of sun angle')
                             ),
                         resizable = True
                     )
                         
-    def __init__(self, sky):
+    def __init__(self, sky_list):
         super( skyAnalayzer, self ).__init__()
-
-        self.sky_img = sky
-        self.sky_img[self.sky_img<0] = 0
-        self.tr_sky_max = np.max(self.sky_img)
+        
+        self.sky_list = sky_list
+        self.tr_sky_max = np.max(self.sky_list[0])
             
         #
         # Prepare all the plots.
@@ -91,11 +91,14 @@ class skyAnalayzer(HasTraits):
         self.plot_sky = VPlotContainer( plot_img )
 
     def scaleImg(self):
-        tmpimg = self.sky_img*10**self.tr_scaling
+        sky_list_index = np.argmin(np.abs(SUN_ANGLES - self.tr_sun_angle))
+        
+        tmpimg = self.sky_list[sky_list_index]*10**self.tr_scaling
         tmpimg[tmpimg > 255] = 255
+        self.tr_sky_max = np.max(self.sky_list[sky_list_index])
         return tmpimg.astype(np.uint8)
                    
-    @on_trait_change('tr_scaling')
+    @on_trait_change('tr_scaling, tr_sun_angle')
     def _updateImgScale(self):
         self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
@@ -138,15 +141,15 @@ def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
     
     points = np.vstack((Distances.flatten(), Angles.flatten())).T
     polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method='linear', fill_value=0)
+    polar_attenuation[polar_attenuation<0] = 0
     
     jac = np.linspace(0, max_R, dist_res)
-    
     camera_projection = np.sum(polar_attenuation * jac, axis = 1)
     
     return camera_projection
 
 
-def calcCamIR(sky_params, autoscale=False):
+def calcCamIR(sky_params, sun_angle):
     """Calculate the Iradiance at the camera"""
     
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
@@ -157,7 +160,7 @@ def calcCamIR(sky_params, autoscale=False):
     # Caluclate the iradiance separately for each color channel.
     #
     for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
-        Iradiance = L_sun * calc_attenuation(H, Distances, sky_params.sun_angle, Phi_LS, lambda_)
+        Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_)
         
         cam_radiance[:, ch_ind] = cameraProject(
                                     Iradiance,
@@ -172,38 +175,52 @@ def calcCamIR(sky_params, autoscale=False):
     #
     cam_radiance = np.tile(cam_radiance.reshape(1, sky_params.angle_res, 3), (sky_params.angle_res, 1, 1))  
     
-    #
-    # Stretch the values.
-    #
-    if autoscale:
-        cam_radiance = (cam_radiance/np.max(cam_radiance)*255).astype(np.uint8)
-    
     return cam_radiance
 
 
 def main():
     #
-    # Set the params of the run
+    # Parse the command line
     #
-    sky_params = attrClass(
-                width=1e5,
-                height=1e4,
-                dxh=50,
-                sun_angle=-np.pi/3,
-                camera_x=1e5/2,
-                angle_res=180,
-                dist_res=100
-                )
+    parser = argparse.ArgumentParser(description='Simulate the sky.')
+    parser.add_argument('--folder', type=str, default='', help='Load previously calculated sky optical paths.')
+    args = parser.parse_args()
 
-    #
-    # Run the simulation
-    #
-    cam_radiance = calcCamIR(sky_params)
+
+    results_folder = 'results'
+
+    if args.folder:
+        file_name = os.path.join(args.folder, 'blue_sky.pkl')
+        with open(file_name, 'rb') as f:
+            cam_radiances = pickle.load(f)
+    else:
+        #
+        # Set the params of the run
+        #
+        sky_params = attrClass(
+                    width=1e5,
+                    height=1e4,
+                    dxh=50,
+                    camera_x=1e5/2,
+                    angle_res=360,
+                    dist_res=100
+                    )
     
+        #
+        # Run the simulation
+        #
+        cam_radiances = []
+        for sun_angle in SUN_ANGLES:
+            cam_radiances.append(calcCamIR(sky_params, sun_angle))
+        
+        file_path = os.path.join(results_folder, 'blue_sky.pkl')
+        with open(file_path, 'wb') as f:
+            pickle.dump(cam_radiances, f)
+            
     #
     # Show the results in a GUI.
     #
-    skyAnalayzer(cam_radiance).configure_traits()
+    skyAnalayzer(cam_radiances).configure_traits()
 
 
 if __name__ == '__main__':
