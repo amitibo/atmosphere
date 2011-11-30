@@ -40,11 +40,11 @@ from enthought.traits.ui.api import View, Item, VGroup
 from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer
 from enthought.enable.component_editor import ComponentEditor
 import numpy as np
-from scipy.interpolate import griddata
 import argparse
 import math
 import matplotlib.pyplot as plt
 import pickle
+import pp
 import os
 
 
@@ -55,7 +55,7 @@ L_sun_RGB=(255, 236, 224)
 RGB_wavelength = (700e-3, 530e-3, 470e-3)
 h_star = 8000
 eps = np.finfo(float).eps
-SUN_ANGLES = np.linspace(-np.pi/2, np.pi/2, 10)
+SUN_ANGLES = np.linspace(-np.pi/2, np.pi/2, 30)
 
 class skyAnalayzer(HasTraits):
     tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
@@ -131,8 +131,11 @@ and the path from the voxel to the camera."""
     return attenuation
 
 
-def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
+def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res, interp_method):
     """Interpolate a uniform polar grid of a nonuniform polar data"""
+    
+    import numpy as np
+    from scipy.interpolate import griddata
     
     max_R = np.max(Distances)
     
@@ -140,7 +143,7 @@ def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
         np.mgrid[-np.pi/2:np.pi/2:np.complex(0, angle_res), 0:max_R:np.complex(0, dist_res)]
     
     points = np.vstack((Distances.flatten(), Angles.flatten())).T
-    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method='cubic', fill_value=0)
+    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method=interp_method, fill_value=0)
     polar_attenuation[polar_attenuation<0] = 0
     
     jac = np.linspace(0, max_R, dist_res)
@@ -149,7 +152,7 @@ def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res):
     return camera_projection
 
 
-def calcCamIR(sky_params, sun_angle):
+def calcCamIR(sky_params, sun_angle, job_server):
     """Calculate the Iradiance at the camera"""
     
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
@@ -159,16 +162,19 @@ def calcCamIR(sky_params, sun_angle):
     #
     # Caluclate the iradiance separately for each color channel.
     #
-    for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
+    jobs = []
+    for L_sun, lambda_ in zip(L_sun_RGB, RGB_wavelength):
         Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_)
         
-        cam_radiance[:, ch_ind] = cameraProject(
-                                    Iradiance,
-                                    Distances,
-                                    Phi_LS,
-                                    sky_params.dist_res,
-                                    sky_params.angle_res
-                                    )
+        jobs.append(
+            job_server.submit(
+                cameraProject,
+                (Iradiance, Distances, Phi_LS, sky_params.dist_res, sky_params.angle_res, sky_params.interp_method)
+                )
+            )
+        
+    for ch_ind, job in enumerate(jobs):
+        cam_radiance[:, ch_ind] = job()
 
     #
     # Tile the 2D camera to 3D camera.
@@ -203,15 +209,17 @@ def main():
                     dxh=50,
                     camera_x=1e5/2,
                     angle_res=360,
-                    dist_res=100
+                    dist_res=100,
+                    interp_method='cubic'
                     )
     
         #
         # Run the simulation
         #
         cam_radiances = []
+        job_server = pp.Server(3)
         for sun_angle in SUN_ANGLES:
-            cam_radiances.append(calcCamIR(sky_params, sun_angle))
+            cam_radiances.append(calcCamIR(sky_params, sun_angle, job_server))
         
         file_path = os.path.join(results_folder, 'blue_sky.pkl')
         with open(file_path, 'wb') as f:
