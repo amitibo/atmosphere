@@ -34,14 +34,14 @@ http://en.wikipedia.org/wiki/Color
 
 
 from __future__ import division
-from utils import createResultFolder, attrClass
 from enthought.traits.api import HasTraits, Enum, Range, Float, on_trait_change
 from enthought.traits.ui.api import View, Item, VGroup
 from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer
 from enthought.enable.component_editor import ComponentEditor
-import numpy as np
+import numpy
 import argparse
 import math
+import time
 import matplotlib.pyplot as plt
 import pickle
 import pp
@@ -51,11 +51,7 @@ import os
 #
 # Global parameters
 #
-L_sun_RGB=(255, 236, 224)
-RGB_wavelength = (700e-3, 530e-3, 470e-3)
-h_star = 8000
-eps = np.finfo(float).eps
-SUN_ANGLES = np.linspace(-np.pi/2, np.pi/2, 30)
+SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 30)
 
 class skyAnalayzer(HasTraits):
     tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
@@ -76,7 +72,7 @@ class skyAnalayzer(HasTraits):
         super( skyAnalayzer, self ).__init__()
         
         self.sky_list = sky_list
-        self.tr_sky_max = np.max(self.sky_list[0])
+        self.tr_sky_max = numpy.max(self.sky_list[0])
             
         #
         # Prepare all the plots.
@@ -91,12 +87,12 @@ class skyAnalayzer(HasTraits):
         self.plot_sky = VPlotContainer( plot_img )
 
     def scaleImg(self):
-        sky_list_index = np.argmin(np.abs(SUN_ANGLES - self.tr_sun_angle))
+        sky_list_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
         
         tmpimg = self.sky_list[sky_list_index]*10**self.tr_scaling
         tmpimg[tmpimg > 255] = 255
-        self.tr_sky_max = np.max(self.sky_list[sky_list_index])
-        return tmpimg.astype(np.uint8)
+        self.tr_sky_max = numpy.max(self.sky_list[sky_list_index])
+        return tmpimg.astype(numpy.uint8)
                    
     @on_trait_change('tr_scaling, tr_sun_angle')
     def _updateImgScale(self):
@@ -106,11 +102,11 @@ class skyAnalayzer(HasTraits):
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
-    h, w = np.round(np.array((sky_params.height, sky_params.width)) / sky_params.dxh)
-    X, H = np.meshgrid(np.arange(w)*sky_params.dxh, np.arange(h)[::-1]*sky_params.dxh)
+    h, w = numpy.round(numpy.array((sky_params['height'], sky_params['width'])) / sky_params['dxh'])
+    X, H = numpy.meshgrid(numpy.arange(w)*sky_params['dxh'], numpy.arange(h)[::-1]*sky_params['dxh'])
 
-    Phi_LS = np.arctan2(X - sky_params.camera_x, H)
-    Distances = H / np.cos(Phi_LS) + eps
+    Phi_LS = numpy.arctan2(X - sky_params['camera_x'], H)
+    Distances = H / numpy.cos(Phi_LS) + numpy.finfo(float).eps
 
     return H, Phi_LS, Distances
 
@@ -120,66 +116,65 @@ def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_):
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
     
-    e_H = np.exp(-H/h_star)
+    h_star = 8000
+
+    e_H = numpy.exp(-H/h_star)
     alpha = 1.09e-3 * lambda_**-4.05
-    temp = -alpha * ((1 - e_H) / np.cos(Phi_LS) + e_H / np.cos(sun_angle))
-    Phi_scatter = sun_angle + np.pi - Phi_LS
-    attenuation = np.exp(temp) * alpha / h_star * e_H * (1 + np.cos(Phi_scatter)**2)
+    temp = -alpha * ((1 - e_H) / numpy.cos(Phi_LS) + e_H / numpy.cos(sun_angle))
+    Phi_scatter = sun_angle + numpy.pi - Phi_LS
+    attenuation = numpy.exp(temp) * alpha / h_star * e_H * (1 + numpy.cos(Phi_scatter)**2)
     attenuation = attenuation / (Distances + 1)
 
-    print lambda_, np.max(attenuation)
     return attenuation
 
 
 def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res, interp_method):
     """Interpolate a uniform polar grid of a nonuniform polar data"""
     
-    import numpy as np
-    from scipy.interpolate import griddata
-    
-    max_R = np.max(Distances)
+    max_R = numpy.max(Distances)
     
     grid_phi, grid_R = \
-        np.mgrid[-np.pi/2:np.pi/2:np.complex(0, angle_res), 0:max_R:np.complex(0, dist_res)]
+        numpy.mgrid[-numpy.pi/2:numpy.pi/2:numpy.complex(0, angle_res), 0:max_R:numpy.complex(0, dist_res)]
     
-    points = np.vstack((Distances.flatten(), Angles.flatten())).T
-    polar_attenuation = griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method=interp_method, fill_value=0)
+    points = numpy.vstack((Distances.flatten(), Angles.flatten())).T
+    polar_attenuation = scipy.interpolate.griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method=interp_method, fill_value=0)
     polar_attenuation[polar_attenuation<0] = 0
     
-    jac = np.linspace(0, max_R, dist_res)
-    camera_projection = np.sum(polar_attenuation * jac, axis = 1)
+    jac = numpy.linspace(0, max_R, dist_res)
+    camera_projection = numpy.sum(polar_attenuation * jac, axis = 1)
     
     return camera_projection
 
 
-def calcCamIR(sky_params, sun_angle, job_server):
+def calcCamIR(sky_params, sun_angle):
     """Calculate the Iradiance at the camera"""
     
+    L_sun_RGB=(255, 236, 224)
+    RGB_wavelength = (700e-3, 530e-3, 470e-3)
+
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
 
-    cam_radiance = np.zeros((sky_params.angle_res, 3))
+    cam_radiance = numpy.zeros((sky_params['angle_res'], 3))
    
     #
     # Caluclate the iradiance separately for each color channel.
     #
-    jobs = []
-    for L_sun, lambda_ in zip(L_sun_RGB, RGB_wavelength):
+    for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
         Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_)
         
-        jobs.append(
-            job_server.submit(
-                cameraProject,
-                (Iradiance, Distances, Phi_LS, sky_params.dist_res, sky_params.angle_res, sky_params.interp_method)
-                )
-            )
-        
-    for ch_ind, job in enumerate(jobs):
-        cam_radiance[:, ch_ind] = job()
+        cam_radiance[:, ch_ind] = cameraProject(
+                                    Iradiance,
+                                    Distances,
+                                    Phi_LS,
+                                    sky_params['dist_res'],
+                                    sky_params['angle_res'],
+                                    sky_params['interp_method']
+                                    )
 
     #
     # Tile the 2D camera to 3D camera.
     #
-    cam_radiance = np.tile(cam_radiance.reshape(1, sky_params.angle_res, 3), (sky_params.angle_res, 1, 1))  
+    cam_radiance = numpy.tile(cam_radiance.reshape(1, sky_params['angle_res'], 3), (sky_params['angle_res'], 1, 1))  
     
     return cam_radiance
 
@@ -203,23 +198,30 @@ def main():
         #
         # Set the params of the run
         #
-        sky_params = attrClass(
-                    width=1e5,
-                    height=1e4,
-                    dxh=50,
-                    camera_x=1e5/2,
-                    angle_res=360,
-                    dist_res=100,
-                    interp_method='cubic'
-                    )
+        sky_params = {
+            'width': 1e5,
+            'height': 1e4,
+            'dxh': 50,
+            'camera_x': 1e5/2,
+            'angle_res': 360,
+            'dist_res': 100,
+            'interp_method': 'cubic'
+        }
     
         #
         # Run the simulation
         #
+        tic = time.time()
+        ppservers=("vsm-pc-130.vsm.technion.ac.il", "vsm-pc-131.vsm.technion.ac.il")
+        job_server = pp.Server(ncpus=0, ppservers=ppservers) 
+        jobs = [job_server.submit(calcCamIR, (sky_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject), ('numpy','scipy.interpolate')) for sun_angle in SUN_ANGLES]
+        
+         
         cam_radiances = []
-        job_server = pp.Server(3)
-        for sun_angle in SUN_ANGLES:
-            cam_radiances.append(calcCamIR(sky_params, sun_angle, job_server))
+        for job in jobs:
+            cam_radiances.append(job())
+
+        print 'Time used %d' % (time.time()- tic)
         
         file_path = os.path.join(results_folder, 'blue_sky.pkl')
         with open(file_path, 'wb') as f:
