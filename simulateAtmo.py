@@ -32,7 +32,6 @@ The RGB wavelengths are taken from
 http://en.wikipedia.org/wiki/Color
 """
 
-
 from __future__ import division
 from enthought.traits.api import HasTraits, Enum, Range, Float, on_trait_change
 from enthought.traits.ui.api import View, Item, VGroup
@@ -51,7 +50,17 @@ import os
 #
 # Global parameters
 #
-SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 30)
+SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 24)
+SKY_PARAMS = {
+    'width': 1e5,
+    'height': 1e4,
+    'dxh': 100,
+    'camera_x': 1e5/2,
+    'angle_res': 180,
+    'dist_res': 50,
+    'interp_method': 'cubic'
+}
+RESULTS_FOLDER = 'results'
 
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
@@ -65,20 +74,35 @@ def calc_H_Phi_LS(sky_params):
     return H, Phi_LS, Distances
 
 
-def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_):
+def calcHG(Phi_scatter, g):
+    """Calculate the Henyey-Greenstein function for each voxel.
+    The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
+    """
+    
+    HG = (1 - g**2) / (1 + g**2 - 2*g*numpy.cos(Phi_scatter))**(3/2) / (4*numpy.pi)
+    return HG
+
+
+def calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, k, w, g):
     """Calc the attenuation of the Sun's radiance per sky voxel.
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
     
     h_star_air = 8000
-    h_star_haze = 1200
+    h_star_aerosol = 1200
 
-    e_H = numpy.exp(-H/h_star_air)
-    alpha = 1.09e-3 * lambda_**-4.05
-    temp = -alpha * ((1 - e_H) / numpy.cos(Phi_LS) + e_H / numpy.cos(sun_angle))
-    Phi_scatter = sun_angle + numpy.pi - Phi_LS
-    attenuation = numpy.exp(temp) * alpha / h_star * e_H * (1 + numpy.cos(Phi_scatter)**2)
-    attenuation = attenuation / (Distances + 1)
+    e_H_air = numpy.exp(-H/h_star_air)
+    e_H_aerosol = numpy.exp(-H/h_star_aerosol)
+    
+    p = calcHG(Phi_scatter, g)
+    
+    alpha_air = 1.09e-3 * lambda_**-4.05
+    alpha_aerosol = 1
+    
+    temp = -alpha_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
+    temp += -k * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
+    attenuation = numpy.exp(temp) * (alpha_air / h_star_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol / h_star_aerosol * e_H_aerosol * k * w * p)
+    attenuation = attenuation / Distances
 
     return attenuation
 
@@ -101,21 +125,21 @@ def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res, interp_meth
     return camera_projection
 
 
-def calcCamIR(sky_params, sun_angle):
+def calcCamIR(sky_params, aerosol_params, sun_angle):
     """Calculate the Iradiance at the camera"""
     
     L_sun_RGB=(255, 236, 224)
     RGB_wavelength = (700e-3, 530e-3, 470e-3)
 
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
-
+    Phi_scatter = sun_angle + numpy.pi - Phi_LS
     cam_radiance = numpy.zeros((sky_params['angle_res'], 3))
    
     #
     # Caluclate the iradiance separately for each color channel.
     #
-    for ch_ind, (L_sun, lambda_) in enumerate(zip(L_sun_RGB, RGB_wavelength)):
-        Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_)
+    for ch_ind, (L_sun, lambda_, k, w, g) in enumerate(zip(L_sun_RGB, RGB_wavelength, aerosol_params["k_RGB"], aerosol_params["w_RGB"], aerosol_params["g_RGB"])):
+        Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, k, w, g)
         
         cam_radiance[:, ch_ind] = cameraProject(
                                     Iradiance,
@@ -169,10 +193,18 @@ def main():
                             resizable = True
                         )
                             
-        def __init__(self, sky_list):
+        def __init__(self, folder, misr):
             super( skyAnalayzer, self ).__init__()
+
+            self.misr = misr
+
+            if folder:
+                file_name = os.path.join(folder, 'blue_sky.pkl')
+                with open(file_name, 'rb') as f:
+                    self.sky_list = pickle.load(f)
+            else:
+                self.calcSkyList()
             
-            self.sky_list = sky_list
             self.tr_sky_max = numpy.max(self.sky_list[0])
                 
             #
@@ -187,6 +219,37 @@ def main():
         
             self.plot_sky = VPlotContainer( plot_img )
     
+        def calcSkyList(self):
+
+            particle = self.misr[self.tr_particles]
+            
+            aerosol_params = {
+                "k_RGB": numpy.array(particle['k']) * 10**-12,
+                "w_RGB": particle['w'],
+                "g_RGB": (particle['g']),
+            }
+                        
+            #
+            # Run the simulation
+            #
+            tic = time.time()
+            ppservers=("vsm-pc-130.vsm.technion.ac.il", "vsm-pc-131.vsm.technion.ac.il", "vsm-pc-132.vsm.technion.ac.il")
+            job_server = pp.Server(ncpus=0, ppservers=ppservers) 
+            jobs = [job_server.submit(calcCamIR, (SKY_PARAMS, aerosol_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG), ('numpy', 'scipy.interpolate')) for sun_angle in SUN_ANGLES]
+            
+            self.sky_list = []
+            for job in jobs:
+                self.sky_list.append(job())
+    
+            print 'Time used %d' % (time.time()- tic)
+            
+            if not os.path.exists(RESULTS_FOLDER):
+                os.mkdir(RESULTS_FOLDER)
+                
+            file_path = os.path.join(RESULTS_FOLDER, 'blue_sky.pkl')
+            with open(file_path, 'wb') as f:
+                pickle.dump(self.sky_list, f)
+            
         def scaleImg(self):
             sky_list_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
             
@@ -195,51 +258,19 @@ def main():
             self.tr_sky_max = numpy.max(self.sky_list[sky_list_index])
             return tmpimg.astype(numpy.uint8)
                        
+        @on_trait_change('tr_particles')
+        def _updateImg(self):
+            self.calcSkyList()
+            self.plotdata.set_data( 'sky_img', self.scaleImg() )
+    
         @on_trait_change('tr_scaling, tr_sun_angle')
         def _updateImgScale(self):
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
 
-    if args.folder:
-        file_name = os.path.join(args.folder, 'blue_sky.pkl')
-        with open(file_name, 'rb') as f:
-            cam_radiances = pickle.load(f)
-    else:
-        #
-        # Set the params of the run
-        #
-        sky_params = {
-            'width': 1e5,
-            'height': 1e4,
-            'dxh': 50,
-            'camera_x': 1e5/2,
-            'angle_res': 360,
-            'dist_res': 100,
-            'interp_method': 'cubic'
-        }
-    
-        #
-        # Run the simulation
-        #
-        tic = time.time()
-        ppservers=("vsm-pc-130.vsm.technion.ac.il", "vsm-pc-131.vsm.technion.ac.il")
-        job_server = pp.Server(ncpus=0, ppservers=ppservers) 
-        jobs = [job_server.submit(calcCamIR, (sky_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject), ('numpy','scipy.interpolate')) for sun_angle in SUN_ANGLES]
-        
-         
-        cam_radiances = []
-        for job in jobs:
-            cam_radiances.append(job())
-
-        print 'Time used %d' % (time.time()- tic)
-        
-        file_path = os.path.join(results_folder, 'blue_sky.pkl')
-        with open(file_path, 'wb') as f:
-            pickle.dump(cam_radiances, f)
-            
     #
     # Show the results in a GUI.
     #
-    skyAnalayzer(cam_radiances).configure_traits()
+    skyAnalayzer(args.folder, misr).configure_traits()
 
 
 if __name__ == '__main__':
