@@ -53,52 +53,6 @@ import os
 #
 SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 30)
 
-class skyAnalayzer(HasTraits):
-    tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
-    tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
-    
-    traits_view  = View(
-                        VGroup(
-                            Item('plot_sky', editor=ComponentEditor(), show_label=False),
-                            Item('tr_sky_max', label='Maximal value', style='readonly'),
-                            Item('tr_scaling', label='Radiance Scaling'),
-                            Item('tr_sun_angle', label='Index of sun angle')
-                            ),
-                        resizable = True
-                    )
-                        
-    def __init__(self, sky_list):
-        super( skyAnalayzer, self ).__init__()
-        
-        self.sky_list = sky_list
-        self.tr_sky_max = numpy.max(self.sky_list[0])
-            
-        #
-        # Prepare all the plots.
-        # ArrayPlotData - A class that holds a list of numpy arrays.
-        # Plot - Represents a correlated set of data, renderers, and axes in a single screen region.
-        # VPlotContainer - A plot container that stacks plot components vertically.
-        #
-        self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
-        plot_img = Plot(self.plotdata)
-        plot_img.img_plot("sky_img")
-    
-        self.plot_sky = VPlotContainer( plot_img )
-
-    def scaleImg(self):
-        sky_list_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
-        
-        tmpimg = self.sky_list[sky_list_index]*10**self.tr_scaling
-        tmpimg[tmpimg > 255] = 255
-        self.tr_sky_max = numpy.max(self.sky_list[sky_list_index])
-        return tmpimg.astype(numpy.uint8)
-                   
-    @on_trait_change('tr_scaling, tr_sun_angle')
-    def _updateImgScale(self):
-        self.plotdata.set_data( 'sky_img', self.scaleImg() )
-    
-
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
@@ -116,9 +70,10 @@ def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_):
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
     
-    h_star = 8000
+    h_star_air = 8000
+    h_star_haze = 1200
 
-    e_H = numpy.exp(-H/h_star)
+    e_H = numpy.exp(-H/h_star_air)
     alpha = 1.09e-3 * lambda_**-4.05
     temp = -alpha * ((1 - e_H) / numpy.cos(Phi_LS) + e_H / numpy.cos(sun_angle))
     Phi_scatter = sun_angle + numpy.pi - Phi_LS
@@ -187,8 +142,62 @@ def main():
     parser.add_argument('--folder', type=str, default='', help='Load previously calculated sky optical paths.')
     args = parser.parse_args()
 
-
     results_folder = 'results'
+
+    #
+    # Load the misr data base
+    #
+    with open('misr.pkl', 'rb') as f:
+        misr = pickle.load(f)
+    
+    particles_list = misr.keys()
+    
+    class skyAnalayzer(HasTraits):
+        tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
+        tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
+        tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
+        tr_particles = Enum(particles_list, desc='Name of particle')
+        
+        traits_view  = View(
+                            VGroup(
+                                Item('plot_sky', editor=ComponentEditor(), show_label=False),
+                                Item('tr_sky_max', label='Maximal value', style='readonly'),
+                                Item('tr_particles', label='Particle Name'),                                
+                                Item('tr_scaling', label='Radiance Scaling'),
+                                Item('tr_sun_angle', label='Index of sun angle')
+                                ),
+                            resizable = True
+                        )
+                            
+        def __init__(self, sky_list):
+            super( skyAnalayzer, self ).__init__()
+            
+            self.sky_list = sky_list
+            self.tr_sky_max = numpy.max(self.sky_list[0])
+                
+            #
+            # Prepare all the plots.
+            # ArrayPlotData - A class that holds a list of numpy arrays.
+            # Plot - Represents a correlated set of data, renderers, and axes in a single screen region.
+            # VPlotContainer - A plot container that stacks plot components vertically.
+            #
+            self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
+            plot_img = Plot(self.plotdata)
+            plot_img.img_plot("sky_img")
+        
+            self.plot_sky = VPlotContainer( plot_img )
+    
+        def scaleImg(self):
+            sky_list_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
+            
+            tmpimg = self.sky_list[sky_list_index]*10**self.tr_scaling
+            tmpimg[tmpimg > 255] = 255
+            self.tr_sky_max = numpy.max(self.sky_list[sky_list_index])
+            return tmpimg.astype(numpy.uint8)
+                       
+        @on_trait_change('tr_scaling, tr_sun_angle')
+        def _updateImgScale(self):
+            self.plotdata.set_data( 'sky_img', self.scaleImg() )
 
     if args.folder:
         file_name = os.path.join(args.folder, 'blue_sky.pkl')
