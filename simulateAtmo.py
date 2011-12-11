@@ -52,10 +52,10 @@ import os
 #
 SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 24)
 SKY_PARAMS = {
-    'width': 1e5,
-    'height': 1e4,
-    'dxh': 100,
-    'camera_x': 1e5/2,
+    'width': 100,
+    'height': 10,
+    'dxh': 0.1,
+    'camera_x': 50,
     'angle_res': 180,
     'dist_res': 50,
     'interp_method': 'cubic'
@@ -88,8 +88,8 @@ def calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, k, w
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
     
-    h_star_air = 8000
-    h_star_aerosol = 1200
+    h_star_air = 8
+    h_star_aerosol = 1.2
 
     e_H_air = numpy.exp(-H/h_star_air)
     e_H_aerosol = numpy.exp(-H/h_star_aerosol)
@@ -97,14 +97,12 @@ and the path from the voxel to the camera."""
     p = calcHG(Phi_scatter, g)
     
     alpha_air = 1.09e-3 * lambda_**-4.05
-    alpha_aerosol = 0# 1/50e4 / 0.0005*10**-12 * k
+    alpha_aerosol = 1 / 50 / 0.0005*10**-12 * k
     
-    #temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
-    #temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
-    #attenuation = numpy.exp(temp) * (alpha_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol * e_H_aerosol * w * p)
-    temp = -alpha_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
-    attenuation = numpy.exp(temp) * (alpha_air / h_star_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2))
-    attenuation = attenuation / Distances
+    temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
+    temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
+    attenuation = numpy.exp(temp) * (alpha_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol * e_H_aerosol * w * p)
+    attenuation = attenuation / (Distances + 0.001)
 
     return attenuation
 
