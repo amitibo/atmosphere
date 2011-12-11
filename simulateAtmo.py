@@ -97,11 +97,13 @@ and the path from the voxel to the camera."""
     p = calcHG(Phi_scatter, g)
     
     alpha_air = 1.09e-3 * lambda_**-4.05
-    alpha_aerosol = 1
+    alpha_aerosol = 0# 1/50e4 / 0.0005*10**-12 * k
     
+    #temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
+    #temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
+    #attenuation = numpy.exp(temp) * (alpha_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol * e_H_aerosol * w * p)
     temp = -alpha_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
-    temp += -k * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
-    attenuation = numpy.exp(temp) * (alpha_air / h_star_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol / h_star_aerosol * e_H_aerosol * k * w * p)
+    attenuation = numpy.exp(temp) * (alpha_air / h_star_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2))
     attenuation = attenuation / Distances
 
     return attenuation
