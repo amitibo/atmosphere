@@ -50,7 +50,9 @@ import os
 #
 # Global parameters
 #
-SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 24)
+SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 9)
+AEROSOL_VISIBILITY = numpy.linspace(10, 200, 8)
+
 SKY_PARAMS = {
     'width': 100,
     'height': 10,
@@ -83,7 +85,7 @@ def calcHG(Phi_scatter, g):
     return HG
 
 
-def calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, k, w, g):
+def calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, aerosol_visibility, k, w, g):
     """Calc the attenuation of the Sun's radiance per sky voxel.
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
@@ -97,7 +99,7 @@ and the path from the voxel to the camera."""
     p = calcHG(Phi_scatter, g)
     
     alpha_air = 1.09e-3 * lambda_**-4.05
-    alpha_aerosol = 1 / 50 / 0.0005*10**-12 * k
+    alpha_aerosol = 1 / aerosol_visibility / 0.0005*10**-12 * k
     
     temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
     temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
@@ -139,7 +141,18 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
     # Caluclate the iradiance separately for each color channel.
     #
     for ch_ind, (L_sun, lambda_, k, w, g) in enumerate(zip(L_sun_RGB, RGB_wavelength, aerosol_params["k_RGB"], aerosol_params["w_RGB"], aerosol_params["g_RGB"])):
-        Iradiance = L_sun * calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, k, w, g)
+        Iradiance = L_sun * calc_attenuation(
+                                H,
+                                Distances,
+                                sun_angle,
+                                Phi_LS,
+                                Phi_scatter,
+                                lambda_,
+                                aerosol_params["visibility"],
+                                k,
+                                w,
+                                g
+                                )
         
         cam_radiance[:, ch_ind] = cameraProject(
                                     Iradiance,
@@ -150,11 +163,6 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
                                     sky_params['interp_method']
                                     )
 
-    #
-    # Tile the 2D camera to 3D camera.
-    #
-    cam_radiance = numpy.tile(cam_radiance.reshape(1, sky_params['angle_res'], 3), (sky_params['angle_res'], 1, 1))  
-    
     return cam_radiance
 
 
@@ -179,6 +187,7 @@ def main():
     class skyAnalayzer(HasTraits):
         tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
         tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
+        tr_aeros_viz = Range(float(AEROSOL_VISIBILITY[0]), float(AEROSOL_VISIBILITY[-1]), desc='Visibility due to aerosols [km]')
         tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
         tr_particles = Enum(particles_list, desc='Name of particle')
         
@@ -188,7 +197,8 @@ def main():
                                 Item('tr_sky_max', label='Maximal value', style='readonly'),
                                 Item('tr_particles', label='Particle Name'),                                
                                 Item('tr_scaling', label='Radiance Scaling'),
-                                Item('tr_sun_angle', label='Index of sun angle')
+                                Item('tr_sun_angle', label='Sun Angle'),
+                                Item('tr_aeros_viz', label='Aerosol Visibility [km]')
                                 ),
                             resizable = True
                         )
@@ -227,6 +237,7 @@ def main():
                 "k_RGB": numpy.array(particle['k']) * 10**-12,
                 "w_RGB": particle['w'],
                 "g_RGB": (particle['g']),
+                "visibility": 1
             }
                         
             #
@@ -234,13 +245,17 @@ def main():
             #
             tic = time.time()
             ppservers=("vsm-pc-130.vsm.technion.ac.il", "vsm-pc-131.vsm.technion.ac.il", "vsm-pc-132.vsm.technion.ac.il")
-            job_server = pp.Server(ncpus=0, ppservers=ppservers) 
-            jobs = [job_server.submit(calcCamIR, (SKY_PARAMS, aerosol_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG), ('numpy', 'scipy.interpolate')) for sun_angle in SUN_ANGLES]
+            job_server = pp.Server(ncpus=0, ppservers=ppservers)
+            jobs = []
+            for aerosol_viz in AEROSOL_VISIBILITY:
+                aerosol_params["visibility"] = aerosol_viz
+                temp_jobs = [job_server.submit(calcCamIR, (SKY_PARAMS, aerosol_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG), ('numpy', 'scipy.interpolate')) for sun_angle in SUN_ANGLES]
+                jobs.append(temp_jobs)
             
             self.sky_list = []
-            for job in jobs:
-                self.sky_list.append(job())
-    
+            for temp_jobs in jobs:
+                self.sky_list.append([job() for job in temp_jobs])
+
             print 'Time used %d' % (time.time()- tic)
             
             if not os.path.exists(RESULTS_FOLDER):
@@ -251,11 +266,21 @@ def main():
                 pickle.dump(self.sky_list, f)
             
         def scaleImg(self):
-            sky_list_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
+            """Scale and tile the image to valid values"""
             
-            tmpimg = self.sky_list[sky_list_index]*10**self.tr_scaling
+            angle_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
+            aerosol_index = numpy.argmin(numpy.abs(AEROSOL_VISIBILITY - self.tr_aeros_viz))
+            
+            tmpimg = self.sky_list[aerosol_index][angle_index]*10**self.tr_scaling
             tmpimg[tmpimg > 255] = 255
-            self.tr_sky_max = numpy.max(self.sky_list[sky_list_index])
+            self.tr_sky_max = numpy.max(self.sky_list[aerosol_index][angle_index])
+            
+            #
+            # Tile the 2D camera to 3D camera.
+            #
+            pixel_num = tmpimg.shape[0]
+            tmpimg = numpy.tile(tmpimg.reshape(1, pixel_num, 3), (pixel_num, 1, 1))  
+    
             return tmpimg.astype(numpy.uint8)
                        
         @on_trait_change('tr_particles')
