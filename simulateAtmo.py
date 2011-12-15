@@ -64,6 +64,9 @@ SKY_PARAMS = {
 }
 RESULTS_FOLDER = 'results'
 
+SERVER_LIST = ['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
+NCPUS = 8
+
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
@@ -99,7 +102,7 @@ and the path from the voxel to the camera."""
     p = calcHG(Phi_scatter, g)
     
     alpha_air = 1.09e-3 * lambda_**-4.05
-    alpha_aerosol = 1 / aerosol_visibility / 0.0005*10**-12 * k
+    alpha_aerosol = 1 / aerosol_visibility * k #/ 0.0005*10**-12
     
     temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
     temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
@@ -133,14 +136,17 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
     L_sun_RGB=(255, 236, 224)
     RGB_wavelength = (700e-3, 530e-3, 470e-3)
 
+    tic = time.time()
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
     Phi_scatter = sun_angle + numpy.pi - Phi_LS
     cam_radiance = numpy.zeros((sky_params['angle_res'], 3))
-   
+    print 'preparation - %f' % (time.time() - tic)
+
     #
     # Caluclate the iradiance separately for each color channel.
     #
     for ch_ind, (L_sun, lambda_, k, w, g) in enumerate(zip(L_sun_RGB, RGB_wavelength, aerosol_params["k_RGB"], aerosol_params["w_RGB"], aerosol_params["g_RGB"])):
+        tic = time.time()
         Iradiance = L_sun * calc_attenuation(
                                 H,
                                 Distances,
@@ -153,7 +159,7 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
                                 w,
                                 g
                                 )
-        
+        tac = time.time()
         cam_radiance[:, ch_ind] = cameraProject(
                                     Iradiance,
                                     Distances,
@@ -162,6 +168,8 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
                                     sky_params['angle_res'],
                                     sky_params['interp_method']
                                     )
+        toc = time.time()
+        print "attenuation - %f, projection - %f" % (tac-tic, toc-tic)
 
     return cam_radiance
 
@@ -234,7 +242,7 @@ def main():
             particle = self.misr[self.tr_particles]
             
             aerosol_params = {
-                "k_RGB": numpy.array(particle['k']) * 10**-12,
+                "k_RGB": numpy.array(particle['k']) / numpy.max(numpy.array(particle['k'])),#* 10**-12,
                 "w_RGB": particle['w'],
                 "g_RGB": (particle['g']),
                 "visibility": 1
@@ -244,12 +252,16 @@ def main():
             # Run the simulation
             #
             tic = time.time()
-            ppservers=("vsm-pc-130.vsm.technion.ac.il", "vsm-pc-131.vsm.technion.ac.il", "vsm-pc-132.vsm.technion.ac.il")
-            job_server = pp.Server(ncpus=0, ppservers=ppservers)
+            job_server = pp.Server(ncpus=NCPUS, ppservers=tuple(SERVER_LIST))
             jobs = []
             for aerosol_viz in AEROSOL_VISIBILITY:
                 aerosol_params["visibility"] = aerosol_viz
-                temp_jobs = [job_server.submit(calcCamIR, (SKY_PARAMS, aerosol_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG), ('numpy', 'scipy.interpolate')) for sun_angle in SUN_ANGLES]
+                temp_jobs = [job_server.submit(
+                        calcCamIR,
+                        (SKY_PARAMS, aerosol_params, sun_angle),
+                        (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG),
+                        ('time', 'numpy', 'scipy.interpolate')
+                        ) for sun_angle in SUN_ANGLES]
                 jobs.append(temp_jobs)
             
             self.sky_list = []
@@ -288,7 +300,7 @@ def main():
             self.calcSkyList()
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
-        @on_trait_change('tr_scaling, tr_sun_angle')
+        @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz')
         def _updateImgScale(self):
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
 
