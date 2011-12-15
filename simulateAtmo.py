@@ -249,7 +249,12 @@ def main():
             jobs = []
             for aerosol_viz in AEROSOL_VISIBILITY:
                 aerosol_params["visibility"] = aerosol_viz
-                temp_jobs = [job_server.submit(calcCamIR, (SKY_PARAMS, aerosol_params, sun_angle), (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG), ('numpy', 'scipy.interpolate')) for sun_angle in SUN_ANGLES]
+                temp_jobs = [job_server.submit(
+                                calcCamIR,
+                                (SKY_PARAMS, aerosol_params, sun_angle),
+                                (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG),
+                                ('numpy', 'scipy.interpolate')
+                                ) for sun_angle in SUN_ANGLES]
                 jobs.append(temp_jobs)
             
             self.sky_list = []
@@ -288,7 +293,7 @@ def main():
             self.calcSkyList()
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
-        @on_trait_change('tr_scaling, tr_sun_angle')
+        @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz')
         def _updateImgScale(self):
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
 
