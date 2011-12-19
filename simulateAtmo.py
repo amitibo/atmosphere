@@ -45,12 +45,20 @@ import matplotlib.pyplot as plt
 import pickle
 import pp
 import os
+import scipy.interpolate
+
+import pycuda.driver as cuda
+import pycuda.gpuarray as ga
+import pycuda.cumath as cumath
+import pycuda.autoinit
+from pycuda.elementwise import ElementwiseKernel
+from pycuda.compiler import SourceModule
 
 
 #
 # Global parameters
 #
-SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 9)
+SUN_ANGLES = numpy.array((0,), dtype=numpy.float32) #numpy.linspace(-numpy.pi/2, numpy.pi/2, 11)[1:-1]
 AEROSOL_VISIBILITY = numpy.linspace(10, 200, 8)
 
 SKY_PARAMS = {
@@ -64,8 +72,8 @@ SKY_PARAMS = {
 }
 RESULTS_FOLDER = 'results'
 
-SERVER_LIST = ['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
-NCPUS = 8
+SERVER_LIST = ()#['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
+NCPUS = 1
 
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
@@ -74,42 +82,103 @@ def calc_H_Phi_LS(sky_params):
     X, H = numpy.meshgrid(numpy.arange(w)*sky_params['dxh'], numpy.arange(h)[::-1]*sky_params['dxh'])
 
     Phi_LS = numpy.arctan2(X - sky_params['camera_x'], H)
-    Distances = H / numpy.cos(Phi_LS) + numpy.finfo(float).eps
+    Distances = H / numpy.cos(Phi_LS) + numpy.finfo(numpy.float32).eps
 
-    return H, Phi_LS, Distances
+    return ga.to_gpu(H.astype(numpy.float32)), ga.to_gpu(Phi_LS.astype(numpy.float32)), ga.to_gpu(Distances.astype(numpy.float32))
 
 
-def calcHG(Phi_scatter, g):
+def calcHG(sun_angle, Phi_LS, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
     
-    HG = (1 - g**2) / (1 + g**2 - 2*g*numpy.cos(Phi_scatter))**(3/2) / (4*numpy.pi)
+    henyey_green = ElementwiseKernel(
+        "float g, float sun_angle, float *Phi_LS, float *HG",
+        "HG[i] = (1 - g*g) / pow((1 + g*g - 2*g*cosf(sun_angle + CUDART_PI_F - Phi_LS[i])), 1.5f) / (4*CUDART_PI_F)",
+        "henyey_green_kernel",
+        preamble="""#include <math_constants.h>"""
+        )
+
+    HG = ga.empty_like(Phi_LS)
+    henyey_green(g, sun_angle, Phi_LS, HG)
+
     return HG
 
 
-def calc_attenuation(H, Distances, sun_angle, Phi_LS, Phi_scatter, lambda_, aerosol_visibility, k, w, g):
+def calc_attenuation(H, Distances, sun_angle, Phi_LS, lambda_, aerosol_visibility, k, w, g):
     """Calc the attenuation of the Sun's radiance per sky voxel.
 The calculation takes into account the path from the top of the sky to the voxel
 and the path from the voxel to the camera."""
     
-    h_star_air = 8
-    h_star_aerosol = 1.2
+    h_star_air = numpy.float32(8.0)
+    h_star_aerosol = numpy.float32(1.2)
+    alpha_air = numpy.float32(1.09e-3 * lambda_**-4.05)
+    alpha_aerosol = numpy.float32(1 / aerosol_visibility * k) #/ 0.0005*10**-12
+    
+    p = calcHG(sun_angle, Phi_LS, g)
+    
+    print numpy.cos(sun_angle)
+    atten_mod = SourceModule("""
+        #include <math_constants.h> 
 
-    e_H_air = numpy.exp(-H/h_star_air)
-    e_H_aerosol = numpy.exp(-H/h_star_aerosol)
-    
-    p = calcHG(Phi_scatter, g)
-    
-    alpha_air = 1.09e-3 * lambda_**-4.05
-    alpha_aerosol = 1 / aerosol_visibility * k #/ 0.0005*10**-12
-    
-    temp = -alpha_air * h_star_air * ((1 - e_H_air) / numpy.cos(Phi_LS) + e_H_air / numpy.cos(sun_angle))
-    temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / numpy.cos(Phi_LS) + e_H_aerosol / numpy.cos(sun_angle))
-    attenuation = numpy.exp(temp) * (alpha_air * e_H_air * (1 + numpy.cos(Phi_scatter)**2) +  alpha_aerosol * e_H_aerosol * w * p)
-    attenuation = attenuation / (Distances + 0.001)
+        __global__ void attenuation_kernel(
+                            float h_star_air,
+                            float h_star_aerosol,
+                            float alpha_air,
+                            float alpha_aerosol,
+                            float sun_angle,
+                            float w,
+                            float *p,
+                            float *H,
+                            float *Phi_LS,
+                            float *Distances,
+                            float *attenuation,
+                            unsigned long n
+                            )
+        {
+          unsigned tid = threadIdx.x;
+          unsigned total_threads = gridDim.x*blockDim.x;
+          unsigned cta_start = blockDim.x*blockIdx.x;
+          unsigned i;
+          float e_H_air;
+          float e_H_aerosol;
+          float temp = 0;
 
-    return attenuation
+          for (i = cta_start + tid; i < n; i += total_threads)
+          {
+            e_H_air = expf(-H[i]/h_star_air);
+            e_H_aerosol = expf(-H[i]/h_star_aerosol);
+    
+            temp = -alpha_air * h_star_air * ((1 - e_H_air) / cosf(Phi_LS[i]) + e_H_air / cosf(sun_angle));
+            temp += -alpha_aerosol * h_star_aerosol * ((1 - e_H_aerosol) / cosf(Phi_LS[i]) + e_H_aerosol / cosf(sun_angle));
+            attenuation[i] = expf(temp) * (alpha_air * e_H_air * (1 + pow(cosf(sun_angle + CUDART_PI_F - Phi_LS[i]), 2.0f)) +  alpha_aerosol * e_H_aerosol * w * p[i]);
+            attenuation[i] = attenuation[i] / (Distances[i] + 0.001);
+          };
+        }
+"""
+                       )
+
+    atten_func = atten_mod.get_function("attenuation_kernel")
+
+    print numpy.cos(numpy.float32(sun_angle))
+    attenuation = ga.empty_like(Phi_LS)
+    atten_func(
+        h_star_air,
+        h_star_aerosol,
+        alpha_air,
+        alpha_aerosol,
+        numpy.float32(sun_angle),
+        numpy.float32(w),
+        p,
+        H,
+        Phi_LS,
+        Distances,
+        attenuation,
+        numpy.int32(Phi_LS.size),
+        block=(256,1,1)                            
+        )
+
+    return attenuation.get()
 
 
 def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res, interp_method):
@@ -138,7 +207,6 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
 
     tic = time.time()
     H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
-    Phi_scatter = sun_angle + numpy.pi - Phi_LS
     cam_radiance = numpy.zeros((sky_params['angle_res'], 3))
     print 'preparation - %f' % (time.time() - tic)
 
@@ -152,7 +220,6 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
                                 Distances,
                                 sun_angle,
                                 Phi_LS,
-                                Phi_scatter,
                                 lambda_,
                                 aerosol_params["visibility"],
                                 k,
@@ -162,8 +229,8 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
         tac = time.time()
         cam_radiance[:, ch_ind] = cameraProject(
                                     Iradiance,
-                                    Distances,
-                                    Phi_LS,
+                                    Distances.get(),
+                                    Phi_LS.get(),
                                     sky_params['dist_res'],
                                     sky_params['angle_res'],
                                     sky_params['interp_method']
@@ -252,21 +319,11 @@ def main():
             # Run the simulation
             #
             tic = time.time()
-            job_server = pp.Server(ncpus=NCPUS, ppservers=tuple(SERVER_LIST))
-            jobs = []
+            self.sky_list = []
             for aerosol_viz in AEROSOL_VISIBILITY:
                 aerosol_params["visibility"] = aerosol_viz
-                temp_jobs = [job_server.submit(
-                        calcCamIR,
-                        (SKY_PARAMS, aerosol_params, sun_angle),
-                        (calc_H_Phi_LS, calc_attenuation, cameraProject, calcHG),
-                        ('time', 'numpy', 'scipy.interpolate')
-                        ) for sun_angle in SUN_ANGLES]
-                jobs.append(temp_jobs)
-            
-            self.sky_list = []
-            for temp_jobs in jobs:
-                self.sky_list.append([job() for job in temp_jobs])
+                for sun_angle in SUN_ANGLES:
+                    self.sky_list.append(calcCamIR(SKY_PARAMS, aerosol_params, sun_angle))
 
             print 'Time used %d' % (time.time()- tic)
             
