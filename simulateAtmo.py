@@ -58,8 +58,8 @@ from pycuda.compiler import SourceModule
 #
 # Global parameters
 #
-SUN_ANGLES = numpy.array((0,), dtype=numpy.float32) #numpy.linspace(-numpy.pi/2, numpy.pi/2, 11)[1:-1]
-AEROSOL_VISIBILITY = numpy.linspace(10, 200, 8)
+SUN_ANGLES = numpy.linspace(-numpy.pi/2, numpy.pi/2, 5)[1:-1]
+AEROSOL_VISIBILITY = numpy.linspace(10, 200, 2)
 
 SKY_PARAMS = {
     'width': 100,
@@ -117,7 +117,6 @@ and the path from the voxel to the camera."""
     
     p = calcHG(sun_angle, Phi_LS, g)
     
-    print numpy.cos(sun_angle)
     atten_mod = SourceModule("""
         #include <math_constants.h> 
 
@@ -133,7 +132,7 @@ and the path from the voxel to the camera."""
                             float *Phi_LS,
                             float *Distances,
                             float *attenuation,
-                            unsigned long n
+                            int n
                             )
         {
           unsigned tid = threadIdx.x;
@@ -160,7 +159,6 @@ and the path from the voxel to the camera."""
 
     atten_func = atten_mod.get_function("attenuation_kernel")
 
-    print numpy.cos(numpy.float32(sun_angle))
     attenuation = ga.empty_like(Phi_LS)
     atten_func(
         h_star_air,
@@ -322,8 +320,10 @@ def main():
             self.sky_list = []
             for aerosol_viz in AEROSOL_VISIBILITY:
                 aerosol_params["visibility"] = aerosol_viz
+                temp = []
                 for sun_angle in SUN_ANGLES:
-                    self.sky_list.append(calcCamIR(SKY_PARAMS, aerosol_params, sun_angle))
+                    temp.append(calcCamIR(SKY_PARAMS, aerosol_params, sun_angle))
+                self.sky_list.append(temp)
 
             print 'Time used %d' % (time.time()- tic)
             
