@@ -75,6 +75,9 @@ RESULTS_FOLDER = 'results'
 SERVER_LIST = ()#['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
 NCPUS = 1
 
+debug_plot = True
+
+
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
@@ -188,7 +191,7 @@ def cameraProject(Iradiance, dist_res, angle_res, max_R, dxh, blocks=(16, 16, 1)
 //////////////////////////////////////////////////////////////////////////////////////
 #include <math_constants.h> 
 
-texture<float, 2, cudaReadModeElementType> texInput;
+texture<float, 2> texInput;
 
 __global__ void interpTex(float *output, float tex_width, float tex_height, int width, int height, float dangle, float dR, float dxh){
 	const int thetha_ind = blockDim.x * blockIdx.x + threadIdx.x;
@@ -206,7 +209,7 @@ __global__ void interpTex(float *output, float tex_width, float tex_height, int 
         y = y > tex_height ? tex_height : y;
         x = x < 0 ? 0 : x;
 
-	const int index = thetha_ind * width + R_ind;
+	const int index = R_ind * width + thetha_ind;
 	
         output[index] = tex2D(texInput, x, y) * R;
 }
@@ -215,7 +218,8 @@ __global__ void interpTex(float *output, float tex_width, float tex_height, int 
     project_func = project_mod.get_function("interpTex")
     texInput = project_mod.get_texref("texInput")
     texInput.set_filter_mode(cuda.filter_mode.LINEAR)
-    Iradiance.bind_to_texref_ext(texInput, channels=2)
+#    Iradiance.bind_to_texref_ext(texInput, channels=2)
+    cuda.matrix_to_texref(Iradiance.get(), texInput, order="C")
     cam_projection = ga.GPUArray((dist_res, angle_res), dtype=numpy.float32)
 
     gridx = angle_res/blocks[0] if \
@@ -275,6 +279,18 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
             max_dist,
             sky_params['dxh']            
             )
+
+        global debug_plot
+        if debug_plot:
+            debug_plot = False
+            plt.subplot(211)
+            plt.imshow(temp)
+            plt.colorbar()
+            plt.subplot(212)
+            plt.imshow(Iradiance.get())
+            plt.colorbar()
+            plt.show()
+
         cam_radiance[:, ch_ind] = numpy.sum(temp, axis=0)
         toc = time.time()
         print "attenuation - %f, projection - %f" % (tac-tic, toc-tic)
