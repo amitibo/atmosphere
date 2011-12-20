@@ -84,7 +84,7 @@ def calc_H_Phi_LS(sky_params):
     Phi_LS = numpy.arctan2(X - sky_params['camera_x'], H)
     Distances = H / numpy.cos(Phi_LS) + numpy.finfo(numpy.float32).eps
 
-    return ga.to_gpu(H.astype(numpy.float32)), ga.to_gpu(Phi_LS.astype(numpy.float32)), ga.to_gpu(Distances.astype(numpy.float32))
+    return ga.to_gpu(H.astype(numpy.float32)), ga.to_gpu(Phi_LS.astype(numpy.float32)), ga.to_gpu(Distances.astype(numpy.float32)), numpy.max(Distances)
 
 
 def calcHG(sun_angle, Phi_LS, g):
@@ -176,25 +176,68 @@ and the path from the voxel to the camera."""
         block=(256,1,1)                            
         )
 
-    return attenuation.get()
+    return attenuation
 
 
-def cameraProject(Iradiance, Distances, Angles, dist_res, angle_res, interp_method):
+def cameraProject(Iradiance, dist_res, angle_res, max_R, dxh, blocks=(16, 16, 1)):
     """Interpolate a uniform polar grid of a nonuniform polar data"""
     
-    max_R = numpy.max(Distances)
-    
-    grid_phi, grid_R = \
-        numpy.mgrid[-numpy.pi/2:numpy.pi/2:numpy.complex(0, angle_res), 0:max_R:numpy.complex(0, dist_res)]
-    
-    points = numpy.vstack((Distances.flatten(), Angles.flatten())).T
-    polar_attenuation = scipy.interpolate.griddata(points, Iradiance.flatten(), (grid_R, grid_phi), method=interp_method, fill_value=0)
-    polar_attenuation[polar_attenuation<0] = 0
-    
-    jac = numpy.linspace(0, max_R, dist_res)
-    camera_projection = numpy.sum(polar_attenuation * jac, axis = 1)
-    
-    return camera_projection
+    project_mod = SourceModule("""
+//////////////////////////////////////////////////////////////////////////////////////
+///         Interpolation Kernel
+//////////////////////////////////////////////////////////////////////////////////////
+#include <math_constants.h> 
+
+texture<float, 2, cudaReadModeElementType> texInput;
+
+__global__ void interpTex(float *output, float tex_width, float tex_height, int width, int height, float dangle, float dR, float dxh){
+	const int thetha_ind = blockDim.x * blockIdx.x + threadIdx.x;
+	const int R_ind = blockDim.y * blockIdx.y + threadIdx.y;
+
+        if ((thetha_ind >= width) || (R_ind >= height))
+            return;
+
+        float R = R_ind * dR;
+        float thetha = thetha_ind * dangle;
+
+	float x = R * cosf(thetha) / dxh + tex_width/2;
+        float y = R * sinf(thetha) / dxh;
+        x = x > tex_width ? tex_width : x;
+        y = y > tex_height ? tex_height : y;
+        x = x < 0 ? 0 : x;
+
+	const int index = thetha_ind * width + R_ind;
+	
+        output[index] = tex2D(texInput, x, y) * R;
+}
+""")
+
+    project_func = project_mod.get_function("interpTex")
+    texInput = project_mod.get_texref("texInput")
+    texInput.set_filter_mode(cuda.filter_mode.LINEAR)
+    Iradiance.bind_to_texref_ext(texInput, channels=2)
+    cam_projection = ga.GPUArray((dist_res, angle_res), dtype=numpy.float32)
+
+    gridx = angle_res/blocks[0] if \
+        angle_res % blocks[0]==0 else angle_res/blocks[0] + 1
+    gridy = dist_res/blocks[1] if \
+        dist_res % blocks[1]==0 else dist_res/blocks[1] + 1
+
+    project_func(
+        cam_projection,
+        numpy.float32(Iradiance.shape[1]-1),
+        numpy.float32(Iradiance.shape[0]-1),
+        numpy.int32(angle_res),
+        numpy.int32(dist_res),
+        numpy.float32(numpy.pi / angle_res),
+        numpy.float32(max_R / dist_res),
+        numpy.float32(dxh),
+        texrefs=[texInput],
+        block=blocks,
+        grid=(int(gridx), int(gridy))
+        )
+
+    return cam_projection.get()
 
 
 def calcCamIR(sky_params, aerosol_params, sun_angle):
@@ -204,7 +247,7 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
     RGB_wavelength = (700e-3, 530e-3, 470e-3)
 
     tic = time.time()
-    H, Phi_LS, Distances = calc_H_Phi_LS(sky_params)
+    H, Phi_LS, Distances, max_dist = calc_H_Phi_LS(sky_params)
     cam_radiance = numpy.zeros((sky_params['angle_res'], 3))
     print 'preparation - %f' % (time.time() - tic)
 
@@ -225,14 +268,14 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
                                 g
                                 )
         tac = time.time()
-        cam_radiance[:, ch_ind] = cameraProject(
-                                    Iradiance,
-                                    Distances.get(),
-                                    Phi_LS.get(),
-                                    sky_params['dist_res'],
-                                    sky_params['angle_res'],
-                                    sky_params['interp_method']
-                                    )
+        temp = cameraProject(
+            Iradiance,
+            sky_params['dist_res'],
+            sky_params['angle_res'],
+            max_dist,
+            sky_params['dxh']            
+            )
+        cam_radiance[:, ch_ind] = numpy.sum(temp, axis=0)
         toc = time.time()
         print "attenuation - %f, projection - %f" % (tac-tic, toc-tic)
 
