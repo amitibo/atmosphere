@@ -82,10 +82,10 @@ def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
     
     h, w = numpy.round(numpy.array((sky_params['height'], sky_params['width'])) / sky_params['dxh'])
-    X, H = numpy.meshgrid(numpy.arange(w)*sky_params['dxh'], numpy.arange(h)[::-1]*sky_params['dxh'])
+    X, H = numpy.meshgrid((numpy.arange(w)+0.5)*sky_params['dxh'], (numpy.arange(h)[::-1]+0.5)*sky_params['dxh'])
 
     Phi_LS = numpy.arctan2(X - sky_params['camera_x'], H)
-    Distances = H / numpy.cos(Phi_LS) + numpy.finfo(numpy.float32).eps
+    Distances = H / numpy.cos(Phi_LS)
 
     return ga.to_gpu(H.astype(numpy.float32)), ga.to_gpu(Phi_LS.astype(numpy.float32)), ga.to_gpu(Distances.astype(numpy.float32)), numpy.max(Distances)
 
@@ -317,12 +317,13 @@ def main():
     particles_list = misr.keys()
     
     class skyAnalayzer(HasTraits):
-        tr_scaling = Range(0.0, 30.0, 0.0, desc='Radiance scaling logarithmic')
+        tr_scaling = Range(-5.0, 5.0, 0.0, desc='Radiance scaling logarithmic')
         tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
         tr_aeros_viz = Range(float(AEROSOL_VISIBILITY[0]), float(AEROSOL_VISIBILITY[-1]), desc='Visibility due to aerosols [km]')
         tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
         tr_particles = Enum(particles_list, desc='Name of particle')
-        
+        tr_gamma = Range(0.4, 1.0, 0.45, desc='Gamma encoding value')
+
         traits_view  = View(
                             VGroup(
                                 Item('plot_sky', editor=ComponentEditor(), show_label=False),
@@ -330,7 +331,8 @@ def main():
                                 Item('tr_particles', label='Particle Name'),                                
                                 Item('tr_scaling', label='Radiance Scaling'),
                                 Item('tr_sun_angle', label='Sun Angle'),
-                                Item('tr_aeros_viz', label='Aerosol Visibility [km]')
+                                Item('tr_aeros_viz', label='Aerosol Visibility [km]'),
+                                Item('tr_gamma', label='Gamma Encoding')
                                 ),
                             resizable = True
                         )
@@ -400,6 +402,7 @@ def main():
             aerosol_index = numpy.argmin(numpy.abs(AEROSOL_VISIBILITY - self.tr_aeros_viz))
             
             tmpimg = self.sky_list[aerosol_index][angle_index]*10**self.tr_scaling
+            tmpimg = tmpimg ** self.tr_gamma
             tmpimg[tmpimg > 255] = 255
             self.tr_sky_max = numpy.max(self.sky_list[aerosol_index][angle_index])
             
@@ -416,7 +419,7 @@ def main():
             self.calcSkyList()
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
-        @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz')
+        @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz, tr_gamma')
         def _updateImgScale(self):
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
 
