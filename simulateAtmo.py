@@ -34,8 +34,8 @@ http://en.wikipedia.org/wiki/Color
 
 from __future__ import division
 from enthought.traits.api import HasTraits, Enum, Range, Float, on_trait_change
-from enthought.traits.ui.api import View, Item, VGroup
-from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer
+from enthought.traits.ui.api import View, Item, VGroup, Handler, Action
+from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer, PlotGraphicsContext, PlotAxis
 from enthought.enable.component_editor import ComponentEditor
 import numpy
 import argparse
@@ -66,6 +66,9 @@ RESULTS_FOLDER = 'results'
 
 SERVER_LIST = ['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
 NCPUS = 8
+
+FIGURE_CNT = 0
+
 
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
@@ -175,6 +178,24 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
     return cam_radiance
 
 
+class TC_Handler(Handler):
+
+    def do_savefig(self, info):
+        plot = info.object.plot_img
+
+        win_size = plot.outer_bounds
+        plot_gc = PlotGraphicsContext(win_size)
+
+        # Have the plot component into it
+        plot_gc.render_component(plot)
+
+        global FIGURE_CNT
+    
+        # Save out to the user supplied filename
+        plot_gc.save('figure_%d.png' % FIGURE_CNT)
+        FIGURE_CNT += 1
+
+
 def main():
     #
     # Parse the command line
@@ -195,15 +216,17 @@ def main():
     
     class skyAnalayzer(HasTraits):
         tr_scaling = Range(-5.0, 5.0, 0.0, desc='Radiance scaling logarithmic')
-        tr_sun_angle = Range(float(SUN_ANGLES[0]), float(SUN_ANGLES[-1]), 0.0, desc='Zenith of the sun')
+        tr_sun_angle = Range(float(SUN_ANGLES[0])/numpy.pi, float(SUN_ANGLES[-1])/numpy.pi, 0.0, desc='Zenith of the sun [radians]')
         tr_aeros_viz = Range(float(AEROSOL_VISIBILITY[0]), float(AEROSOL_VISIBILITY[-1]), desc='Visibility due to aerosols [km]')
         tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
         tr_particles = Enum(particles_list, desc='Name of particle')
         tr_gamma = Range(0.4, 1.0, 0.45, desc='Gamma encoding value')
 
+        save_button = Action(name = "Save Fig", action = "do_savefig")
+
         traits_view  = View(
                             VGroup(
-                                Item('plot_sky', editor=ComponentEditor(), show_label=False),
+                                Item('plot_img', editor=ComponentEditor(), show_label=False),
                                 Item('tr_sky_max', label='Maximal value', style='readonly'),
                                 Item('tr_particles', label='Particle Name'),                                
                                 Item('tr_scaling', label='Radiance Scaling'),
@@ -211,7 +234,9 @@ def main():
                                 Item('tr_aeros_viz', label='Aerosol Visibility [km]'),
                                 Item('tr_gamma', label='Gamma Encoding')
                                 ),
-                            resizable = True
+                            resizable = True,
+                            handler=TC_Handler(),
+                            buttons = [save_button]
                         )
                             
         def __init__(self, folder, misr):
@@ -235,10 +260,16 @@ def main():
             # VPlotContainer - A plot container that stacks plot components vertically.
             #
             self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
-            plot_img = Plot(self.plotdata)
-            plot_img.img_plot("sky_img")
-        
-            self.plot_sky = VPlotContainer( plot_img )
+            self.plot_img = Plot(self.plotdata)
+            self.plot_img.overlays.append(
+                PlotAxis(
+                    orientation='bottom',
+                    title= "View Angle [rad]",
+                    component=self.plot_img
+                    )
+                )
+            self.plot_img.img_plot("sky_img", xbounds=(-0.5, 0.5))
+            self._updateTitle()
     
         def calcSkyList(self):
 
@@ -283,7 +314,7 @@ def main():
         def scaleImg(self):
             """Scale and tile the image to valid values"""
             
-            angle_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle))
+            angle_index = numpy.argmin(numpy.abs(SUN_ANGLES - self.tr_sun_angle*numpy.pi))
             aerosol_index = numpy.argmin(numpy.abs(AEROSOL_VISIBILITY - self.tr_aeros_viz))
             
             tmpimg = self.sky_list[aerosol_index][angle_index]*10**self.tr_scaling
@@ -302,11 +333,17 @@ def main():
         @on_trait_change('tr_particles')
         def _updateImg(self):
             self.calcSkyList()
+            self._updateTitle()
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
         @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz, tr_gamma')
         def _updateImgScale(self):
+            self._updateTitle()
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
+
+        def _updateTitle(self):
+            self.plot_img.title = "Particle: %s\nVisibility: %d[km], Sun Angle: %.1f[rad]" % (self.tr_particles, self.tr_aeros_viz, self.tr_sun_angle)
+
 
     #
     # Show the results in a GUI.
