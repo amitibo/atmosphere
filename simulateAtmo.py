@@ -34,8 +34,8 @@ http://en.wikipedia.org/wiki/Color
 
 from __future__ import division
 from enthought.traits.api import HasTraits, Enum, Range, Float, on_trait_change
-from enthought.traits.ui.api import View, Item, VGroup
-from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer
+from enthought.traits.ui.api import View, Item, VGroup, Handler, Action
+from enthought.chaco.api import Plot, ArrayPlotData, VPlotContainer, PlotGraphicsContext
 from enthought.enable.component_editor import ComponentEditor
 import numpy
 import argparse
@@ -66,6 +66,9 @@ RESULTS_FOLDER = 'results'
 
 SERVER_LIST = ['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
 NCPUS = 8
+
+FIGURE_CNT = 0
+
 
 def calc_H_Phi_LS(sky_params):
     """Create the sky matrices: Height matrice, LS (line sight) angles and distances (from the camera) """
@@ -175,6 +178,24 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
     return cam_radiance
 
 
+class TC_Handler(Handler):
+
+    def do_savefig(self, info):
+        plot = info.object.plot_sky.components[0]
+
+        win_size = plot.outer_bounds
+        plot_gc = PlotGraphicsContext(win_size)
+
+        # Have the plot component into it
+        plot_gc.render_component(plot)
+
+        global FIGURE_CNT
+    
+        # Save out to the user supplied filename
+        plot_gc.save('figure_%d.png' % FIGURE_CNT)
+        FIGURE_CNT += 1
+
+
 def main():
     #
     # Parse the command line
@@ -201,6 +222,8 @@ def main():
         tr_particles = Enum(particles_list, desc='Name of particle')
         tr_gamma = Range(0.4, 1.0, 0.45, desc='Gamma encoding value')
 
+        save_button = Action(name = "Save Fig", action = "do_savefig")
+
         traits_view  = View(
                             VGroup(
                                 Item('plot_sky', editor=ComponentEditor(), show_label=False),
@@ -211,7 +234,9 @@ def main():
                                 Item('tr_aeros_viz', label='Aerosol Visibility [km]'),
                                 Item('tr_gamma', label='Gamma Encoding')
                                 ),
-                            resizable = True
+                            resizable = True,
+                            handler=TC_Handler(),
+                            buttons = [save_button]
                         )
                             
         def __init__(self, folder, misr):
@@ -236,8 +261,7 @@ def main():
             #
             self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
             plot_img = Plot(self.plotdata)
-            plot_img.img_plot("sky_img")
-        
+            #self.plot_img.title = self.tr_particles
             self.plot_sky = VPlotContainer( plot_img )
     
         def calcSkyList(self):
@@ -302,6 +326,7 @@ def main():
         @on_trait_change('tr_particles')
         def _updateImg(self):
             self.calcSkyList()
+            self.plot_img.title = self.tr_particles
             self.plotdata.set_data( 'sky_img', self.scaleImg() )
     
         @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz, tr_gamma')
