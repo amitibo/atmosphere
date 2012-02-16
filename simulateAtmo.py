@@ -181,18 +181,17 @@ def calcCamIR(sky_params, aerosol_params, sun_angle):
 class TC_Handler(Handler):
 
     def do_savefig(self, info):
-        plot = info.object.plot_img
 
-        win_size = plot.outer_bounds
-        plot_gc = PlotGraphicsContext(win_size)
-
-        # Have the plot component into it
-        plot_gc.render_component(plot)
+        sky_object = info.object
+        plt.imshow(sky_object.sky_img, aspect=.5, extent=[-0.5, 0.5, -1, 1])
+        plt.xlabel('View Angle [rad]')
+        #plt.ylabel()
+        plt.title(sky_object.makeTitle())
 
         global FIGURE_CNT
     
         # Save out to the user supplied filename
-        plot_gc.save('figure_%d.png' % FIGURE_CNT)
+        plt.savefig('figure_%d.svg' % FIGURE_CNT, bbox_inches='tight')
         FIGURE_CNT += 1
 
 
@@ -259,7 +258,8 @@ def main():
             # Plot - Represents a correlated set of data, renderers, and axes in a single screen region.
             # VPlotContainer - A plot container that stacks plot components vertically.
             #
-            self.plotdata = ArrayPlotData( sky_img=self.scaleImg() )
+            self.scaleImg()
+            self.plotdata = ArrayPlotData( sky_img=self.sky_img )
             self.plot_img = Plot(self.plotdata)
             self.plot_img.overlays.append(
                 PlotAxis(
@@ -269,7 +269,7 @@ def main():
                     )
                 )
             self.plot_img.img_plot("sky_img", xbounds=(-0.5, 0.5))
-            self._updateTitle()
+            self.plot_img.title = self.makeTitle()
     
         def calcSkyList(self):
 
@@ -327,22 +327,24 @@ def main():
             #
             pixel_num = tmpimg.shape[0]
             tmpimg = numpy.tile(tmpimg.reshape(1, pixel_num, 3), (pixel_num, 1, 1))  
-    
-            return tmpimg.astype(numpy.uint8)
+            
+            self.sky_img = tmpimg.astype(numpy.uint8)
                        
         @on_trait_change('tr_particles')
         def _updateImg(self):
             self.calcSkyList()
-            self._updateTitle()
-            self.plotdata.set_data( 'sky_img', self.scaleImg() )
+            self.plot_img.title = self.makeTitle()
+            self.scaleImg()
+            self.plotdata.set_data( 'sky_img', self.sky_img )
     
         @on_trait_change('tr_scaling, tr_sun_angle, tr_aeros_viz, tr_gamma')
         def _updateImgScale(self):
-            self._updateTitle()
-            self.plotdata.set_data( 'sky_img', self.scaleImg() )
+            self.plot_img.title = self.makeTitle()
+            self.scaleImg()
+            self.plotdata.set_data( 'sky_img', self.sky_img )
 
-        def _updateTitle(self):
-            self.plot_img.title = "Particle: %s\nVisibility: %d[km], Sun Angle: %.1f[rad]" % (self.tr_particles, self.tr_aeros_viz, self.tr_sun_angle)
+        def makeTitle(self):
+            return "%s\nVisibility: %d[km], Sun Angle: %.1f[rad]" % (self.tr_particles, self.tr_aeros_viz, self.tr_sun_angle)
 
 
     #
