@@ -12,10 +12,10 @@ import math
 
 
 SKY_PARAMS = {
-    'width': 10,
-    'height': 2,
+    'width': 20,
+    'height':5,
     'dxh': 0.02,
-    'camera_center': (5, 10),
+    'camera_center': (10, 5),
     'angle_res': 180,
     'dist_res': 50,
     'interp_method': 'cubic'
@@ -78,7 +78,7 @@ def rotationTransform(
         fit_image=True,
         final_size=None
         ):
-    """Transform by rotation """
+    """Transform by rotation"""
 
     if np.isscalar(angle):
         H = np.array([[math.cos(angle), -math.sin(angle), 0], [math.sin(angle), math.cos(angle), 0], [0, 0, 1]])
@@ -159,7 +159,7 @@ def main():
     #
     # Calculate scattering
     #
-    scatter_angle = SUN_ANGLE + PHI
+    scatter_angle = SUN_ANGLE + PHI + np.pi/2
     scatter = calcHG(scatter_angle, G)
     scatter_polar = polarTransform(scatter, R, PHI)
 
