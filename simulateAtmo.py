@@ -63,8 +63,8 @@ SKY_PARAMS = {
     'interp_method': 'cubic'
 }
 RESULTS_FOLDER = 'results'
-
-SERVER_LIST = ['gpu%d.ef.technion.ac.il' % i for i in (1, 2, 3, 5)]
+PORT_NUMBER = 35000
+SERVER_LIST = ['gpu%d.ef.technion.ac.il:%d' % (i, PORT_NUMBER) for i in (1, 2, 3, 5)]
 NCPUS = 8
 
 FIGURE_CNT = 0
