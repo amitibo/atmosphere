@@ -13,7 +13,7 @@ import math
 
 SKY_PARAMS = {
     'width': 10,
-    'height': 10,
+    'height': 2,
     'dxh': 0.02,
     'camera_center': (5, 10),
     'angle_res': 180,
@@ -93,7 +93,7 @@ def rotationTransform(
             np.dot(H, np.array([[0], [0], [1]])),
             np.dot(H, np.array([[0], [y1], [1]])),
             np.dot(H, np.array([[x1], [0], [1]])),
-            np.dot(H, np.array([[y1], [y1], [1]]))
+            np.dot(H, np.array([[x1], [y1], [1]]))
             ))
         x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
         x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
@@ -108,9 +108,9 @@ def rotationTransform(
         )
 
     if final_size != None:
-        x0 = int((values.shape[1]-final_size[0])/2)
-        y0 = int((values.shape[0]-final_size[1])/2)
-        values = values[x0:x0+final_size[0], y0:y0+final_size[1]]
+        x0 = int((values.shape[1]-final_size[1])/2)
+        y0 = int((values.shape[0]-final_size[0])/2)
+        values = values[y0:y0+final_size[0], x0:x0+final_size[1]]
         
     return values
 
@@ -157,14 +157,23 @@ def main():
     mask_polar = polarTransform(mask, R, PHI)
 
     #
-    # Project image
+    # Calculate scattering
     #
     scatter_angle = SUN_ANGLE + PHI
+    scatter = calcHG(scatter_angle, G)
+    scatter_polar = polarTransform(scatter, R, PHI)
+
+    #
+    # Calculate projection
+    #
+    atten = scatter_polar * np.exp(-EXTINCTION*(ATMO_to_polar + ATMO_from_polar)) * mask_polar
     
-    atten = calcHG(scatter_angle, G) * np.exp(-EXTINCTION*(ATMO_to_polar + ATMO_from_polar)) * mask_polar
     img = np.sum(atten, axis=0)
     IMG = np.tile(img, (100, 1))
-    
+
+    #
+    # Plot results
+    #
     plt.figure()
     plt.subplot(321)
     plt.imshow(ATMO, interpolation='nearest', cmap='gray')
