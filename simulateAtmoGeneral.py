@@ -7,7 +7,8 @@ from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.transform
-from atmo_utils import calcHG
+from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+import pickle
 import math
 
 
@@ -21,9 +22,9 @@ SKY_PARAMS = {
     'interp_method': 'cubic'
 }
 
-SUN_ANGLE = 3*np.pi/8
-EXTINCTION = 0.001
-G = 0.0
+SUN_ANGLE = 0
+
+
 
 def polarCoords(X, Y, center):
     """Convert cartesian coords to polar coords around some center"""
@@ -115,29 +116,10 @@ def rotationTransform(
     return values
 
 
-def project():
-    pass
-
-
-def main():
-    """Main function"""
-
-    #
-    # Create the sky
-    #
-    X, H = np.meshgrid(
-        np.arange(0, SKY_PARAMS['width'], SKY_PARAMS['dxh']),
-        np.arange(0, SKY_PARAMS['height'], SKY_PARAMS['dxh'])
-        )
-
-    ATMO = np.random.rand(*X.shape) * np.exp(H-SKY_PARAMS['height'])
-    ATMO[:1, :] = 0
-
+def calcOpticalDistances(ATMO, SUN_ANGLE, R, PHI):
     #
     # Calculate the effect of the path up to the pixel
     #
-    R, PHI = polarCoords(X, H, center=SKY_PARAMS['camera_center'])
-    
     ATMO_rotated = rotationTransform(ATMO, SUN_ANGLE)
     temp1 = np.cumsum(ATMO_rotated, axis=0)
     ATMO_to = rotationTransform(temp1, -SUN_ANGLE, final_size=ATMO.shape)
@@ -149,46 +131,119 @@ def main():
     temp1 = polarTransform(ATMO, R, PHI)[0]
     ATMO_from_polar = np.cumsum(temp1, axis=0)
 
+    return ATMO_to_polar, ATMO_from_polar
+
+
+def main():
+    """Main function"""
+
+    #
+    # Load the MISR database.
+    #
+    with open('misr.pkl', 'rb') as f:
+        misr = pickle.load(f)
+    
+    particles_list = misr.keys()
+    particle = misr[particles_list[0]]
+    aerosol_params = {
+        "k_RGB": np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
+        "w_RGB": particle['w'],
+        "g_RGB": (particle['g']),
+        "visibility": 1
+    }
+    
+    #
+    # Create the sky
+    #
+    X, H = np.meshgrid(
+        np.arange(0, SKY_PARAMS['width'], SKY_PARAMS['dxh']),
+        np.arange(0, SKY_PARAMS['height'], SKY_PARAMS['dxh'])
+        )
+
+    R, PHI = polarCoords(X, H, center=SKY_PARAMS['camera_center'])
+
+    #
+    # Create the distributions of air and aerosols
+    # Note:
+    # I set the topmost row to 0 so that when converting from cartisian to polar
+    # coords the interpolation will not 'create' atmosphere above the sky.
+    #
+    ATMO_aerosols = np.random.rand(*X.shape) * np.exp(H-SKY_PARAMS['height'])
+    ATMO_air = np.exp(H-SKY_PARAMS['height'])
+    ATMO_aerosols[:1, :] = 0
+    ATMO_air[:1, :] = 0
+
     #
     # Calculate a mask over the atmosphere
     # Note:
     # The mask is used to maskout in the polar axis,
     # pixels that are not in the cartesian axis.
     #
-    mask = np.ones(ATMO.shape)
-    mask[:1, :] = 0
-    mask_polar = polarTransform(mask, R, PHI)[0]
+    mask = np.ones(X.shape)
+    mask[0, :] = 0
+    mask[:, 0] = 0
+    mask[:, -1] = 0
+    
+    mask_polar, grid_R, grid_PHI = polarTransform(mask, R, PHI)
+    ATMO_aerosols *= mask
+    ATMO_air *= mask
+    
+    #
+    # Calculate the distances
+    #
+    ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
+        calcOpticalDistances(ATMO_aerosols, SUN_ANGLE, R, PHI)
+    ATMO_air_to_polar, ATMO_air_from_polar = \
+        calcOpticalDistances(ATMO_air, SUN_ANGLE, R, PHI)
+    
+    #
+    # Calculate scattering angle
+    #
+    scatter_angle = SUN_ANGLE + grid_PHI + np.pi/2
 
     #
-    # Calculate scattering
+    # Calculate scattering for each channel (in case of the railey scattering)
     #
-    scatter_angle = SUN_ANGLE + PHI + np.pi/2
-    scatter = calcHG(scatter_angle, G)
-    scatter_polar, grid_R = polarTransform(scatter, R, PHI)[:2]
+    img = []
+    for L_sun, lambda_, k, w, g in zip(L_SUN_RGB, RGB_WAVELENGTH, aerosol_params["k_RGB"], aerosol_params["w_RGB"], aerosol_params["g_RGB"]):
+        #
+        # Calculate scattering and extiniction for air (wave length dependent)
+        #
+        extinction_aerosol = 0#k
+        scatter_aerosol = 0#calcHG(scatter_angle, g)
+        extinction_air = 1.09e-3 * lambda_**-4.05
+        scatter_air = extinction_air*(1 + np.cos(scatter_angle)**2)
+        
+        #
+        # Calculate total attenuation
+        #
+        temp = extinction_aerosol*(ATMO_aerosols_to_polar + ATMO_aerosols_from_polar) + \
+          extinction_air*(ATMO_air_to_polar + ATMO_air_from_polar)
+        attenuation = (scatter_aerosol + scatter_air) * np.exp(-temp) * mask_polar
 
-    #
-    # Calculate projection
-    #
-    atten = scatter_polar * np.exp(-EXTINCTION*(ATMO_to_polar + ATMO_from_polar)) * mask_polar
-    img = np.sum(atten*grid_R, axis=0)
-    IMG = np.tile(img, (100, 1))
+        #
+        # Calculate projection on camera
+        #
+        img.append(L_sun * np.sum(attenuation, axis=0))
+                   
+    IMG = np.tile(np.transpose(np.array(img, ndmin=3), (0, 2, 1)), (100, 1, 1))
 
     #
     # Plot results
     #
     plt.figure()
     plt.subplot(321)
-    plt.imshow(ATMO, interpolation='nearest', cmap='gray')
+    plt.imshow(ATMO_air, interpolation='nearest', cmap='gray')
     plt.subplot(322)
     plt.imshow(mask_polar, interpolation='nearest', cmap='gray')
     plt.subplot(323)
-    plt.imshow(ATMO_to_polar, interpolation='nearest', cmap='gray')
+    plt.imshow(ATMO_air_to_polar, interpolation='nearest', cmap='gray')
     plt.subplot(324)
-    plt.imshow(ATMO_from_polar, interpolation='nearest', cmap='gray')
+    plt.imshow(ATMO_air_from_polar, interpolation='nearest', cmap='gray')
     plt.subplot(325)
-    plt.imshow(atten, interpolation='nearest', cmap='gray')
+    plt.imshow(attenuation, interpolation='nearest', cmap='gray')
     plt.subplot(326)
-    plt.imshow(IMG, interpolation='nearest', cmap='gray')
+    plt.imshow(IMG/np.max(IMG), interpolation='nearest')
     
     plt.show()
 
