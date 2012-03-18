@@ -13,13 +13,10 @@ import math
 
 
 SKY_PARAMS = {
-    'width': 20,
-    'height':5,
-    'dxh': 0.02,
-    'camera_center': (10, 5),
-    'angle_res': 180,
-    'dist_res': 50,
-    'interp_method': 'cubic'
+    'width': 200,
+    'height': 20,
+    'dxh': 0.1,
+    'camera_center': (50, 0.1)
 }
 
 SUN_ANGLE = 0
@@ -51,11 +48,9 @@ def polarTransform(
     values_points = np.vstack((values_R.flatten(), values_PHI.flatten())).T
     
     max_R = np.max(values_R)
-    min_PHI = np.min(values_PHI)
-    max_PHI = np.max(values_PHI)
-
+    
     angle_range = \
-        np.linspace(min_PHI, max_PHI, angle_res+1)[:-1]
+        np.linspace(0, np.pi, angle_res+1)[:-1]
     radius_range = np.linspace(0, max_R, radius_res+1)[:-1]
     
     grid_PHI, grid_R = np.meshgrid(angle_range, radius_range)
@@ -116,20 +111,21 @@ def rotationTransform(
     return values
 
 
-def calcOpticalDistances(ATMO, SUN_ANGLE, R, PHI):
+def calcOpticalDistances(ATMO, SUN_ANGLE, R, PHI, dXY):
     #
     # Calculate the effect of the path up to the pixel
     #
     ATMO_rotated = rotationTransform(ATMO, SUN_ANGLE)
-    temp1 = np.cumsum(ATMO_rotated, axis=0)
+    temp1 = np.cumsum(ATMO_rotated, axis=0)*dXY/math.cos(SUN_ANGLE)
     ATMO_to = rotationTransform(temp1, -SUN_ANGLE, final_size=ATMO.shape)
     ATMO_to_polar = polarTransform(ATMO_to, R, PHI)[0]
 
     #
     # Calculate the effect of the path from the pixel
     #
-    temp1 = polarTransform(ATMO, R, PHI)[0]
-    ATMO_from_polar = np.cumsum(temp1, axis=0)
+    temp1, grid_R = polarTransform(ATMO, R, PHI)[:2]
+    dR = abs(grid_R[1, 0] - grid_R[0, 0])
+    ATMO_from_polar = np.cumsum(temp1, axis=0)*dR
 
     return ATMO_to_polar, ATMO_from_polar
 
@@ -157,7 +153,7 @@ def main():
     #
     X, H = np.meshgrid(
         np.arange(0, SKY_PARAMS['width'], SKY_PARAMS['dxh']),
-        np.arange(0, SKY_PARAMS['height'], SKY_PARAMS['dxh'])
+        np.arange(0, SKY_PARAMS['height'], SKY_PARAMS['dxh'])[::-1]
         )
 
     R, PHI = polarCoords(X, H, center=SKY_PARAMS['camera_center'])
@@ -168,10 +164,8 @@ def main():
     # I set the topmost row to 0 so that when converting from cartisian to polar
     # coords the interpolation will not 'create' atmosphere above the sky.
     #
-    ATMO_aerosols = np.random.rand(*X.shape) * np.exp(H-SKY_PARAMS['height'])
-    ATMO_air = np.exp(H-SKY_PARAMS['height'])
-    ATMO_aerosols[:1, :] = 0
-    ATMO_air[:1, :] = 0
+    ATMO_aerosols = np.exp(-H/1.2)
+    ATMO_air = np.exp(-H/8)
 
     #
     # Calculate a mask over the atmosphere
@@ -192,9 +186,9 @@ def main():
     # Calculate the distances
     #
     ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
-        calcOpticalDistances(ATMO_aerosols, SUN_ANGLE, R, PHI)
+        calcOpticalDistances(ATMO_aerosols, SUN_ANGLE, R, PHI, SKY_PARAMS['dxh'])
     ATMO_air_to_polar, ATMO_air_from_polar = \
-        calcOpticalDistances(ATMO_air, SUN_ANGLE, R, PHI)
+        calcOpticalDistances(ATMO_air, SUN_ANGLE, R, PHI, SKY_PARAMS['dxh'])
     
     #
     # Calculate scattering angle
@@ -209,8 +203,8 @@ def main():
         #
         # Calculate scattering and extiniction for air (wave length dependent)
         #
-        extinction_aerosol = 0#k
-        scatter_aerosol = 0#calcHG(scatter_angle, g)
+        extinction_aerosol = k
+        scatter_aerosol = calcHG(scatter_angle, g)
         extinction_air = 1.09e-3 * lambda_**-4.05
         scatter_air = extinction_air*(1 + np.cos(scatter_angle)**2)
         
@@ -225,7 +219,7 @@ def main():
         # Calculate projection on camera
         #
         img.append(L_sun * np.sum(attenuation, axis=0))
-                   
+
     IMG = np.tile(np.transpose(np.array(img, ndmin=3), (0, 2, 1)), (100, 1, 1))
 
     #
