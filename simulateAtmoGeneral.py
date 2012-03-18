@@ -21,7 +21,7 @@ SKY_PARAMS = {
     'interp_method': 'cubic'
 }
 
-SUN_ANGLE = np.pi/8
+SUN_ANGLE = 3*np.pi/8
 EXTINCTION = 0.001
 G = 0.0
 
@@ -69,7 +69,7 @@ def polarTransform(
             )
     polar_values[polar_values<0] = 0
     
-    return polar_values
+    return polar_values, grid_R, grid_PHI
 
 
 def rotationTransform(
@@ -130,7 +130,7 @@ def main():
         np.arange(0, SKY_PARAMS['height'], SKY_PARAMS['dxh'])
         )
 
-    ATMO = np.random.rand(*X.shape)
+    ATMO = np.random.rand(*X.shape) * np.exp(H-SKY_PARAMS['height'])
     ATMO[:1, :] = 0
 
     #
@@ -141,34 +141,36 @@ def main():
     ATMO_rotated = rotationTransform(ATMO, SUN_ANGLE)
     temp1 = np.cumsum(ATMO_rotated, axis=0)
     ATMO_to = rotationTransform(temp1, -SUN_ANGLE, final_size=ATMO.shape)
-    ATMO_to_polar = polarTransform(ATMO_to, R, PHI)
+    ATMO_to_polar = polarTransform(ATMO_to, R, PHI)[0]
 
     #
     # Calculate the effect of the path from the pixel
     #
-    temp1 = polarTransform(ATMO, R, PHI)
+    temp1 = polarTransform(ATMO, R, PHI)[0]
     ATMO_from_polar = np.cumsum(temp1, axis=0)
 
     #
     # Calculate a mask over the atmosphere
+    # Note:
+    # The mask is used to maskout in the polar axis,
+    # pixels that are not in the cartesian axis.
     #
     mask = np.ones(ATMO.shape)
     mask[:1, :] = 0
-    mask_polar = polarTransform(mask, R, PHI)
+    mask_polar = polarTransform(mask, R, PHI)[0]
 
     #
     # Calculate scattering
     #
     scatter_angle = SUN_ANGLE + PHI + np.pi/2
     scatter = calcHG(scatter_angle, G)
-    scatter_polar = polarTransform(scatter, R, PHI)
+    scatter_polar, grid_R = polarTransform(scatter, R, PHI)[:2]
 
     #
     # Calculate projection
     #
     atten = scatter_polar * np.exp(-EXTINCTION*(ATMO_to_polar + ATMO_from_polar)) * mask_polar
-    
-    img = np.sum(atten, axis=0)
+    img = np.sum(atten*grid_R, axis=0)
     IMG = np.tile(img, (100, 1))
 
     #
