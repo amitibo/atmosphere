@@ -14,9 +14,9 @@ import math
 
 SKY_PARAMS = {
     'width': 200,
-    'height': 20,
-    'dxh': 0.1,
-    'camera_center': (50, 0.1)
+    'height': 40,
+    'dxh': 1,
+    'camera_center': (100, 2)
 }
 
 SUN_ANGLE = 0
@@ -51,7 +51,7 @@ def polarTransform(
     
     angle_range = \
         np.linspace(0, np.pi, angle_res+1)[:-1]
-    radius_range = np.linspace(0, max_R, radius_res+1)[:-1]
+    radius_range = np.linspace(0, max_R, radius_res+1)[2:]
     
     grid_PHI, grid_R = np.meshgrid(angle_range, radius_range)
     
@@ -123,11 +123,11 @@ def calcOpticalDistances(ATMO, SUN_ANGLE, R, PHI, dXY):
     #
     # Calculate the effect of the path from the pixel
     #
-    temp1, grid_R = polarTransform(ATMO, R, PHI)[:2]
+    ATMO_polar, grid_R = polarTransform(ATMO, R, PHI)[:2]
     dR = abs(grid_R[1, 0] - grid_R[0, 0])
-    ATMO_from_polar = np.cumsum(temp1, axis=0)*dR
+    ATMO_from_polar = np.cumsum(ATMO_polar, axis=0)*dR
 
-    return ATMO_to_polar, ATMO_from_polar
+    return ATMO_polar, ATMO_to_polar, ATMO_from_polar
 
 
 def main():
@@ -165,6 +165,7 @@ def main():
     # coords the interpolation will not 'create' atmosphere above the sky.
     #
     ATMO_aerosols = np.exp(-H/1.2)
+    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
     ATMO_air = np.exp(-H/8)
 
     #
@@ -174,9 +175,9 @@ def main():
     # pixels that are not in the cartesian axis.
     #
     mask = np.ones(X.shape)
-    mask[0, :] = 0
-    mask[:, 0] = 0
-    mask[:, -1] = 0
+    mask[:4, :] = 0
+    mask[:, :4] = 0
+    mask[:, -4:] = 0
     
     mask_polar, grid_R, grid_PHI = polarTransform(mask, R, PHI)
     ATMO_aerosols *= mask
@@ -185,9 +186,9 @@ def main():
     #
     # Calculate the distances
     #
-    ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
+    ATMO_aerosols_polar, ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
         calcOpticalDistances(ATMO_aerosols, SUN_ANGLE, R, PHI, SKY_PARAMS['dxh'])
-    ATMO_air_to_polar, ATMO_air_from_polar = \
+    ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
         calcOpticalDistances(ATMO_air, SUN_ANGLE, R, PHI, SKY_PARAMS['dxh'])
     
     #
@@ -203,10 +204,11 @@ def main():
         #
         # Calculate scattering and extiniction for air (wave length dependent)
         #
-        extinction_aerosol = k
-        scatter_aerosol = calcHG(scatter_angle, g)
+        extinction_aerosol = k / 10
+        scatter_aerosol = calcHG(scatter_angle, g) * ATMO_aerosols_polar * w
+        
         extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air*(1 + np.cos(scatter_angle)**2)
+        scatter_air = extinction_air * (1 + np.cos(scatter_angle)**2) * ATMO_air_polar
         
         #
         # Calculate total attenuation
@@ -221,6 +223,10 @@ def main():
         img.append(L_sun * np.sum(attenuation, axis=0))
 
     IMG = np.tile(np.transpose(np.array(img, ndmin=3), (0, 2, 1)), (100, 1, 1))
+    IMG **= 0.45
+    
+    print np.max(ATMO_air_to_polar), np.max(ATMO_air_from_polar)
+    print np.min(ATMO_air_to_polar), np.min(ATMO_air_from_polar)
 
     #
     # Plot results
