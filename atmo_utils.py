@@ -45,3 +45,82 @@ def calcHG(PHI, g):
     return HG
 
 
+def applyTransformMatrix(H, X):
+    """Apply matrix H to a 2D function X. X is stacked column wise.
+    """
+    
+    m, n = X.shape
+    Z = (H * X.ravel().reshape((-1, 1))).reshape(m, n)
+    
+    return Z
+
+
+def calcPolarTransformMatrix(X, Y, center, radius_res, angle_res=None):
+    """Calculate a (sparse) matrix representation of cartesian to polar
+transform.
+    params:
+        X, Y - Are either 1D, 2D arrays that define the cartesian coordinates
+        center - Center (in cartesian coords) of the polar coordinates.
+        radius_res, angle_res - Resolution of polar coordinates.
+    return:
+        H - Sparse matrix representing the cartesian-polar transform.
+            The transform is applied by multiplying the matrix by the
+            1D column wise stacking of the function.
+        R, T - Polar coordinates.
+    """
+
+    if angle_res == None:
+        angle_res = radius_res
+        
+    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
+    T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
+    X_ = R * np.cos(T) + center[0]
+    Y_ = R * np.sin(T) + center[1]
+
+    if len(X.shape) == 2:
+        dx = X[0, 1] - X[0, 0]
+        dy = Y[1, 0] - Y[0, 0]
+        m, n = X.shape
+    else:
+        dx = X[1] - X[0]
+        dy = Y[1] - Y[0]
+        m, n = len(Y), len(X)
+        
+    X_ = X_/dx
+    Y_ = Y_/dy
+    
+    I = []
+    J = []
+    VALUES = []
+    for index, (x, y) in enumerate(zip(X_.flat, Y_.flat)):
+	i = int(y)
+	j = int(x)
+
+        if i < 1 or j < 1:
+	    continue
+	
+	if i >= m-1 or j >= n-1:
+	    continue
+	
+	di = y - i
+	dj = x - j
+	
+	I.append(index)
+	J.append(j + i*n)
+	VALUES.append((1-di)*(1-dj))
+
+	I.append(index)
+	J.append(j + (i+1)*n)
+	VALUES.append(di*(1-dj))
+
+	I.append(index)
+	J.append(j+1 + i*n)
+	VALUES.append((1-di)*dj)
+
+	I.append(index)
+	J.append(j+1 + (i+1)*n)
+	VALUES.append(di*dj)
+
+    H = sps.coo_matrix((np.array(VALUES), np.array((I, J))), shape=(m*n, m*n))
+    
+    return H, R, T
