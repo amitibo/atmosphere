@@ -14,12 +14,13 @@ import math
 
 SKY_PARAMS = {
     'width': 200,
-    'height': 40,
+    'height': 50,
     'dxh': 1,
     'camera_center': (100, 2)
 }
 
 SUN_ANGLE = 0
+VISIBILITY = 10
 
 
 
@@ -77,7 +78,11 @@ def rotationTransform(
     """Transform by rotation"""
 
     if np.isscalar(angle):
-        H = np.array([[math.cos(angle), -math.sin(angle), 0], [math.sin(angle), math.cos(angle), 0], [0, 0, 1]])
+        H = np.array(
+            [[math.cos(angle), -math.sin(angle), 0],
+             [math.sin(angle), math.cos(angle), 0],
+             [0, 0, 1]]
+            )
     else:
         H = angle
 
@@ -145,9 +150,9 @@ def main():
         "k_RGB": np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         "w_RGB": particle['w'],
         "g_RGB": (particle['g']),
-        "visibility": 1
+        "visibility": VISIBILITY
     }
-    
+
     #
     # Create the sky
     #
@@ -160,12 +165,13 @@ def main():
 
     #
     # Create the distributions of air and aerosols
-    # Note:
-    # I set the topmost row to 0 so that when converting from cartisian to polar
-    # coords the interpolation will not 'create' atmosphere above the sky.
     #
+    ATMO_aerosols = np.zeros_like(H)
+    #ATMO_aerosols[(X > 50) * (X < 80) * (H > 0) * (H < 20)] = 1
     ATMO_aerosols = np.exp(-H/1.2)
-    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
+    #ATMO_aerosols[:, int(H.shape[1]/2):] = 0
+    ATMO_aerosols /= aerosol_params["visibility"]
+
     ATMO_air = np.exp(-H/8)
 
     #
@@ -173,13 +179,15 @@ def main():
     # Note:
     # The mask is used to maskout in the polar axis,
     # pixels that are not in the cartesian axis.
+    # I set the boundary rows and columns to 0 so that when converting from cartisian to polar
+    # coords the interpolation will not 'create' atmosphere above the sky.
     #
     mask = np.ones(X.shape)
     mask[:4, :] = 0
     mask[:, :4] = 0
-    mask[:, -4:] = 0
-    
+    mask[:, -4:] = 0    
     mask_polar, grid_R, grid_PHI = polarTransform(mask, R, PHI)
+    
     ATMO_aerosols *= mask
     ATMO_air *= mask
     
@@ -204,7 +212,7 @@ def main():
         #
         # Calculate scattering and extiniction for air (wave length dependent)
         #
-        extinction_aerosol = k / 10
+        extinction_aerosol = k
         scatter_aerosol = calcHG(scatter_angle, g) * ATMO_aerosols_polar * w
         
         extinction_air = 1.09e-3 * lambda_**-4.05
@@ -222,12 +230,17 @@ def main():
         #
         img.append(L_sun * np.sum(attenuation, axis=0))
 
-    IMG = np.tile(np.transpose(np.array(img, ndmin=3), (0, 2, 1)), (100, 1, 1))
+    #
+    # Create the image
+    #
+    IMG = np.transpose(np.array(img, ndmin=3), (2, 0, 1))
+    IMG = np.tile(IMG, (1, IMG.shape[0], 1))
+
+    #
+    # Account for gamma correction
+    #
     IMG **= 0.45
     
-    print np.max(ATMO_air_to_polar), np.max(ATMO_air_from_polar)
-    print np.min(ATMO_air_to_polar), np.min(ATMO_air_from_polar)
-
     #
     # Plot results
     #
@@ -244,6 +257,25 @@ def main():
     plt.imshow(attenuation, interpolation='nearest', cmap='gray')
     plt.subplot(326)
     plt.imshow(IMG/np.max(IMG), interpolation='nearest')
+
+    print np.max(IMG)
+    IMG_scaled = IMG / np.max(IMG)
+    h = int(IMG_scaled.shape[0] / 2)
+
+    plt.figure()
+    plt.subplot(211)
+    extent = (0, 1, 90, 0)
+    plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
+    plt.xticks([0, 0.5, 1.0])
+    plt.yticks([0, 30, 60, 90])
+    
+    plt.subplot(212)
+    extent = (0, 1, -90, 0)
+    plt.imshow(IMG_scaled[h:, ...], aspect=1/270, extent=extent, interpolation='nearest')
+    plt.xticks([0, 0.5, 1.0])
+    plt.yticks([0, -30, -60, -90])
+    
+    plt.savefig('figure_%g.png' % VISIBILITY, bbox_inches='tight')
     
     plt.show()
 

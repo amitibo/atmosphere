@@ -23,6 +23,7 @@ Note: 5250 C = 5520 K
 
 The RGB wavelengths are taken from
 http://en.wikipedia.org/wiki/Color
+and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 """
 
 import numpy as np
@@ -32,7 +33,8 @@ import numpy as np
 # Some globals
 #
 L_SUN_RGB=(255, 236, 224)
-RGB_WAVELENGTH = (700e-3, 530e-3, 470e-3)
+#RGB_WAVELENGTH = (700e-3, 530e-3, 470e-3)
+RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
 
 
 def calcHG(PHI, g):
