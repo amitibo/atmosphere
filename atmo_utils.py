@@ -26,8 +26,6 @@ http://en.wikipedia.org/wiki/Color
 and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 """
 
-import numpy as np
-
 
 #
 # Some globals
@@ -41,6 +39,8 @@ def calcHG(PHI, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
+
+    import numpy as np
     
     HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(PHI))**(3/2) / (4*np.pi)
     
@@ -71,6 +71,8 @@ transform.
         R, T - Polar coordinates.
     """
 
+    import numpy as np
+    
     if angle_res == None:
         angle_res = radius_res
         
