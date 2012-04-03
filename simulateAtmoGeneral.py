@@ -20,7 +20,7 @@ SKY_PARAMS = {
 }
 
 SUN_ANGLE = 0
-VISIBILITY = 10
+VISIBILITY = 100
 
 
 
@@ -166,12 +166,13 @@ def main():
     #
     # Create the distributions of air and aerosols
     #
-    ATMO_aerosols = np.zeros_like(H)
-    #ATMO_aerosols[(X > 50) * (X < 80) * (H > 0) * (H < 20)] = 1
-    ATMO_aerosols = np.exp(-H/1.2)
-    #ATMO_aerosols[:, int(H.shape[1]/2):] = 0
+    ATMO_aerosols = np.zeros_like(H, dtype=np.float64)
+    #ATMO_aerosols[(X > 50) * (X < 80) * (H > 0) * (H < 20)] = 1.0
+    ATMO_aerosols = np.exp(-H/8)
+    ATMO_aerosols[:, int(H.shape[1]/3):] = 0
     ATMO_aerosols /= aerosol_params["visibility"]
 
+    #ATMO_air = np.zeros_like(H, dtype=np.float64)
     ATMO_air = np.exp(-H/8)
 
     #
@@ -219,16 +220,16 @@ def main():
         scatter_air = extinction_air * (1 + np.cos(scatter_angle)**2) * ATMO_air_polar
         
         #
-        # Calculate total attenuation
+        # Calculate the radiance
         #
         temp = extinction_aerosol*(ATMO_aerosols_to_polar + ATMO_aerosols_from_polar) + \
           extinction_air*(ATMO_air_to_polar + ATMO_air_from_polar)
-        attenuation = (scatter_aerosol + scatter_air) * np.exp(-temp) * mask_polar
+        radiance = (scatter_aerosol + scatter_air) * np.exp(-temp) * mask_polar
 
         #
         # Calculate projection on camera
         #
-        img.append(L_sun * np.sum(attenuation, axis=0))
+        img.append(L_sun * np.sum(radiance, axis=0))
 
     #
     # Create the image
@@ -245,18 +246,33 @@ def main():
     # Plot results
     #
     plt.figure()
-    plt.subplot(321)
+    plt.subplot(331)
     plt.imshow(ATMO_air, interpolation='nearest', cmap='gray')
-    plt.subplot(322)
+    plt.title('ATMO_air\nmax:%g' % np.max(ATMO_air))
+    plt.subplot(332)
+    plt.imshow(ATMO_aerosols, interpolation='nearest', cmap='gray')
+    plt.title('ATMO_aerosols\nmax:%g' % np.max(ATMO_aerosols))
+    plt.subplot(333)
     plt.imshow(mask_polar, interpolation='nearest', cmap='gray')
-    plt.subplot(323)
+    plt.title('mask_polar\nmax:%g' % np.max(mask_polar))
+    plt.subplot(334)
     plt.imshow(ATMO_air_to_polar, interpolation='nearest', cmap='gray')
-    plt.subplot(324)
+    plt.title('ATMO_air_to_polar\nmax:%g' % np.max(ATMO_air_to_polar))
+    plt.subplot(335)
     plt.imshow(ATMO_air_from_polar, interpolation='nearest', cmap='gray')
-    plt.subplot(325)
-    plt.imshow(attenuation, interpolation='nearest', cmap='gray')
-    plt.subplot(326)
+    plt.title('ATMO_air_from_polar\nmax:%g' % np.max(ATMO_air_from_polar))
+    plt.subplot(336)
+    plt.imshow(ATMO_aerosols_to_polar, interpolation='nearest', cmap='gray')
+    plt.title('ATMO_aerosols_to_polar\nmax:%g' % np.max(ATMO_aerosols_to_polar))
+    plt.subplot(337)
+    plt.imshow(ATMO_aerosols_from_polar, interpolation='nearest', cmap='gray')
+    plt.title('ATMO_aerosols_from_polar\nmax:%g' % np.max(ATMO_aerosols_from_polar))
+    plt.subplot(338)
+    plt.imshow(radiance, interpolation='nearest', cmap='gray')
+    plt.title('radiance\nmax:%g' % np.max(radiance))
+    plt.subplot(339)
     plt.imshow(IMG/np.max(IMG), interpolation='nearest')
+    plt.title('IMG\nmax:%g' % np.max(IMG))
 
     print np.max(IMG)
     IMG_scaled = IMG / np.max(IMG)
