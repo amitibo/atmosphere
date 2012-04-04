@@ -238,18 +238,18 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         #
         img.append(L_sun * numpy.sum(radiance, axis=0))
 
-    #
-    # Create the image
-    #
-    IMG = numpy.transpose(numpy.array(img, ndmin=3), (2, 0, 1))
-    IMG = numpy.tile(IMG, (1, IMG.shape[0], 1))
-
-    #
-    # Account for gamma correction
-    #
-    IMG **= 0.45
-
     if plot_results:
+        #
+        # Create the image
+        #
+        IMG = numpy.transpose(numpy.array(img, ndmin=3), (2, 0, 1))
+        IMG = numpy.tile(IMG, (1, IMG.shape[0], 1))
+
+        #
+        # Account for gamma correction
+        #
+        IMG **= 0.45
+
         #
         # Plot results
         #
@@ -303,7 +303,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
 
         plt.show()
 
-    return numpy.max(IMG)
+    return img
     
     
 def main_parallel(aerosol_params, sky_params, results_path=''):
@@ -333,7 +333,7 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
 
     results = []
     for temp_jobs in jobs:
-        results.append([job() for job in temp_jobs])
+        results.append([numpy.max(job()) for job in temp_jobs])
 
  
     fig = plt.figure()
@@ -350,7 +350,7 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
 def main_serial(aerosol_params, sky_params, results_path=''):
     """Run the calculation on a single parameters set."""
 
-    print calcRadiance(aerosol_params, sky_params, results_path, True)
+    calcRadiance(aerosol_params, sky_params, results_path, True)
     
 
 if __name__ == '__main__':
