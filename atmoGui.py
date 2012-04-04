@@ -6,6 +6,7 @@ from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis
 from enthought.enable.component_editor import ComponentEditor
 from atmo_utils import L_SUN_RGB, RGB_WAVELENGTH
 from simulateAtmoGeneral import calcRadiance
+import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import amitibo
@@ -27,14 +28,23 @@ class TC_Handler(Handler):
     def do_savefig(self, info):
 
         sky_object = info.object
-        plt.imshow(sky_object.sky_img, aspect=.5, extent=[-0.5, 0.5, -1, 1])
-        plt.xlabel('View Angle [rad]')
-        #plt.ylabel()
+
+        h = int(sky_object.sky_img.shape[0]/2)
+        
+        plt.subplot(211)
+        extent = (0, 1, 90, 0)
+        plt.imshow(sky_object.sky_img[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
+        plt.xticks([0, 0.5, 1.0])
+        plt.yticks([0, 30, 60, 90])
         plt.title(sky_object.makeTitle())
 
-         # Save out to the user supplied filename
-        plt.savefig('figure_%d.svg' % FIGURE_CNT, bbox_inches='tight')
-        FIGURE_CNT += 1
+        plt.subplot(212)
+        extent = (0, 1, -90, 0)
+        plt.imshow(sky_object.sky_img[h:, ...], aspect=1/270, extent=extent, interpolation='nearest')
+        plt.xticks([0, 0.5, 1.0])
+        plt.yticks([0, -30, -60, -90])
+
+        amitibo.saveFigures(sky_object.results_path, bbox_inches='tight')
 
 
 class skyAnalayzer(HasTraits):
@@ -64,8 +74,10 @@ class skyAnalayzer(HasTraits):
             buttons = [save_button]
         )
 
-    def __init__(self):
+    def __init__(self, results_path):
         super(skyAnalayzer, self).__init__()
+
+        self.results_path = results_path
         
         #
         # Load the misr data base
@@ -78,7 +90,8 @@ class skyAnalayzer(HasTraits):
         #
         # Prepare all the plots.
         # ArrayPlotData - A class that holds a list of numpy arrays.
-        # Plot - Represents a correlated set of data, renderers, and axes in a single screen region.
+        # Plot - Represents a correlated set of data, renderers, and
+        # axes in a single screen region.
         #
         self.plotdata = ArrayPlotData()
         self.plot_img = Plot(self.plotdata)
@@ -141,7 +154,9 @@ class skyAnalayzer(HasTraits):
 def main():
     """Main function"""
 
-    app = skyAnalayzer()
+    results_path = amitibo.createResultFolder()
+    
+    app = skyAnalayzer(results_path)
     app.configure_traits()
     
     
