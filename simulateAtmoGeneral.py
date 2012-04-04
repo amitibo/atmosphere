@@ -8,6 +8,7 @@ import scipy.interpolate
 import matplotlib.pyplot as plt
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+import os.path
 import pickle
 import math
 import amitibo
@@ -17,13 +18,13 @@ SKY_PARAMS = {
     'width': 200,
     'height': 50,
     'dxh': 1,
-    'camera_center': (100, 2),
+    'camera_center': (80, 2),
     'sun_angle': 0,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
 
-VISIBILITY = 100
+VISIBILITY = 1
 
 
 
@@ -140,7 +141,7 @@ def calcOpticalDistances(ATMO, sun_angle, R, PHI, dXY):
     return ATMO_polar, ATMO_to_polar, ATMO_from_polar
 
 
-def calcRadiance(aerosol_params, sky_params, plot_results=False):
+def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
 
     #
     # Create the sky
@@ -157,9 +158,10 @@ def calcRadiance(aerosol_params, sky_params, plot_results=False):
     #
     #ATMO_aerosols = numpy.zeros_like(H, dtype=numpy.float64)
     ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
 
-    ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
-    #ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
+    #ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
+    ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
 
     #
     # Calculate a mask over the atmosphere
@@ -222,7 +224,7 @@ def calcRadiance(aerosol_params, sky_params, plot_results=False):
         scatter_aerosol = extinction_aerosol * calcHG(scatter_angle, g) * ATMO_aerosols_polar * w
         
         extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) * ATMO_air_polar
+        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * ATMO_air_polar
         
         #
         # Calculate the radiance
@@ -251,7 +253,7 @@ def calcRadiance(aerosol_params, sky_params, plot_results=False):
         #
         # Plot results
         #
-        plt.figure()
+        fig1 = plt.figure()
         plt.subplot(331)
         plt.imshow(ATMO_air, interpolation='nearest', cmap='gray')
         plt.title('ATMO_air\nmax:%g' % numpy.max(ATMO_air))
@@ -283,12 +285,13 @@ def calcRadiance(aerosol_params, sky_params, plot_results=False):
         IMG_scaled = IMG / numpy.max(IMG)
         h = int(IMG_scaled.shape[0] / 2)
 
-        plt.figure()
+        fig2 = plt.figure()
         plt.subplot(211)
         extent = (0, 1, 90, 0)
         plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
         plt.xticks([0, 0.5, 1.0])
         plt.yticks([0, 30, 60, 90])
+        plt.title('Visibility Parameter %d' % aerosol_params["visibility"])
 
         plt.subplot(212)
         extent = (0, 1, -90, 0)
@@ -296,14 +299,14 @@ def calcRadiance(aerosol_params, sky_params, plot_results=False):
         plt.xticks([0, 0.5, 1.0])
         plt.yticks([0, -30, -60, -90])
 
-        plt.savefig('figure_%g.png' % aerosol_params["visibility"], bbox_inches='tight')
+        amitibo.saveFigures(results_path, (fig1, fig2), bbox_inches='tight')
 
         plt.show()
 
     return numpy.max(IMG)
     
     
-def main_parallel(aerosol_params, sky_params):
+def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
     vis_range = numpy.logspace(-10, 10, 20)
@@ -339,16 +342,19 @@ def main_parallel(aerosol_params, sky_params):
     Z = numpy.array(results)
     ax.plot_wireframe(X, Y, Z, rstride=1, cstride=1)
     
+    amitibo.saveFigures(results_path, bbox_inches='tight')
+
     plt.show()
 
 
-def main_serial(aerosol_params, sky_params):
+def main_serial(aerosol_params, sky_params, results_path=''):
     """Run the calculation on a single parameters set."""
 
-    print calcRadiance(aerosol_params, sky_params)
+    print calcRadiance(aerosol_params, sky_params, results_path, True)
     
 
 if __name__ == '__main__':
+
     #
     # Load the MISR database.
     #
@@ -366,5 +372,10 @@ if __name__ == '__main__':
         "aerosols_typical_h": 8,        
     }
 
-    main_parallel(aerosol_params, SKY_PARAMS)
-    #main_serial(aerosol_params, SKY_PARAMS)
+    #
+    # Create afolder for results
+    #
+    results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
+
+    #main_parallel(aerosol_params, SKY_PARAMS)
+    main_serial(aerosol_params, SKY_PARAMS, results_path)

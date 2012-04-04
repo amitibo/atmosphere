@@ -42,7 +42,7 @@ def calcHG(PHI, g):
 
     import numpy as np
     
-    HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(PHI))**(3/2) / (4*np.pi)
+    HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(PHI))**(3/2) / (2*np.pi)
     
     return HG
 
