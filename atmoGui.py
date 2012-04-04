@@ -2,7 +2,7 @@ from __future__ import division
 
 from enthought.traits.api import HasTraits, Range, on_trait_change, Float, Enum
 from enthought.traits.ui.api import View, Item, Handler, Action, VGroup
-from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis
+from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
 from enthought.enable.component_editor import ComponentEditor
 from atmo_utils import L_SUN_RGB, RGB_WAVELENGTH
 from simulateAtmoGeneral import calcRadiance
@@ -57,16 +57,18 @@ class skyAnalayzer(HasTraits):
     tr_sky_max = Float( 0.0, desc='Maximal value of raw sky image (before scaling)' )
     tr_gamma = Range(0.4, 1.0, 0.45, desc='Gamma encoding value')
     save_button = Action(name = "Save Fig", action = "do_savefig")
+    tr_aeros_scale = Range(1, 20, desc='Exponential scale of the aerosols [km]')
 
     traits_view  = View(
         VGroup(
-            Item('plot_img', editor=ComponentEditor(), show_label=False),
+            Item('img_container', editor=ComponentEditor(), show_label=False),
             Item('tr_sky_max', label='Maximal value', style='readonly'),
             Item('tr_particles', label='Particle Name'),                                
             Item('tr_scaling', label='Radiance Scaling'),
             Item('tr_sun_angle', label='Sun Angle'),
             Item('tr_camera_center', label='Camera Center'),
             Item('tr_aeros_viz', label='Aerosol Visibility [km]'),
+            Item('tr_aeros_scale', label='Aerosol Scale [km]'),
             Item('tr_gamma', label='Gamma Encoding')
             ),
             resizable = True,
@@ -94,16 +96,28 @@ class skyAnalayzer(HasTraits):
         # axes in a single screen region.
         #
         self.plotdata = ArrayPlotData()
-        self.plot_img = Plot(self.plotdata)
-        self.plot_img.overlays.append(
-            PlotAxis(
-                orientation='bottom',
-                title= "View Angle [rad]",
-                component=self.plot_img
-                )
+        self.img_container = VPlotContainer(
+            padding=-20,
+            fill_padding=True,
+            spacing=-40,
+            stack_order='top_to_bottom',
+            bgcolor='cyan',
+            use_backbuffer=True
             )
+
         self._updateImg()
-        self.plot_img.img_plot("sky_img", xbounds=(-0.5, 0.5))
+        for i in range(2):
+            p = Plot(self.plotdata)
+            p.img_plot("sky_img%d" % i, xbounds=(-0.5, 0.5))
+            p.overlays.append(
+                PlotAxis(
+                    orientation='bottom',
+                    title= "View Angle [rad]",
+                    component=p
+                    )
+                )
+            self.img_container.add(p)
+            
     
     def _scaleImg(self):
         """Scale and tile the image to valid values"""
@@ -113,7 +127,9 @@ class skyAnalayzer(HasTraits):
         tmpimg[tmpimg > 255] = 255
 
         self.sky_img = tmpimg.astype(np.uint8)
-        self.plotdata.set_data('sky_img', self.sky_img)
+        h = int(self.sky_img.shape[0]/2)
+        self.plotdata.set_data('sky_img0', self.sky_img[-1:h:-1, ...])
+        self.plotdata.set_data('sky_img1', self.sky_img[:h, ...])
 
     def _calcImg(self):
         particle = self.misr[self.tr_particles]
@@ -124,7 +140,7 @@ class skyAnalayzer(HasTraits):
             "g_RGB": particle['g'],
             "visibility": self.tr_aeros_viz,
             "air_typical_h": 8,
-            "aerosols_typical_h": 8,        
+            "aerosols_typical_h": self.tr_aeros_scale
             }
 
         SKY_PARAMS['sun_angle'] = self.tr_sun_angle
@@ -138,12 +154,12 @@ class skyAnalayzer(HasTraits):
         
     @on_trait_change('tr_scaling, tr_gamma')
     def _updateImgScale(self):
-        self.plot_img.title = self.makeTitle()
+        self.img_container.title = self.makeTitle()
         self._scaleImg()
 
-    @on_trait_change('tr_particles, tr_sun_angle, tr_aeros_viz, tr_camera_center')
+    @on_trait_change('tr_aeros_scale, tr_particles, tr_sun_angle, tr_aeros_viz, tr_camera_center')
     def _updateImg(self):
-        self.plot_img.title = self.makeTitle()
+        self.img_container.title = self.makeTitle()
         self._calcImg()
         self._scaleImg()
 
