@@ -108,7 +108,7 @@ class skyAnalayzer(HasTraits):
         self._updateImg()
         for i in range(2):
             p = Plot(self.plotdata)
-            p.img_plot("sky_img%d" % i, xbounds=(-0.5, 0.5))
+            p.img_plot("sky_img%d" % i, xbounds=(-0.5, 0.5), ybounds=(0, 90))
             p.overlays.append(
                 PlotAxis(
                     orientation='bottom',
