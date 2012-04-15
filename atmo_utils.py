@@ -116,7 +116,10 @@ def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
 	J.append(j+1 + (i+1)*n_src)
 	VALUES.append(di*dj)
 
-    H = sps.coo_matrix((np.array(VALUES), np.array((I, J))), shape=(m_dst*n_dst, m_src*n_src))
+    H = sps.coo_matrix(
+        (np.array(VALUES), np.array((I, J))),
+        shape=(m_dst*n_dst, m_src*n_src)
+        ).tocsr()
 
     return H
 
@@ -140,11 +143,10 @@ transform.
     if angle_res == None:
         angle_res = radius_res
 
-    if len(X.shape) == 2:
-        m_src, n_src = X.shape
-    else:
-        m_src = len(Y)
-        n_src = len(X)
+    if X.ndim == 1:
+        X, Y = np.meshgrid(X, Y)
+        
+    m_src, n_src = X.shape
         
     #
     # Create the polar grid over which the target matrix (H) will sample.
