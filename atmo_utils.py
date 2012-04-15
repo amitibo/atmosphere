@@ -199,14 +199,18 @@ def _onewayRotationTransform(H, dst_shape, src_shape):
     return calcTransformMatrix(X_, Y_, src_shape=(m_src, n_src))
     
     
-def calcRotationTransform(src_shape, angle, dst_shape=()):
+def calcRotationTransformMatrix(src_shape, angle, dst_shape=()):
     """Calculate a (sparse) matrix representation of rotation transform.
     params:
+        src_shape - Shape of the matrix to be transformed
         angle - Angle of rotation [radians].
+        dst_shape - Shape of the destination matrix (after rotation). Defaults
+             to the shape of the full matrix after rotation (no cropping).
     return:
-        H - Sparse matrix representing the rotation transform.
+        H_forward, H_backward - Sparse matrix representing the rotation transforms.
             The transform is applied by multiplying the matrix by the
             1D column wise stacking of the function.
+        dst_shape - Shape of the destination matrix (after rotation).
     """
 
     import numpy as np
@@ -255,3 +259,28 @@ def calcRotationTransform(src_shape, angle, dst_shape=()):
     H_backward = _onewayRotationTransform(np.linalg.inv(H), src_shape, dst_shape)
 
     return H_forward, H_backward, dst_shape
+
+
+def calcIntegralTransformMatrix(src_shape, axis=0):
+    """Calculate a (sparse) matrix representation of integration (cumsum) transform.
+    params:
+        src_shape - Shape of the matrix to be transformed
+        axis - axis along which the integration is preformed
+    return:
+        H - Sparse matrix representing the integration transforms.
+            The transform is applied by multiplying the matrix by the
+            1D column wise stacking of the function.
+    """
+
+    import numpy as np
+    import scipy.sparse as sps
+
+    m, n = src_shape
+
+    if axis == 0:
+        H = sps.spdiags(np.ones((m, m*n)), -n*np.arange(m), m*n, m*n)
+    else:
+        A = sps.csr_matrix(np.tril(np.ones((n, n))))
+        H = sps.kron(sps.eye(m, m), A)
+
+    return H
