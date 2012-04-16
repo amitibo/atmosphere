@@ -204,7 +204,7 @@ def _onewayRotationTransform(H, dst_shape, src_shape):
     
     
 @memoized
-def calcPolarTransformMatrix(X, Y, center, radius_res, angle_res=None):
+def calcPolarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """Calculate a (sparse) matrix representation of cartesian to polar
 transform.
     params:
@@ -220,12 +220,15 @@ transform.
 
     import numpy as np
     
-    if angle_res == None:
-        angle_res = radius_res
-
     if X.ndim == 1:
         X, Y = np.meshgrid(X, Y)
         
+    if radius_res == None:
+        radius_res = max(*X.shape)
+        
+    if angle_res == None:
+        angle_res = radius_res
+
     m_src, n_src = X.shape
         
     #

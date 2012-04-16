@@ -8,6 +8,7 @@ import scipy.interpolate
 import matplotlib.pyplot as plt
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+import atmo_utils
 import os.path
 import pickle
 import math
@@ -141,6 +142,53 @@ def calcOpticalDistances(ATMO, sun_angle, R, PHI, dXY):
     return ATMO_polar, ATMO_to_polar, ATMO_from_polar
 
 
+def calcOpticalDistancesMatrix(ATMO, sun_angle, Hpol, polar_shape, dXY, dR):
+
+    #
+    # Prepare transformation matrices
+    #
+    src_shape = ATMO.shape
+    Hrot_forward, Hrot_backward, dst_shape = \
+      atmo_utils.calcRotationTransformMatrix(src_shape, angle=sun_angle)
+
+    Hint1 = atmo_utils.calcIntegralTransformMatrix(dst_shape, axis=0)
+    Hint2 = atmo_utils.calcIntegralTransformMatrix(polar_shape, axis=0)
+
+    #
+    # Apply transform matrices to calculate the path up to the
+    # pixel
+    #
+    ATMO_rotated = atmo_utils.applyTransformMatrix(Hrot_forward, ATMO, dst_shape)
+    temp1 = atmo_utils.applyTransformMatrix(Hint1, ATMO_rotated)*dXY/math.cos(sun_angle)
+    ATMO_to = atmo_utils.applyTransformMatrix(Hrot_backward, temp1, src_shape)
+    ATMO_to_polar = atmo_utils.applyTransformMatrix(Hpol, ATMO_to, polar_shape)
+    
+    #
+    # Apply transform matrices to calculate the path from the
+    # pixel
+    #
+    ATMO_polar = atmo_utils.applyTransformMatrix(Hpol, ATMO, polar_shape)
+    ATMO_from_polar = atmo_utils.applyTransformMatrix(Hint2, ATMO_polar)*dR
+    
+    return ATMO_polar, ATMO_to_polar, ATMO_from_polar
+
+    
+    # #
+    # # Calculate the effect of the path up to the pixel
+    # #
+    # ATMO_rotated = rotationTransform(ATMO, sun_angle)
+    # temp1 = numpy.cumsum(ATMO_rotated, axis=0)*dXY/math.cos(sun_angle)
+    # ATMO_to = rotationTransform(temp1, -sun_angle, final_size=ATMO.shape)
+    # ATMO_to_polar = polarTransform(ATMO_to, R, PHI)[0]
+
+    # #
+    # # Calculate the effect of the path from the pixel
+    # #
+    # ATMO_polar, grid_R = polarTransform(ATMO, R, PHI)[:2]
+    # dR = abs(grid_R[1, 0] - grid_R[0, 0])
+    # ATMO_from_polar = numpy.cumsum(ATMO_polar, axis=0)*dR
+
+
 def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
 
     #
@@ -151,7 +199,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
         )
 
-    R, PHI = polarCoords(X, H, center=sky_params['camera_center'])
+    #R, PHI = polarCoords(X, H, center=sky_params['camera_center'])
 
     #
     # Create the distributions of air and aerosols
@@ -175,8 +223,12 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask = numpy.ones(X.shape)
     mask[:4, :] = 0
     mask[:, :4] = 0
-    mask[:, -4:] = 0    
-    mask_polar, grid_R, grid_PHI = polarTransform(mask, R, PHI)
+    mask[:, -4:] = 0
+
+    Hpol, grid_R, grid_PHI = \
+      atmo_utils.calcPolarTransformMatrix(X, H, center=sky_params['camera_center'])
+    
+    mask_polar = atmo_utils.applyTransformMatrix(Hpol, mask, grid_R.shape)
     
     ATMO_aerosols *= mask
     ATMO_air *= mask
@@ -184,21 +236,26 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Calculate the distances
     #
+    dR = abs(grid_R[1, 0] - grid_R[0, 0])
+    polar_shape = grid_R.shape
+        
     ATMO_aerosols_polar, ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
-        calcOpticalDistances(
+        calcOpticalDistancesMatrix(
             ATMO_aerosols,
             sky_params['sun_angle'],
-            R,
-            PHI,
-            sky_params['dxh']
+            Hpol,
+            polar_shape,
+            sky_params['dxh'],
+            dR
             )
     ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
-        calcOpticalDistances(
+        calcOpticalDistancesMatrix(
             ATMO_air,
             sky_params['sun_angle'],
-            R,
-            PHI,
-            sky_params['dxh']
+            Hpol,
+            polar_shape,
+            sky_params['dxh'],
+            dR
             )
     
     #
