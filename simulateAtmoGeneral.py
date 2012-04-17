@@ -13,13 +13,14 @@ import os.path
 import pickle
 import math
 import amitibo
+import IPython
 
 
 SKY_PARAMS = {
-    'width': 200,
+    'width': 50,
     'height': 50,
     'dxh': 1,
-    'camera_center': (80, 2),
+    'camera_center': (10, 2),
     'sun_angle': 0,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
@@ -226,8 +227,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask[:, -4:] = 0
 
     Hpol, grid_R, grid_PHI = \
-      atmo_utils.calcPolarTransformMatrix(X, H, center=sky_params['camera_center'])
-    
+      atmo_utils.calcPolarTransformMatrix(X, H, sky_params['camera_center'])
     mask_polar = atmo_utils.applyTransformMatrix(Hpol, mask, grid_R.shape)
     
     ATMO_aerosols *= mask

@@ -125,84 +125,19 @@ def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
     return H
 
 
-@memoized
-def calcPolarTransformMatrix(X, Y, center, radius_res, angle_res=None):
-    """Calculate a (sparse) matrix representation of cartesian to polar
-transform.
-    params:
-        X, Y - Are either 1D, 2D arrays that define the cartesian coordinates
-        center - Center (in cartesian coords) of the polar coordinates.
-        radius_res, angle_res - Resolution of polar coordinates.
-    return:
-        H - Sparse matrix representing the cartesian-polar transform.
-            The transform is applied by multiplying the matrix by the
-            1D column wise stacking of the function.
-        R, T - Polar coordinates.
-    """
+def coords2indices(X_grid, Y_grid, X_pts, Y_pts):
+    """Calculate indices of 2D points (given in X_pts, Y_pts) in a 2D grid
+(given in X_grid, Y_grid)."""
 
-    import numpy as np
-    
-    if angle_res == None:
-        angle_res = radius_res
+    dx = X_grid[0, 1] - X_grid[0, 0]
+    dy = Y_grid[1, 0] - Y_grid[0, 0]
 
-    if X.ndim == 1:
-        X, Y = np.meshgrid(X, Y)
-        
-    m_src, n_src = X.shape
-        
-    #
-    # Create the polar grid over which the target matrix (H) will sample.
-    #
-    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
-    T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
+    X_indices = (X_pts - X_grid[0, 0])/dx
+    Y_indices = (Y_pts - Y_grid[0, 0])/dy
 
-    #
-    # Cartesian coords of the polar grid.
-    #
-    X_ = R * np.cos(T) + center[0]
-    Y_ = R * np.sin(T) + center[1]
-
-    if len(X.shape) == 2:
-        dx = X[0, 1] - X[0, 0]
-        dy = Y[1, 0] - Y[0, 0]
-        m, n = X.shape
-    else:
-        dx = X[1] - X[0]
-        dy = Y[1] - Y[0]
-        m, n = len(Y), len(X)
-
-    #
-    # Indices (in the cartesian grid) of the polar grid.
-    #
-    X_ = X_/dx
-    Y_ = Y_/dy
-
-    H = calcTransformMatrix(X_, Y_, src_shape=(m_src, n_src))
-    
-    return H, R, T
+    return X_indices, Y_indices
 
 
-def _onewayRotationTransform(H, dst_shape, src_shape):
-    
-    import numpy as np
-
-    m_dst, n_dst = dst_shape
-    m_src, n_src = src_shape
-    
-    X, Y = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
-
-    #
-    # Calculate a rotated grid by applying the rotation.
-    #
-    XY = np.vstack((X.ravel(), Y.ravel(), np.ones(X.size)))
-    XY_ = np.dot(H, XY)
-    
-    X_ = XY_[0, :].reshape((m_dst, n_dst))
-    Y_ = XY_[1, :].reshape((m_dst, n_dst))
-    
-    return calcTransformMatrix(X_, Y_, src_shape=(m_src, n_src))
-    
-    
 @memoized
 def calcPolarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """Calculate a (sparse) matrix representation of cartesian to polar
@@ -242,23 +177,10 @@ transform.
     #
     X_ = R * np.cos(T) + center[0]
     Y_ = R * np.sin(T) + center[1]
+    
+    X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
 
-    if len(X.shape) == 2:
-        dx = X[0, 1] - X[0, 0]
-        dy = Y[1, 0] - Y[0, 0]
-        m, n = X.shape
-    else:
-        dx = X[1] - X[0]
-        dy = Y[1] - Y[0]
-        m, n = len(Y), len(X)
-
-    #
-    # Indices (in the cartesian grid) of the polar grid.
-    #
-    X_ = X_/dx
-    Y_ = Y_/dy
-
-    H = calcTransformMatrix(X_, Y_, src_shape=(m_src, n_src))
+    H = calcTransformMatrix(X_indices, Y_indices, src_shape=(m_src, n_src))
     
     return H, R, T
 
@@ -278,10 +200,10 @@ def _onewayRotationTransform(H, dst_shape, src_shape):
     XY = np.vstack((X.ravel(), Y.ravel(), np.ones(X.size)))
     XY_ = np.dot(H, XY)
     
-    X_ = XY_[0, :].reshape((m_dst, n_dst))
-    Y_ = XY_[1, :].reshape((m_dst, n_dst))
+    X_indices = XY_[0, :].reshape((m_dst, n_dst))
+    Y_indices = XY_[1, :].reshape((m_dst, n_dst))
     
-    return calcTransformMatrix(X_, Y_, src_shape=(m_src, n_src))
+    return calcTransformMatrix(X_indices, Y_indices, src_shape=(m_src, n_src))
     
 
 @memoized
