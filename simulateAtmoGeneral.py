@@ -17,10 +17,10 @@ import IPython
 
 
 SKY_PARAMS = {
-    'width': 50,
+    'width': 200,
     'height': 50,
     'dxh': 1,
-    'camera_center': (10, 2),
+    'camera_center': (80, 2),
     'sun_angle': 0,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
