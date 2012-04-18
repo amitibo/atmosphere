@@ -28,6 +28,7 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 
 from __future__ import division
 from amitibo import memoized
+import numpy as np
 
 #
 # Some globals
@@ -47,19 +48,6 @@ def calcHG(PHI, g):
     HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(PHI))**(3/2) / (2*np.pi)
     
     return HG
-
-
-def applyTransformMatrix(H, X, dst_shape=()):
-    """Apply matrix H to a 2D function X. X is stacked column wise.
-    """
-
-    if dst_shape == ():
-        dst_shape = X.shape
-        
-    m, n = dst_shape
-    Z = (H * X.ravel().reshape((-1, 1))).reshape(m, n)
-    
-    return Z
 
 
 def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
@@ -138,8 +126,28 @@ def coords2indices(X_grid, Y_grid, X_pts, Y_pts):
     return X_indices, Y_indices
 
 
-@memoized
-def calcPolarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
+class baseTransform(object):
+    """The base class from which all transform class inherit"""
+
+    def __init__(self, X_src, Y_src, X_dst=None, Y_dst=None):
+
+        if X_dst == None:
+            X_dst = X_src
+            Y_dst = Y_src
+            
+        self.X_src = X_src
+        self.Y_src = Y_src
+        self.X_dst = X_dst
+        self.Y_dst = Y_dst
+
+    def __call__(self, X):
+        """Apply the transform"""
+        
+        Z = (self.H * X.ravel().reshape((-1, 1))).reshape(*self.X_dst.shape)
+        return Z
+
+
+class polarTransform(baseTransform):
     """Calculate a (sparse) matrix representation of cartesian to polar
 transform.
     params:
@@ -151,63 +159,42 @@ transform.
             The transform is applied by multiplying the matrix by the
             1D column wise stacking of the function.
         R, T - Polar coordinates.
-    """
+ """
 
-    import numpy as np
-    
-    if X.ndim == 1:
-        X, Y = np.meshgrid(X, Y)
-        
-    if radius_res == None:
-        radius_res = max(*X.shape)
-        
-    if angle_res == None:
-        angle_res = radius_res
+    def __init__(self, X, Y, center, radius_res=None, angle_res=None):
+        import numpy as np
 
-    m_src, n_src = X.shape
-        
-    #
-    # Create the polar grid over which the target matrix (H) will sample.
-    #
-    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
-    T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
+        if X.ndim == 1:
+            X, Y = np.meshgrid(X, Y)
 
-    #
-    # Cartesian coords of the polar grid.
-    #
-    X_ = R * np.cos(T) + center[0]
-    Y_ = R * np.sin(T) + center[1]
-    
-    X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
+        if radius_res == None:
+            radius_res = max(*X.shape)
 
-    H = calcTransformMatrix(X_indices, Y_indices, src_shape=(m_src, n_src))
-    
-    return H, R, T
+        if angle_res == None:
+            angle_res = radius_res
+
+        #
+        # Create the polar grid over which the target matrix (H) will sample.
+        #
+        max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
+        T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
+
+        super(polarTransform, self).__init__(X, Y, T, R)
+
+        #
+        # Calculate the indices of the polar grid in the Cartesian grid.
+        #
+        X_ = R * np.cos(T) + center[0]
+        Y_ = R * np.sin(T) + center[1]
+        X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
+
+        #
+        # Calculate the transform
+        #
+        self.H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
 
 
-def _onewayRotationTransform(H, dst_shape, src_shape):
-    
-    import numpy as np
-
-    m_dst, n_dst = dst_shape
-    m_src, n_src = src_shape
-    
-    X, Y = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
-
-    #
-    # Calculate a rotated grid by applying the rotation.
-    #
-    XY = np.vstack((X.ravel(), Y.ravel(), np.ones(X.size)))
-    XY_ = np.dot(H, XY)
-    
-    X_indices = XY_[0, :].reshape((m_dst, n_dst))
-    Y_indices = XY_[1, :].reshape((m_dst, n_dst))
-    
-    return calcTransformMatrix(X_indices, Y_indices, src_shape=(m_src, n_src))
-    
-
-@memoized
-def calcRotationTransformMatrix(src_shape, angle, dst_shape=()):
+class rotationTransform(baseTransform):
     """Calculate a (sparse) matrix representation of rotation transform.
     params:
         src_shape - Shape of the matrix to be transformed
@@ -219,58 +206,78 @@ def calcRotationTransformMatrix(src_shape, angle, dst_shape=()):
             The transform is applied by multiplying the matrix by the
             1D column wise stacking of the function.
         dst_shape - Shape of the destination matrix (after rotation).
-    """
+"""
 
-    import numpy as np
+    def __init__(self, X, Y, angle, R=None, T=None):
+        
+        dy = Y[1, 0] - Y[0, 0]
+        dx = X[0, 1] - X[0, 0]
 
-    H_rot = np.array(
-        [[np.cos(angle), -np.sin(angle), 0],
-         [np.sin(angle), np.cos(angle), 0],
-         [0, 0, 1]]
-        )
+        assert(abs(dx) == abs(dy), "Currently not supporting non-isotropic grids")
+        
+        H_rot = np.array(
+            [[np.cos(angle), -np.sin(angle), 0],
+             [np.sin(angle), np.cos(angle), 0],
+             [0, 0, 1]]
+            )
 
-    m_src, n_src = src_shape
+        m_src, n_src = X.shape
+
+        if R == None:
+            coords = np.hstack((
+                np.dot(H_rot, np.array([[0], [0], [1]])),
+                np.dot(H_rot, np.array([[0], [m_src], [1]])),
+                np.dot(H_rot, np.array([[n_src], [0], [1]])),
+                np.dot(H_rot, np.array([[n_src], [m_src], [1]]))
+                ))
+
+            x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
+            x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
+            dst_shape = (y1-y0, x1-x0)
+            
+            T, R = np.meshgrid(np.arange(x1-x0), np.arange(y1-y0))
+            
+            ratio = R.shape[0] / m_src
+            R = R * ratio * dy
+            T = T * ratio * dx
+            
+        m_dst, n_dst = R.shape
+        
+        super(rotationTransform, self).__init__(X, Y, T, R)
+        
+        #
+        # Calculate the rotation matrix.
+        # Note:
+        # The rotation is applied at the center, therefore
+        # the coordinates are first centered, rotated and decentered.
+        # For simplicity we calculate the rotation on 'integer' grid and
+        # not on the original grid. This is why we don't support when
+        # dx != dy.
+        #
+        H_center = np.eye(3)
+        H_center[0, -1] = -n_dst/2
+        H_center[1, -1] = -m_dst/2
+
+        H_decenter = np.eye(3)
+        H_decenter[0, -1] = n_src/2
+        H_decenter[1, -1] = m_src/2
+
+        H = np.dot(H_decenter, np.dot(H_rot, H_center))
+
+        #
+        # Calculate a rotated grid by applying the rotation.
+        #
+        T_unscaled, R_unscaled = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
+        TR = np.vstack((T_unscaled.ravel(), R_unscaled.ravel(), np.ones(T_unscaled.size)))
+        TR_ = np.dot(H, TR)
+
+        T_indices = TR_[0, :].reshape(T_unscaled.shape)
+        R_indices = TR_[1, :].reshape(T_unscaled.shape)
+
+        self.H = calcTransformMatrix(T_indices, R_indices, src_shape=X.shape)
+
     
-    if dst_shape == ():
-        coords = np.hstack((
-            np.dot(H_rot, np.array([[0], [0], [1]])),
-            np.dot(H_rot, np.array([[0], [m_src], [1]])),
-            np.dot(H_rot, np.array([[n_src], [0], [1]])),
-            np.dot(H_rot, np.array([[n_src], [m_src], [1]]))
-            ))
-        x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
-        x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
-        dst_shape = (y1-y0, x1-x0)
-
-    m_dst, n_dst = dst_shape
-
-    #
-    # Calculate the rotation matrix.
-    # Note:
-    # The rotation is applied at the center, therefore
-    # the coordinates are first centered, rotated and decentered.
-    #
-    H_center = np.eye(3)
-    H_center[0, -1] = -n_dst/2
-    H_center[1, -1] = -m_dst/2
-    
-    H_decenter = np.eye(3)
-    H_decenter[0, -1] = n_src/2
-    H_decenter[1, -1] = m_src/2
-
-    H = np.dot(H_decenter, np.dot(H_rot, H_center))
-
-    #
-    # Calculate a rotated grid by applying the rotation.
-    #
-    H_forward = _onewayRotationTransform(H, dst_shape, src_shape)
-    H_backward = _onewayRotationTransform(np.linalg.inv(H), src_shape, dst_shape)
-
-    return H_forward, H_backward, dst_shape
-
-
-@memoized
-def calcIntegralTransformMatrix(src_shape, axis=0):
+class integralTransform(baseTransform):
     """Calculate a (sparse) matrix representation of integration (cumsum) transform.
     params:
         src_shape - Shape of the matrix to be transformed
@@ -279,17 +286,23 @@ def calcIntegralTransformMatrix(src_shape, axis=0):
         H - Sparse matrix representing the integration transforms.
             The transform is applied by multiplying the matrix by the
             1D column wise stacking of the function.
-    """
+"""
 
-    import numpy as np
-    import scipy.sparse as sps
+    def __init__(self, X, Y, axis=0):
+        
+        import numpy as np
+        import scipy.sparse as sps
 
-    m, n = src_shape
+        super(integralTransform, self).__init__(X, Y)
+        
+        m, n = X.shape
 
-    if axis == 0:
-        H = sps.spdiags(np.ones((m, m*n)), -n*np.arange(m), m*n, m*n)
-    else:
-        A = sps.csr_matrix(np.tril(np.ones((n, n))))
-        H = sps.kron(sps.eye(m, m), A)
+        if axis == 0:
+            dy = np.abs(Y[1, 0] - Y[0, 0])
+            self.H = sps.spdiags(np.ones((m, m*n))*dy, -n*np.arange(m), m*n, m*n)
+        else:
+            dx = np.abs(X[0, 1] - X[0, 0])
+            A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
+            self.H = sps.kron(sps.eye(m, m), A)
 
-    return H
+

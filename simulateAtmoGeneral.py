@@ -21,7 +21,7 @@ SKY_PARAMS = {
     'height': 50,
     'dxh': 1,
     'camera_center': (80, 2),
-    'sun_angle': 0,
+    'sun_angle': 70/180*math.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
@@ -29,165 +29,50 @@ SKY_PARAMS = {
 VISIBILITY = 1
 
 
-
-def polarCoords(X, Y, center):
-    """Convert cartesian coords to polar coords around some center"""
-    
-    PHI = numpy.arctan2(Y-center[1], X-center[0])
-    R = numpy.sqrt((X-center[0])**2 + (Y-center[1])**2)
-
-    return R, PHI
-
-
-def polarTransform(
-        values,
-        values_R,
-        values_PHI,
-        radius_res=None,
-        angle_res=None,
-        interp_method='linear'
-        ):
-    """Cartesian to polar transform"""
-
-    if radius_res == None:
-        radius_res = angle_res = max(*values.shape)
-        
-    values_points = numpy.vstack((values_R.flatten(), values_PHI.flatten())).T
-    
-    max_R = numpy.max(values_R)
-    
-    angle_range = \
-        numpy.linspace(0, numpy.pi, angle_res+1)[:-1]
-    radius_range = numpy.linspace(0, max_R, radius_res+1)[2:]
-    
-    grid_PHI, grid_R = numpy.meshgrid(angle_range, radius_range)
-    
-    polar_values = \
-        scipy.interpolate.griddata(
-            values_points,
-            values.flatten(),
-            (grid_R, grid_PHI),
-            method=interp_method,
-            fill_value=0
-            )
-    polar_values[polar_values<0] = 0
-    
-    return polar_values, grid_R, grid_PHI
-
-
-def rotationTransform(
-        values,
-        angle,
-        fit_image=True,
-        final_size=None
-        ):
-    """Transform by rotation"""
-
-    import skimage.transform
-    
-    if numpy.isscalar(angle):
-        H = numpy.array(
-            [[math.cos(angle), -math.sin(angle), 0],
-             [math.sin(angle), math.cos(angle), 0],
-             [0, 0, 1]]
-            )
-    else:
-        H = angle
-
-    x0 = y0 = 0
-    y1, x1 = values.shape
-    
-    if fit_image:
-        coords = numpy.hstack((
-            numpy.dot(H, numpy.array([[0], [0], [1]])),
-            numpy.dot(H, numpy.array([[0], [y1], [1]])),
-            numpy.dot(H, numpy.array([[x1], [0], [1]])),
-            numpy.dot(H, numpy.array([[x1], [y1], [1]]))
-            ))
-        x0, y0, dump = numpy.floor(numpy.min(coords, axis=1)).astype(numpy.int)
-        x1, y1, dump = numpy.ceil(numpy.max(coords, axis=1)).astype(numpy.int)
-
-    H[0, -1] = -x0
-    H[1, -1] = -y0
-
-    values = skimage.transform.fast_homography(
-        values,
-        H,
-        output_shape=(y1-y0, x1-x0)
-        )
-
-    if final_size != None:
-        x0 = int((values.shape[1]-final_size[1])/2)
-        y0 = int((values.shape[0]-final_size[0])/2)
-        values = values[y0:y0+final_size[0], x0:x0+final_size[1]]
-        
-    return values
-
-
-def calcOpticalDistances(ATMO, sun_angle, R, PHI, dXY):
-    #
-    # Calculate the effect of the path up to the pixel
-    #
-    ATMO_rotated = rotationTransform(ATMO, sun_angle)
-    temp1 = numpy.cumsum(ATMO_rotated, axis=0)*dXY/math.cos(sun_angle)
-    ATMO_to = rotationTransform(temp1, -sun_angle, final_size=ATMO.shape)
-    ATMO_to_polar = polarTransform(ATMO_to, R, PHI)[0]
-
-    #
-    # Calculate the effect of the path from the pixel
-    #
-    ATMO_polar, grid_R = polarTransform(ATMO, R, PHI)[:2]
-    dR = abs(grid_R[1, 0] - grid_R[0, 0])
-    ATMO_from_polar = numpy.cumsum(ATMO_polar, axis=0)*dR
-
-    return ATMO_polar, ATMO_to_polar, ATMO_from_polar
-
-
-def calcOpticalDistancesMatrix(ATMO, sun_angle, Hpol, polar_shape, dXY, dR):
+def calcOpticalDistancesMatrix(X, Y, ATMO, sun_angle, Hpol):
 
     #
     # Prepare transformation matrices
     #
     src_shape = ATMO.shape
-    Hrot_forward, Hrot_backward, dst_shape = \
-      atmo_utils.calcRotationTransformMatrix(src_shape, angle=sun_angle)
-
-    Hint1 = atmo_utils.calcIntegralTransformMatrix(dst_shape, axis=0)
-    Hint2 = atmo_utils.calcIntegralTransformMatrix(polar_shape, axis=0)
+    Hrot_forward = atmo_utils.rotationTransform(X, Y, angle=sun_angle)
+    Hrot_backward = \
+      atmo_utils.rotationTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst, -sun_angle, X, Y)
+    
+    Hint1 = atmo_utils.integralTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst)
+    Hint2 = atmo_utils.integralTransform(Hpol.X_dst, Hpol.Y_dst)
 
     #
     # Apply transform matrices to calculate the path up to the
     # pixel
     #
-    ATMO_rotated = atmo_utils.applyTransformMatrix(Hrot_forward, ATMO, dst_shape)
-    temp1 = atmo_utils.applyTransformMatrix(Hint1, ATMO_rotated)*dXY/math.cos(sun_angle)
-    ATMO_to = atmo_utils.applyTransformMatrix(Hrot_backward, temp1, src_shape)
-    ATMO_to_polar = atmo_utils.applyTransformMatrix(Hpol, ATMO_to, polar_shape)
-    
+    ATMO_rotated = Hrot_forward(ATMO)
+    temp1 = Hint1(ATMO_rotated)
+    ATMO_to = Hrot_backward(temp1)
+    ATMO_to_polar = Hpol(ATMO_to)
+
     #
     # Apply transform matrices to calculate the path from the
     # pixel
     #
-    ATMO_polar = atmo_utils.applyTransformMatrix(Hpol, ATMO, polar_shape)
-    ATMO_from_polar = atmo_utils.applyTransformMatrix(Hint2, ATMO_polar)*dR
+    ATMO_polar = Hpol(ATMO)
+    ATMO_from_polar = Hint2(ATMO_polar)
+    
+    plt.figure()
+    plt.subplot(321)
+    plt.imshow(ATMO_rotated, interpolation='nearest', cmap='gray')
+    plt.subplot(322)
+    plt.imshow(temp1, interpolation='nearest', cmap='gray')
+    plt.subplot(323)
+    plt.imshow(ATMO_to, interpolation='nearest', cmap='gray')
+    plt.subplot(324)
+    plt.imshow(ATMO_to_polar, interpolation='nearest', cmap='gray')
+    plt.subplot(325)
+    plt.imshow(ATMO_polar, interpolation='nearest', cmap='gray')
+    plt.subplot(326)
+    plt.imshow(ATMO_from_polar, interpolation='nearest', cmap='gray')
     
     return ATMO_polar, ATMO_to_polar, ATMO_from_polar
-
-    
-    # #
-    # # Calculate the effect of the path up to the pixel
-    # #
-    # ATMO_rotated = rotationTransform(ATMO, sun_angle)
-    # temp1 = numpy.cumsum(ATMO_rotated, axis=0)*dXY/math.cos(sun_angle)
-    # ATMO_to = rotationTransform(temp1, -sun_angle, final_size=ATMO.shape)
-    # ATMO_to_polar = polarTransform(ATMO_to, R, PHI)[0]
-
-    # #
-    # # Calculate the effect of the path from the pixel
-    # #
-    # ATMO_polar, grid_R = polarTransform(ATMO, R, PHI)[:2]
-    # dR = abs(grid_R[1, 0] - grid_R[0, 0])
-    # ATMO_from_polar = numpy.cumsum(ATMO_polar, axis=0)*dR
 
 
 def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
@@ -199,8 +84,6 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         numpy.arange(0, sky_params['width'], sky_params['dxh']),
         numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
         )
-
-    #R, PHI = polarCoords(X, H, center=sky_params['camera_center'])
 
     #
     # Create the distributions of air and aerosols
@@ -226,9 +109,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask[:, :4] = 0
     mask[:, -4:] = 0
 
-    Hpol, grid_R, grid_PHI = \
-      atmo_utils.calcPolarTransformMatrix(X, H, sky_params['camera_center'])
-    mask_polar = atmo_utils.applyTransformMatrix(Hpol, mask, grid_R.shape)
+    Hpol = atmo_utils.polarTransform(X, H, sky_params['camera_center'])
+    mask_polar = Hpol(mask)
     
     ATMO_aerosols *= mask
     ATMO_air *= mask
@@ -236,31 +118,27 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Calculate the distances
     #
-    dR = abs(grid_R[1, 0] - grid_R[0, 0])
-    polar_shape = grid_R.shape
-        
     ATMO_aerosols_polar, ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
         calcOpticalDistancesMatrix(
+            X,
+            H,
             ATMO_aerosols,
             sky_params['sun_angle'],
-            Hpol,
-            polar_shape,
-            sky_params['dxh'],
-            dR
+            Hpol
             )
     ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
         calcOpticalDistancesMatrix(
+            X,
+            H,
             ATMO_air,
             sky_params['sun_angle'],
-            Hpol,
-            polar_shape,
-            sky_params['dxh'],
-            dR
+            Hpol
             )
     
     #
     # Calculate scattering angle
     #
+    grid_PHI = Hpol.X_dst
     scatter_angle = sky_params['sun_angle'] + grid_PHI + numpy.pi/2
 
     #
