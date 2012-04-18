@@ -55,6 +55,7 @@ def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
     params:
         X_indices, Y_indices - 2D arrays containing the indices (as floats)
             from where transformation should sample values.
+        src_shape - Shape of the source matrix.
     return:
         H - Sparse matrix representing the transform.
 """
@@ -148,17 +149,11 @@ class baseTransform(object):
 
 
 class polarTransform(baseTransform):
-    """Calculate a (sparse) matrix representation of cartesian to polar
-transform.
+    """(sparse) matrix representation of cartesian to polar transform.
     params:
-        X, Y - Are either 1D, 2D arrays that define the cartesian coordinates
+        X, Y - 2D arrays that define the cartesian coordinates
         center - Center (in cartesian coords) of the polar coordinates.
         radius_res, angle_res - Resolution of polar coordinates.
-    return:
-        H - Sparse matrix representing the cartesian-polar transform.
-            The transform is applied by multiplying the matrix by the
-            1D column wise stacking of the function.
-        R, T - Polar coordinates.
  """
 
     def __init__(self, X, Y, center, radius_res=None, angle_res=None):
@@ -195,20 +190,16 @@ transform.
 
 
 class rotationTransform(baseTransform):
-    """Calculate a (sparse) matrix representation of rotation transform.
+    """(sparse) matrix representation of rotation transform.
     params:
-        src_shape - Shape of the matrix to be transformed
+        X, Y - 2D arrays that define the cartesian coordinates
         angle - Angle of rotation [radians].
         dst_shape - Shape of the destination matrix (after rotation). Defaults
              to the shape of the full matrix after rotation (no cropping).
-    return:
-        H_forward, H_backward - Sparse matrix representing the rotation transforms.
-            The transform is applied by multiplying the matrix by the
-            1D column wise stacking of the function.
-        dst_shape - Shape of the destination matrix (after rotation).
+        T, R - grid in the polar coordinates (optional, calculated if not given). 
 """
 
-    def __init__(self, X, Y, angle, R=None, T=None):
+    def __init__(self, X, Y, angle, T=None, R=None):
         
         dy = Y[1, 0] - Y[0, 0]
         dx = X[0, 1] - X[0, 0]
@@ -223,7 +214,7 @@ class rotationTransform(baseTransform):
 
         m_src, n_src = X.shape
 
-        if R == None:
+        if T == None:
             coords = np.hstack((
                 np.dot(H_rot, np.array([[0], [0], [1]])),
                 np.dot(H_rot, np.array([[0], [m_src], [1]])),
@@ -280,12 +271,9 @@ class rotationTransform(baseTransform):
 class integralTransform(baseTransform):
     """Calculate a (sparse) matrix representation of integration (cumsum) transform.
     params:
-        src_shape - Shape of the matrix to be transformed
+        X, Y - 2D arrays that define the cartesian coordinates
         axis - axis along which the integration is preformed
-    return:
-        H - Sparse matrix representing the integration transforms.
-            The transform is applied by multiplying the matrix by the
-            1D column wise stacking of the function.
+        direction - 1: integrate up the indices, -1: integrate down the indices.
 """
 
     def __init__(self, X, Y, axis=0, direction=1):
