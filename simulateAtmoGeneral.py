@@ -21,12 +21,12 @@ SKY_PARAMS = {
     'height': 50,
     'dxh': 1,
     'camera_center': (80, 2),
-    'sun_angle': 70/180*math.pi,
+    'sun_angle': -45/180*math.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
 
-VISIBILITY = 1
+VISIBILITY = 10
 
 
 def calcOpticalDistancesMatrix(X, Y, ATMO, sun_angle, Hpol):
@@ -40,7 +40,7 @@ def calcOpticalDistancesMatrix(X, Y, ATMO, sun_angle, Hpol):
       atmo_utils.rotationTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst, -sun_angle, X, Y)
     
     Hint1 = atmo_utils.integralTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst)
-    Hint2 = atmo_utils.integralTransform(Hpol.X_dst, Hpol.Y_dst)
+    Hint2 = atmo_utils.integralTransform(Hpol.X_dst, Hpol.Y_dst, direction=-1)
 
     #
     # Apply transform matrices to calculate the path up to the
@@ -57,20 +57,6 @@ def calcOpticalDistancesMatrix(X, Y, ATMO, sun_angle, Hpol):
     #
     ATMO_polar = Hpol(ATMO)
     ATMO_from_polar = Hint2(ATMO_polar)
-    
-    plt.figure()
-    plt.subplot(321)
-    plt.imshow(ATMO_rotated, interpolation='nearest', cmap='gray')
-    plt.subplot(322)
-    plt.imshow(temp1, interpolation='nearest', cmap='gray')
-    plt.subplot(323)
-    plt.imshow(ATMO_to, interpolation='nearest', cmap='gray')
-    plt.subplot(324)
-    plt.imshow(ATMO_to_polar, interpolation='nearest', cmap='gray')
-    plt.subplot(325)
-    plt.imshow(ATMO_polar, interpolation='nearest', cmap='gray')
-    plt.subplot(326)
-    plt.imshow(ATMO_from_polar, interpolation='nearest', cmap='gray')
     
     return ATMO_polar, ATMO_to_polar, ATMO_from_polar
 

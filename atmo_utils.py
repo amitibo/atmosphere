@@ -213,7 +213,7 @@ class rotationTransform(baseTransform):
         dy = Y[1, 0] - Y[0, 0]
         dx = X[0, 1] - X[0, 0]
 
-        assert(abs(dx) == abs(dy), "Currently not supporting non-isotropic grids")
+        assert abs(dx) == abs(dy), "Currently not supporting non-isotropic grids (dx=%g, dy=%g)" % (dx, dy)
         
         H_rot = np.array(
             [[np.cos(angle), -np.sin(angle), 0],
@@ -288,7 +288,7 @@ class integralTransform(baseTransform):
             1D column wise stacking of the function.
 """
 
-    def __init__(self, X, Y, axis=0):
+    def __init__(self, X, Y, axis=0, direction=1):
         
         import numpy as np
         import scipy.sparse as sps
@@ -299,10 +299,17 @@ class integralTransform(baseTransform):
 
         if axis == 0:
             dy = np.abs(Y[1, 0] - Y[0, 0])
-            self.H = sps.spdiags(np.ones((m, m*n))*dy, -n*np.arange(m), m*n, m*n)
+            if direction == 1:
+                self.H = sps.spdiags(np.ones((m, m*n))*dy, -n*np.arange(m), m*n, m*n)
+            else:
+                self.H = sps.spdiags(np.ones((m, m*n))*dy, n*np.arange(m), m*n, m*n)                
         else:
             dx = np.abs(X[0, 1] - X[0, 0])
-            A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
+            if direction == 1:
+                A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
+            else:
+                A = sps.csr_matrix(np.triu(np.ones((n, n))*dx))
+                
             self.H = sps.kron(sps.eye(m, m), A)
 
 
