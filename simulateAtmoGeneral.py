@@ -227,6 +227,105 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     return img
     
     
+def calcRadianceGradient(aerosol_params, sky_params, results_path='', plot_results=False):
+
+    #
+    # Create the sky
+    #
+    X, H = numpy.meshgrid(
+        numpy.arange(0, sky_params['width'], sky_params['dxh']),
+        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
+        )
+
+    #
+    # Create the distributions of air and aerosols
+    #
+    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
+
+    ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
+
+    #
+    # Calculate a mask over the atmosphere
+    # Note:
+    # The mask is used to maskout in the polar axis,
+    # pixels that are not in the cartesian axis.
+    # I set the boundary rows and columns to 0 so that when converting
+    # from cartisian to polar coords the interpolation will not 'create'
+    # atmosphere above the sky.
+    #
+    mask = numpy.ones(X.shape)
+    mask[:4, :] = 0
+    mask[:, :4] = 0
+    mask[:, -4:] = 0
+
+    Hpol = atmo_utils.polarTransform(X, H, sky_params['camera_center'])
+    mask_polar = Hpol(mask)
+    
+    ATMO_aerosols *= mask
+    ATMO_air *= mask
+    
+    #
+    # Calculate the distances
+    #
+    ATMO_aerosols_polar, ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            ATMO_aerosols,
+            sky_params['sun_angle'],
+            Hpol
+            )
+    ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            ATMO_air,
+            sky_params['sun_angle'],
+            Hpol
+            )
+    
+    #
+    # Calculate scattering angle
+    #
+    grid_PHI = Hpol.X_dst
+    scatter_angle = sky_params['sun_angle'] + grid_PHI + numpy.pi/2
+
+    #
+    # Calculate scattering for each channel (in case of the railey scattering)
+    #
+    img = []
+    for L_sun, lambda_, k, w, g in zip(
+            sky_params["L_SUN_RGB"],
+            sky_params["RGB_WAVELENGTH"],
+            aerosol_params["k_RGB"],
+            aerosol_params["w_RGB"],
+            aerosol_params["g_RGB"]
+            ):
+        #
+        # Calculate scattering and extiniction for air (wave length dependent)
+        #
+        extinction_aerosol = k / aerosol_params["visibility"]
+        scatter_aerosol = extinction_aerosol * calcHG(scatter_angle, g) * ATMO_aerosols_polar * w
+        
+        extinction_air = 1.09e-3 * lambda_**-4.05
+        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * ATMO_air_polar
+        
+        #
+        # Calculate the radiance
+        #
+        temp = extinction_aerosol*(ATMO_aerosols_to_polar + ATMO_aerosols_from_polar) + \
+          extinction_air*(ATMO_air_to_polar + ATMO_air_from_polar)
+        radiance = (scatter_aerosol + scatter_air) * numpy.exp(-temp) * mask_polar
+
+        #
+        # Calculate projection on camera
+        #
+        img.append(L_sun * numpy.sum(radiance, axis=0))
+
+    return img
+    
+    
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 

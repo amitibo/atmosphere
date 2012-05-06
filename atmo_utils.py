@@ -165,11 +165,27 @@ class baseTransform(object):
     def __mul__(self, other):
         """Overload the mul operator"""
 
-        res = self.__call__(other)
+        if np.isscalar(other):
+            res = copy.deepcopy(self)
+            res.H = other*res.H
+        else:
+            res = self.__call__(other)
+            
+        return res
+
+    def __rmul__(self, other):
+        """Overload the mul operator"""
+
+        if np.isscalar(other):
+            res = copy.deepcopy(self)
+            res.H = other*res.H
+        else:
+            raise NotImplementedError
+            
         return res
 
     def __getattr__(self, attr):
-        elif attr == 'T':
+        if attr == 'T':
             return self.transpose()
         else:
             raise AttributeError(attr + " not found")
