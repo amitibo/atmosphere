@@ -29,6 +29,8 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 from __future__ import division
 from amitibo import memoized
 import numpy as np
+import copy
+
 
 #
 # Some globals
@@ -147,7 +149,47 @@ class baseTransform(object):
         Z = (self.H * X.ravel().reshape((-1, 1))).reshape(*self.X_dst.shape)
         return Z
 
+    def __add__(self, other):
+        """Overload the add operator"""
 
+        res = copy.deepcopy(self)
+        res.H = res.H + other.H
+        return res
+
+    def __iadd__(self, other):
+        """Overload the iadd operator"""
+
+        self.H = self.H + other.H
+        return self
+    
+    def __mul__(self, other):
+        """Overload the mul operator"""
+
+        res = self.__call__(other)
+        return res
+
+    def __getattr__(self, attr):
+        elif attr == 'T':
+            return self.transpose()
+        else:
+            raise AttributeError(attr + " not found")
+
+    def transpose(self):
+        """Transpose operator"""
+
+        res = copy.deepcopy(self)
+        
+        res.H = res.H.T
+        X_src = res.X_src
+        Y_src = res.Y_src
+        res.X_src = res.X_dst
+        res.Y_src = res.Y_dst
+        res.X_dst = X_src
+        res.Y_dst = Y_src
+        
+        return res
+
+        
 class polarTransform(baseTransform):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -228,9 +270,8 @@ class rotationTransform(baseTransform):
             
             T, R = np.meshgrid(np.arange(x1-x0), np.arange(y1-y0))
             
-            ratio = R.shape[0] / m_src
-            R = R * ratio * dy
-            T = T * ratio * dx
+            R = R * dy
+            T = T * dx
             
         m_dst, n_dst = R.shape
         
