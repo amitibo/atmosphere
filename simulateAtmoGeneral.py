@@ -29,35 +29,36 @@ SKY_PARAMS = {
 VISIBILITY = 10
 
 
-def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, Hpol):
+def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, Hpol, T, R):
 
+    ATMO_ = ATMO.reshape((-1, 1))
+    
     #
     # Prepare transformation matrices
     #
-    Hrot_forward = atmo_utils.rotationTransform(X, Y, angle=sun_angle)
-    Hrot_backward = \
-      atmo_utils.rotationTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst, -sun_angle, X, Y)
+    Hrot_forward, X_dst, Y_dst = atmo_utils.rotationTransformMatrix(X, Y, angle=sun_angle)
+    Hrot_backward = atmo_utils.rotationTransformMatrix(X_dst, Y_dst, -sun_angle, X, Y)[0]
     
-    Hint1 = atmo_utils.cumsumTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst)
-    Hint2 = atmo_utils.cumsumTransform(Hpol.X_dst, Hpol.Y_dst, direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix(X_dst, Y_dst)
+    Hint2 = atmo_utils.cumsumTransformMatrix(T, R, direction=-1)
 
     #
     # Apply transform matrices to calculate the path up to the
     # pixel
     #
-    ATMO_rotated = Hrot_forward(ATMO)
-    temp1 = Hint1(ATMO_rotated)
-    ATMO_to = Hrot_backward(temp1)
-    ATMO_to_polar = Hpol(ATMO_to)
+    ATMO_rotated = Hrot_forward * ATMO_
+    temp1 = Hint1 * ATMO_rotated
+    ATMO_to = Hrot_backward * temp1
+    ATMO_to_polar = Hpol * ATMO_to
 
     #
     # Apply transform matrices to calculate the path from the
     # pixel
     #
-    ATMO_polar = Hpol(ATMO)
-    ATMO_from_polar = Hint2(ATMO_polar)
+    ATMO_polar = Hpol * ATMO_
+    ATMO_from_polar = Hint2 * ATMO_polar
     
-    return ATMO_polar, ATMO_to_polar, ATMO_from_polar
+    return ATMO_polar.reshape(T.shape), ATMO_to_polar.reshape(T.shape), ATMO_from_polar.reshape(T.shape)
 
 
 def calcOpticalDistancesMatrix(X, Y, sun_angle, Hpol):
@@ -112,8 +113,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask[:, :4] = 0
     mask[:, -4:] = 0
 
-    Hpol = atmo_utils.polarTransform(X, H, sky_params['camera_center'])
-    mask_polar = Hpol(mask)
+    Hpol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
+    mask_polar = (Hpol * mask.reshape((-1, 1))).reshape(T.shape)
     
     ATMO_aerosols *= mask
     ATMO_air *= mask
@@ -127,7 +128,9 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
             H,
             ATMO_aerosols,
             sky_params['sun_angle'],
-            Hpol
+            Hpol,
+            T,
+            R
             )
     ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
         calcOpticalDistancesTransform(
@@ -135,14 +138,15 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
             H,
             ATMO_air,
             sky_params['sun_angle'],
-            Hpol
+            Hpol,
+            T,
+            R
             )
     
     #
     # Calculate scattering angle
     #
-    grid_PHI = Hpol.X_dst
-    scatter_angle = sky_params['sun_angle'] + grid_PHI + numpy.pi/2
+    scatter_angle = sky_params['sun_angle'] + T + numpy.pi/2
 
     #
     # Calculate scattering for each channel (in case of the railey scattering)

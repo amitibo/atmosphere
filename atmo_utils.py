@@ -29,7 +29,6 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 from __future__ import division
 from amitibo import memoized
 import numpy as np
-import copy
 
 
 #
@@ -57,7 +56,7 @@ def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
     params:
         X_indices, Y_indices - 2D arrays containing the indices (as floats)
             from where transformation should sample values.
-        src_shape - Shape of the source matrix.
+        src_shape - Shape of the source matrix (defaults to the destination shape)
     return:
         H - Sparse matrix representing the transform.
 """
@@ -129,132 +128,8 @@ def coords2indices(X_grid, Y_grid, X_pts, Y_pts):
     return X_indices, Y_indices
 
 
-class baseTransform(object):
-    """The base class from which all transform class inherit"""
-
-    def __init__(self, X_src, Y_src, X_dst=None, Y_dst=None):
-
-        if X_dst == None:
-            X_dst = X_src
-            Y_dst = Y_src
-            
-        self.X_src = X_src
-        self.Y_src = Y_src
-        self.X_dst = X_dst
-        self.Y_dst = Y_dst
-
-    def __call__(self, X):
-        """Apply the transform"""
-
-        import scipy.sparse as sps
-
-        if sps.isspmatrix_dia(X):
-            #
-            # Assume that this is part of elementwise multiplication.
-            #
-            Z = self.H * X
-        else:
-            #
-            # Assume as an application of the transform on a matrix.
-            #
-            if X.shape == self.X_src.shape:
-                Z = (self.H * X.ravel().reshape((-1, 1))).reshape(*self.X_dst.shape)
-            else:
-                Z = self.H * X
-            
-        return Z
-
-    def __neg__(self):
-        """Overload the - operator"""
-
-        res = copy.deepcopy(self)
-        res.H = -res.H
-        return res
-
-    def __add__(self, other):
-        """Overload the add operator"""
-
-        res = copy.deepcopy(self)
-        res.H = res.H + other.H
-        return res
-
-    def __iadd__(self, other):
-        """Overload the iadd operator"""
-
-        self.H = self.H + other.H
-        return self
-    
-    def __mul__(self, other):
-        """Overload the mul operator"""
-
-        if np.isscalar(other):
-            res = copy.deepcopy(self)
-            res.H = other * res.H
-        elif isinstance(other, baseTransform):
-            res = copy.deepcopy(self)
-            res.H = res.H * other.H
-            res.X_src = other.X_src
-            res.Y_src = other.Y_src
-        else:
-            res = self.__call__(other)
-            
-        return res
-
-    def __rmul__(self, other):
-        """Overload the mul operator"""
-
-        if np.isscalar(other):
-            res = copy.deepcopy(self)
-            res.H = other*res.H
-        elif sps.isspmatrix_dia(X):
-            res = self.__call__(other)
-        else:
-            raise NotImplementedError
-            
-        return res
-
-    def __getattr__(self, attr):
-        if attr == 'T':
-            return self.transpose()
-        elif attr == 'shape':
-            return self.H.shape
-        elif attr == 'size':
-            return self.H.size
-        else:
-            raise AttributeError(attr + " not found")
-
-    def transpose(self):
-        """Transpose operator"""
-
-        res = copy.deepcopy(self)
-        
-        res.H = res.H.T
-        X_src = res.X_src
-        Y_src = res.Y_src
-        res.X_src = res.X_dst
-        res.Y_src = res.Y_dst
-        res.X_dst = X_src
-        res.Y_dst = Y_src
-        
-        return res
-
-
-def hstack(tmat1, tmat2):
-    """Concatenate two transform matrices horizontally"""
-
-    tmat = baseTransform(
-        np.vstack((tmat1.X_src, tmat2.X_src)),
-        np.vstack((tmat1.Y_src, tmat2.Y_src)),
-        np.vstack((tmat1.X_dst, tmat2.X_dst)),
-        np.vstack((tmat1.Y_dst, tmat2.Y_dst))
-        )
-
-    tmat.H = sps.hstack((tmat1.H, tmat2.H))
-    
-    return tmat
-
-
-class polarTransform(baseTransform):
+@memoized
+def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -262,177 +137,173 @@ class polarTransform(baseTransform):
         radius_res, angle_res - Resolution of polar coordinates.
  """
 
-    def __init__(self, X, Y, center, radius_res=None, angle_res=None):
-        import numpy as np
+    import numpy as np
 
-        if X.ndim == 1:
-            X, Y = np.meshgrid(X, Y)
+    if X.ndim == 1:
+        X, Y = np.meshgrid(X, Y)
 
-        if radius_res == None:
-            radius_res = max(*X.shape)
+    if radius_res == None:
+        radius_res = max(*X.shape)
 
-        if angle_res == None:
-            angle_res = radius_res
+    if angle_res == None:
+        angle_res = radius_res
 
-        #
-        # Create the polar grid over which the target matrix (H) will sample.
-        #
-        max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
-        T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
+    #
+    # Create the polar grid over which the target matrix (H) will sample.
+    #
+    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2))
+    T, R = np.meshgrid(np.linspace(0, np.pi, angle_res), np.linspace(0, max_R, radius_res))
 
-        super(polarTransform, self).__init__(X, Y, T, R)
+    #
+    # Calculate the indices of the polar grid in the Cartesian grid.
+    #
+    X_ = R * np.cos(T) + center[0]
+    Y_ = R * np.sin(T) + center[1]
+    X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
 
-        #
-        # Calculate the indices of the polar grid in the Cartesian grid.
-        #
-        X_ = R * np.cos(T) + center[0]
-        Y_ = R * np.sin(T) + center[1]
-        X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
+    #
+    # Calculate the transform
+    #
+    H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
 
-        #
-        # Calculate the transform
-        #
-        self.H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
+    return H, T, R
 
 
-class rotationTransform(baseTransform):
+@memoized
+def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
     """(sparse) matrix representation of rotation transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
         angle - Angle of rotation [radians].
         dst_shape - Shape of the destination matrix (after rotation). Defaults
              to the shape of the full matrix after rotation (no cropping).
-        T, R - grid in the polar coordinates (optional, calculated if not given). 
+        X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
 """
 
-    def __init__(self, X, Y, angle, T=None, R=None):
-        
-        dy = Y[1, 0] - Y[0, 0]
-        dx = X[0, 1] - X[0, 0]
+    dy = Y[1, 0] - Y[0, 0]
+    dx = X[0, 1] - X[0, 0]
 
-        assert abs(dx) == abs(dy), "Currently not supporting non-isotropic grids (dx=%g, dy=%g)" % (dx, dy)
-        
-        H_rot = np.array(
-            [[np.cos(angle), -np.sin(angle), 0],
-             [np.sin(angle), np.cos(angle), 0],
-             [0, 0, 1]]
-            )
+    assert abs(dx) == abs(dy), "Currently not supporting non-isotropic grids (dx=%g, dy=%g)" % (dx, dy)
 
-        m_src, n_src = X.shape
+    H_rot = np.array(
+        [[np.cos(angle), -np.sin(angle), 0],
+         [np.sin(angle), np.cos(angle), 0],
+         [0, 0, 1]]
+        )
 
-        if T == None:
-            coords = np.hstack((
-                np.dot(H_rot, np.array([[0], [0], [1]])),
-                np.dot(H_rot, np.array([[0], [m_src], [1]])),
-                np.dot(H_rot, np.array([[n_src], [0], [1]])),
-                np.dot(H_rot, np.array([[n_src], [m_src], [1]]))
-                ))
+    m_src, n_src = X.shape
 
-            x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
-            x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
-            dst_shape = (y1-y0, x1-x0)
-            
-            T, R = np.meshgrid(np.arange(x1-x0), np.arange(y1-y0))
-            
-            R = R * dy
-            T = T * dx
-            
-        m_dst, n_dst = R.shape
-        
-        super(rotationTransform, self).__init__(X, Y, T, R)
-        
-        #
-        # Calculate the rotation matrix.
-        # Note:
-        # The rotation is applied at the center, therefore
-        # the coordinates are first centered, rotated and decentered.
-        # For simplicity we calculate the rotation on 'integer' grid and
-        # not on the original grid. This is why we don't support when
-        # dx != dy.
-        #
-        H_center = np.eye(3)
-        H_center[0, -1] = -n_dst/2
-        H_center[1, -1] = -m_dst/2
+    if X_rot == None:
+        coords = np.hstack((
+            np.dot(H_rot, np.array([[0], [0], [1]])),
+            np.dot(H_rot, np.array([[0], [m_src], [1]])),
+            np.dot(H_rot, np.array([[n_src], [0], [1]])),
+            np.dot(H_rot, np.array([[n_src], [m_src], [1]]))
+            ))
 
-        H_decenter = np.eye(3)
-        H_decenter[0, -1] = n_src/2
-        H_decenter[1, -1] = m_src/2
+        x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
+        x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
+        dst_shape = (y1-y0, x1-x0)
 
-        H = np.dot(H_decenter, np.dot(H_rot, H_center))
+        X_rot, Y_rot = np.meshgrid(np.arange(x1-x0) * dx, np.arange(y1-y0) * dy)
 
-        #
-        # Calculate a rotated grid by applying the rotation.
-        #
-        T_unscaled, R_unscaled = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
-        TR = np.vstack((T_unscaled.ravel(), R_unscaled.ravel(), np.ones(T_unscaled.size)))
-        TR_ = np.dot(H, TR)
+    m_dst, n_dst = X_rot.shape
 
-        T_indices = TR_[0, :].reshape(T_unscaled.shape)
-        R_indices = TR_[1, :].reshape(T_unscaled.shape)
+    #
+    # Calculate the rotation matrix.
+    # Note:
+    # The rotation is applied at the center, therefore
+    # the coordinates are first centered, rotated and decentered.
+    # For simplicity we calculate the rotation on 'integer' grid and
+    # not on the original grid. This is why we don't support when
+    # dx != dy.
+    #
+    H_center = np.eye(3)
+    H_center[0, -1] = -n_dst/2
+    H_center[1, -1] = -m_dst/2
 
-        self.H = calcTransformMatrix(T_indices, R_indices, src_shape=X.shape)
+    H_decenter = np.eye(3)
+    H_decenter[0, -1] = n_src/2
+    H_decenter[1, -1] = m_src/2
+
+    H = np.dot(H_decenter, np.dot(H_rot, H_center))
+
+    #
+    # Calculate a rotated grid by applying the rotation.
+    #
+    X_unscaled, Y_unscaled = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
+    XY = np.vstack((X_unscaled.ravel(), Y_unscaled.ravel(), np.ones(X_unscaled.size)))
+    XY_ = np.dot(H, XY)
+
+    X_indices = XY_[0, :].reshape(X_unscaled.shape)
+    Y_indices = XY_[1, :].reshape(X_unscaled.shape)
+
+    H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
+
+    return H, X_rot, Y_rot
 
     
-class cumsumTransform(baseTransform):
+@memoized
+def cumsumTransformMatrix(X, Y, axis=0, direction=1):
     """Calculate a (sparse) matrix representation of integration (cumsum) transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
         axis - axis along which the integration is preformed
         direction - 1: integrate up the indices, -1: integrate down the indices.
 """
-
-    def __init__(self, X, Y, axis=0, direction=1):
         
-        import numpy as np
-        import scipy.sparse as sps
+    import numpy as np
+    import scipy.sparse as sps
 
-        super(cumsumTransform, self).__init__(X, Y)
-        
-        m, n = X.shape
+    m, n = X.shape
 
-        if axis == 0:
-            dy = np.abs(Y[1, 0] - Y[0, 0])
-            if direction == 1:
-                self.H = sps.spdiags(np.ones((m, m*n))*dy, -n*np.arange(m), m*n, m*n)
-            else:
-                self.H = sps.spdiags(np.ones((m, m*n))*dy, n*np.arange(m), m*n, m*n)                
+    if axis == 0:
+        dy = (Y[1:, 0] - Y[:-1, 0]) * direction
+        dy = np.concatenate((dy, (dy[-1],)))
+        if direction == 1:
+            H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), -n*np.arange(m), m*n, m*n)
         else:
-            dx = np.abs(X[0, 1] - X[0, 0])
-            if direction == 1:
-                A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
-            else:
-                A = sps.csr_matrix(np.triu(np.ones((n, n))*dx))
-                
-            self.H = sps.kron(sps.eye(m, m), A)
+            H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), n*np.arange(m), m*n, m*n)                
+    else:
+        dx = (X[0, 1:] - X[0, :-1]) * direction
+        dx = np.concatenate((dx, (dx[-1],)))
+        if direction == 1:
+            A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
+        else:
+            A = sps.csr_matrix(np.triu(np.ones((n, n))*dx))
+
+        H = sps.kron(sps.eye(m, m), A)
+
+    return H
 
 
-class integralTransform(baseTransform):
+@memoized
+def integralTransformMatrix(X, Y, axis=0, direction=1):
     """Calculate a (sparse) matrix representation of integration transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
         axis - axis along which the integration is preformed
+        direction - 1: integrate up the indices, -1: integrate down the indices.
 """
 
-    def __init__(self, X, Y, axis=0):
+    import numpy as np
+    import scipy.sparse as sps
+
+    m, n = X.shape
+
+    if direction != 1:
+        direction == -1
         
-        import numpy as np
-        import scipy.sparse as sps
+    if axis == 0:
+        dy = (Y[1:, 0] - Y[:-1, 0]) * direction
+        dy = np.concatenate((dy, (dy[-1],)))
+        H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), n*np.arange(m), n, m*n)
+    else:
+        dx = (X[0, 1:] - X[0, :-1]) * direction
+        dx = np.concatenate((dx, (dx[-1],)))
+        H = sps.kron(np.eye(m), np.ones((1, n))*dx)
 
-        if axis == 0:
-            X_dst, Y_dst = np.meshgrid(X[0, :], np.arange(1))
-        else:
-            X_dst, Y_dst = np.meshgrid(np.arange(1), Y[:, 0])
-
-        super(integralTransform, self).__init__(X, Y, X_dst, Y_dst)
-        
-        m, n = X.shape
-
-        if axis == 0:
-            dy = np.abs(Y[1, 0] - Y[0, 0])
-            self.H = sps.spdiags(np.ones((m, m*n))*dy, n*np.arange(m), n, m*n)
-        else:
-            dx = np.abs(X[0, 1] - X[0, 0])
-            self.H = sps.kron(np.eye(m), np.ones((1, n))*dx)
+    return H
 
 
 def spdiag(X):
@@ -442,3 +313,72 @@ def spdiag(X):
     import scipy.sparse as sps
 
     return sps.dia_matrix((X.ravel(), 0), (X.size, X.size))
+
+
+if __name__ == '__main__':
+    #
+    # Test several of the above functions
+    #
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import scipy.misc as sm
+    import time
+
+    lena = sm.lena()
+    lena_ = lena.reshape((-1, 1))    
+    X, Y = np.meshgrid(np.arange(lena.shape[1]), np.arange(lena.shape[0]))
+
+    #
+    # Polar transform
+    #
+    t0 = time.time()
+    Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
+    t1 = time.time() - t0
+    lena_pol = Hpol * lena_
+    
+    plt.figure()
+    plt.imshow(lena_pol.reshape(lena.shape))
+
+    #
+    # Rotation transform
+    #
+    Hrot1, X_rot, Y_rot = rotationTransformMatrix(X, Y, angle=-np.pi/3)
+    Hrot2 = rotationTransformMatrix(X_rot, Y_rot, np.pi/3, X, Y)[0]
+    lena_rot1 = Hrot1 * lena_
+    lena_rot2 = Hrot2 * lena_rot1
+
+    plt.figure()
+    plt.subplot(121)
+    plt.imshow(lena_rot1.reshape(X_rot.shape))
+    plt.subplot(122)
+    plt.imshow(lena_rot2.reshape(lena.shape))
+
+    #
+    # Cumsum transform
+    #
+    Hcs1 = cumsumTransformMatrix(X, Y, axis=0, direction=1)
+    Hcs2 = cumsumTransformMatrix(X, Y, axis=1, direction=1)
+    Hcs3 = cumsumTransformMatrix(X, Y, axis=0, direction=-1)
+    Hcs4 = cumsumTransformMatrix(X, Y, axis=1, direction=-1)
+    lena_cs1 = Hcs1 * lena_
+    lena_cs2 = Hcs2 * lena_
+    lena_cs3 = Hcs3 * lena_
+    lena_cs4 = Hcs4 * lena_
+    
+    plt.figure()
+    plt.subplot(221)
+    plt.imshow(lena_cs1.reshape(lena.shape))
+    plt.subplot(222)
+    plt.imshow(lena_cs2.reshape(lena.shape))
+    plt.subplot(223)
+    plt.imshow(lena_cs3.reshape(lena.shape))
+    plt.subplot(224)
+    plt.imshow(lena_cs4.reshape(lena.shape))
+
+    plt.show()
+    
+    t0 = time.time()
+    Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
+    t2 = time.time() - t0
+
+    print 'first calculation: %g, memoized: %g' % (t1, t2)
