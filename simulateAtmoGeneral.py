@@ -29,7 +29,7 @@ SKY_PARAMS = {
 VISIBILITY = 10
 
 
-def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, Hpol, T, R):
+def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, H_pol, T, R):
 
     ATMO_ = ATMO.reshape((-1, 1))
     
@@ -49,19 +49,19 @@ def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, Hpol, T, R):
     ATMO_rotated = Hrot_forward * ATMO_
     temp1 = Hint1 * ATMO_rotated
     ATMO_to = Hrot_backward * temp1
-    ATMO_to_polar = Hpol * ATMO_to
+    ATMO_to_polar = H_pol * ATMO_to
 
     #
     # Apply transform matrices to calculate the path from the
     # pixel
     #
-    ATMO_polar = Hpol * ATMO_
+    ATMO_polar = H_pol * ATMO_
     ATMO_from_polar = Hint2 * ATMO_polar
     
     return ATMO_polar.reshape(T.shape), ATMO_to_polar.reshape(T.shape), ATMO_from_polar.reshape(T.shape)
 
 
-def calcOpticalDistancesMatrix(X, Y, sun_angle, Hpol, T, R):
+def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
 
     #
     # Prepare transformation matrices
@@ -72,8 +72,8 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, Hpol, T, R):
     Hint1 = atmo_utils.cumsumTransformMatrix(X_dst, Y_dst)
     Hint2 = atmo_utils.cumsumTransformMatrix(T, R, direction=-1)
 
-    temp1 = Hpol * Hrot_backward * Hint1 * Hrot_forward
-    temp2 = Hint2 * Hpol
+    temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
+    temp2 = Hint2 * H_pol
 
     return temp2 + temp1
 
@@ -256,6 +256,12 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
 def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
 
     #
+    # Rowwise representation of the atmosphere 
+    #
+    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
+    ATMO_air_ = ATMO_air.reshape((-1, 1))
+
+    #
     # Create the sky
     #
     X, H = numpy.meshgrid(
@@ -263,8 +269,29 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
         )
 
-    Hpol = atmo_utils.polarTransform(X, H, sky_params['camera_center'])
+    #
+    # Calculate a mask over the atmosphere
+    # Note:
+    # The mask is used to maskout in the polar axis,
+    # pixels that are not in the cartesian axis.
+    # I set the boundary rows and columns to 0 so that when converting
+    # from cartisian to polar coords the interpolation will not 'create'
+    # atmosphere above the sky.
+    #
+    mask = numpy.ones(X.shape)
+    mask[:4, :] = 0
+    mask[:, :4] = 0
+    mask[:, -4:] = 0
 
+    H_pol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
+    mask_polar_ = H_pol * mask.reshape((-1, 1))
+    
+    ATMO_aerosols *= mask
+    ATMO_air *= mask
+    
+    #
+    # Calculate the distances
+    #
     #
     # Calculate the distance matrices
     #
@@ -273,7 +300,9 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
             X,
             H,
             sky_params['sun_angle'],
-            Hpol
+            H_pol,
+            T,
+            R
             )
     
     H_air = \
@@ -281,17 +310,18 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
             X,
             H,
             sky_params['sun_angle'],
-            Hpol
+            H_pol,
+            T,
+            R
             )
 
-    H_int = atmo_utils.integralTransform(Hpol.X_dst, Hpol.Y_dst, axis=0)
-    
+    H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
+        
     #
     # Calculate scattering angle
     #
-    grid_PHI = Hpol.X_dst
-    scatter_angle = sky_params['sun_angle'] + grid_PHI + numpy.pi/2
-    
+    scatter_angle = sky_params['sun_angle'] + T + numpy.pi/2
+
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -308,8 +338,7 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         #
         extinction_aerosols = k / aerosol_params["visibility"]
         scatter_aerosols = spdiag(w * extinction_aerosols * calcHG(scatter_angle, g))
-
-        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols)
+        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
         exp_aerosols_grad = -extinction_aerosols * H_aerosols.T * spdiag(exp_aerosols)
 
         #
@@ -317,14 +346,13 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         #
         extinction_air = 1.09e-3 * lambda_**-4.05
         scatter_air = spdiag(extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi))
-        
-        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air)
+        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
 
         #
         # Calculate the radiance
         #
-        temp1 = (Hpol.T * spdiag(exp_aerosols) + exp_aerosols_grad * spdiag(Hpol * ATMO_aerosols)) * scatter_aerosols
-        temp2 = exp_aerosols_grad * scatter_air * spdiag(Hpol * ATMO_air)
+        temp1 = (H_pol.T * spdiag(exp_aerosols) + exp_aerosols_grad * spdiag(H_pol * ATMO_aerosols_)) * scatter_aerosols
+        temp2 = exp_aerosols_grad * scatter_air * spdiag(H_pol * ATMO_air_)
         radiance = (temp1 + temp2) * spdiag(exp_air)
 
         #
