@@ -145,9 +145,31 @@ class baseTransform(object):
 
     def __call__(self, X):
         """Apply the transform"""
-        
-        Z = (self.H * X.ravel().reshape((-1, 1))).reshape(*self.X_dst.shape)
+
+        import scipy.sparse as sps
+
+        if sps.isspmatrix_dia(X):
+            #
+            # Assume that this is part of elementwise multiplication.
+            #
+            Z = self.H * X
+        else:
+            #
+            # Assume as an application of the transform on a matrix.
+            #
+            if X.shape == self.X_src.shape:
+                Z = (self.H * X.ravel().reshape((-1, 1))).reshape(*self.X_dst.shape)
+            else:
+                Z = self.H * X
+            
         return Z
+
+    def __neg__(self):
+        """Overload the - operator"""
+
+        res = copy.deepcopy(self)
+        res.H = -res.H
+        return res
 
     def __add__(self, other):
         """Overload the add operator"""
@@ -167,7 +189,12 @@ class baseTransform(object):
 
         if np.isscalar(other):
             res = copy.deepcopy(self)
-            res.H = other*res.H
+            res.H = other * res.H
+        elif isinstance(other, baseTransform):
+            res = copy.deepcopy(self)
+            res.H = res.H * other.H
+            res.X_src = other.X_src
+            res.Y_src = other.Y_src
         else:
             res = self.__call__(other)
             
@@ -179,6 +206,8 @@ class baseTransform(object):
         if np.isscalar(other):
             res = copy.deepcopy(self)
             res.H = other*res.H
+        elif sps.isspmatrix_dia(X):
+            res = self.__call__(other)
         else:
             raise NotImplementedError
             
@@ -187,6 +216,10 @@ class baseTransform(object):
     def __getattr__(self, attr):
         if attr == 'T':
             return self.transpose()
+        elif attr == 'shape':
+            return self.H.shape
+        elif attr == 'size':
+            return self.H.size
         else:
             raise AttributeError(attr + " not found")
 
@@ -205,7 +238,22 @@ class baseTransform(object):
         
         return res
 
-        
+
+def hstack(tmat1, tmat2):
+    """Concatenate two transform matrices horizontally"""
+
+    tmat = baseTransform(
+        np.vstack((tmat1.X_src, tmat2.X_src)),
+        np.vstack((tmat1.Y_src, tmat2.Y_src)),
+        np.vstack((tmat1.X_dst, tmat2.X_dst)),
+        np.vstack((tmat1.Y_dst, tmat2.Y_dst))
+        )
+
+    tmat.H = sps.hstack((tmat1.H, tmat2.H))
+    
+    return tmat
+
+
 class polarTransform(baseTransform):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -325,7 +373,7 @@ class rotationTransform(baseTransform):
         self.H = calcTransformMatrix(T_indices, R_indices, src_shape=X.shape)
 
     
-class integralTransform(baseTransform):
+class cumsumTransform(baseTransform):
     """Calculate a (sparse) matrix representation of integration (cumsum) transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -338,7 +386,7 @@ class integralTransform(baseTransform):
         import numpy as np
         import scipy.sparse as sps
 
-        super(integralTransform, self).__init__(X, Y)
+        super(cumsumTransform, self).__init__(X, Y)
         
         m, n = X.shape
 
@@ -358,3 +406,39 @@ class integralTransform(baseTransform):
             self.H = sps.kron(sps.eye(m, m), A)
 
 
+class integralTransform(baseTransform):
+    """Calculate a (sparse) matrix representation of integration transform.
+    params:
+        X, Y - 2D arrays that define the cartesian coordinates
+        axis - axis along which the integration is preformed
+"""
+
+    def __init__(self, X, Y, axis=0):
+        
+        import numpy as np
+        import scipy.sparse as sps
+
+        if axis == 0:
+            X_dst, Y_dst = np.meshgrid(X[0, :], np.arange(1))
+        else:
+            X_dst, Y_dst = np.meshgrid(np.arange(1), Y[:, 0])
+
+        super(integralTransform, self).__init__(X, Y, X_dst, Y_dst)
+        
+        m, n = X.shape
+
+        if axis == 0:
+            dy = np.abs(Y[1, 0] - Y[0, 0])
+            self.H = sps.spdiags(np.ones((m, m*n))*dy, n*np.arange(m), n, m*n)
+        else:
+            dx = np.abs(X[0, 1] - X[0, 0])
+            self.H = sps.kron(np.eye(m), np.ones((1, n))*dx)
+
+
+def spdiag(X):
+    """Return a sparse diagonal matrix. The elements of the diagonal are made of 
+ the elements of the vector X."""
+
+    import scipy.sparse as sps
+
+    return sps.dia_matrix((X.ravel(), 0), (X.size, X.size))
