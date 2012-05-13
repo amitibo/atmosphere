@@ -258,14 +258,14 @@ def cumsumTransformMatrix(X, Y, axis=0, direction=1):
     m, n = X.shape
 
     if axis == 0:
-        dy = (Y[1:, 0] - Y[:-1, 0]) * direction
+        dy = np.abs(Y[1:, 0] - Y[:-1, 0])
         dy = np.concatenate((dy, (dy[-1],)))
         if direction == 1:
             H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), -n*np.arange(m), m*n, m*n)
         else:
             H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), n*np.arange(m), m*n, m*n)                
     else:
-        dx = (X[0, 1:] - X[0, :-1]) * direction
+        dx = np.abs(X[0, 1:] - X[0, :-1])
         dx = np.concatenate((dx, (dx[-1],)))
         if direction == 1:
             A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
