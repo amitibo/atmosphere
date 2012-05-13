@@ -61,17 +61,16 @@ def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, Hpol, T, R):
     return ATMO_polar.reshape(T.shape), ATMO_to_polar.reshape(T.shape), ATMO_from_polar.reshape(T.shape)
 
 
-def calcOpticalDistancesMatrix(X, Y, sun_angle, Hpol):
+def calcOpticalDistancesMatrix(X, Y, sun_angle, Hpol, T, R):
 
     #
     # Prepare transformation matrices
     #
-    Hrot_forward = atmo_utils.rotationTransform(X, Y, angle=sun_angle)
-    Hrot_backward = \
-      atmo_utils.rotationTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst, -sun_angle, X, Y)
+    Hrot_forward, X_dst, Y_dst = atmo_utils.rotationTransformMatrix(X, Y, angle=sun_angle)
+    Hrot_backward = atmo_utils.rotationTransformMatrix(X_dst, Y_dst, -sun_angle, X, Y)[0]
     
-    Hint1 = atmo_utils.cumsumTransform(Hrot_forward.X_dst, Hrot_forward.Y_dst)
-    Hint2 = atmo_utils.cumsumTransform(Hpol.X_dst, Hpol.Y_dst, direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix(X_dst, Y_dst)
+    Hint2 = atmo_utils.cumsumTransformMatrix(T, R, direction=-1)
 
     temp1 = Hpol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * Hpol
@@ -95,10 +94,12 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #ATMO_aerosols = numpy.zeros_like(H, dtype=numpy.float64)
     ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
     ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
-
+    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
+    
     #ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
     ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
-
+    ATMO_air_ = ATMO_air.reshape((-1, 1))
+    
     #
     # Calculate a mask over the atmosphere
     # Note:
@@ -113,8 +114,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask[:, :4] = 0
     mask[:, -4:] = 0
 
-    Hpol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
-    mask_polar = (Hpol * mask.reshape((-1, 1))).reshape(T.shape)
+    H_pol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
+    mask_polar_ = H_pol * mask.reshape((-1, 1))
     
     ATMO_aerosols *= mask
     ATMO_air *= mask
@@ -122,27 +123,31 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Calculate the distances
     #
-    ATMO_aerosols_polar, ATMO_aerosols_to_polar, ATMO_aerosols_from_polar = \
-        calcOpticalDistancesTransform(
+    #
+    # Calculate the distance matrices
+    #
+    H_aerosols = \
+        calcOpticalDistancesMatrix(
             X,
             H,
-            ATMO_aerosols,
             sky_params['sun_angle'],
-            Hpol,
-            T,
-            R
-            )
-    ATMO_air_polar, ATMO_air_to_polar, ATMO_air_from_polar = \
-        calcOpticalDistancesTransform(
-            X,
-            H,
-            ATMO_air,
-            sky_params['sun_angle'],
-            Hpol,
+            H_pol,
             T,
             R
             )
     
+    H_air = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            sky_params['sun_angle'],
+            H_pol,
+            T,
+            R
+            )
+
+    H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
+        
     #
     # Calculate scattering angle
     #
@@ -162,29 +167,29 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         #
         # Calculate scattering and extiniction for air (wave length dependent)
         #
-        extinction_aerosol = k / aerosol_params["visibility"]
-        scatter_aerosol = extinction_aerosol * calcHG(scatter_angle, g) * ATMO_aerosols_polar * w
+        extinction_aerosols = k / aerosol_params["visibility"]
+        scatter_aerosols = spdiag(w * extinction_aerosols * calcHG(scatter_angle, g)) * H_pol * ATMO_aerosols_
+        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
         
         extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * ATMO_air_polar
+        scatter_air = spdiag(extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi)) * H_pol * ATMO_air_
+        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
         
         #
         # Calculate the radiance
         #
-        temp = extinction_aerosol*(ATMO_aerosols_to_polar + ATMO_aerosols_from_polar) + \
-          extinction_air*(ATMO_air_to_polar + ATMO_air_from_polar)
-        radiance = (scatter_aerosol + scatter_air) * numpy.exp(-temp) * mask_polar
+        radiance = (scatter_air + scatter_aerosols) * exp_air * exp_aerosols * mask_polar_
 
         #
         # Calculate projection on camera
         #
-        img.append(L_sun * numpy.sum(radiance, axis=0))
-
+        img.append(L_sun * H_int * radiance)
+        
     if plot_results:
         #
         # Create the image
         #
-        IMG = numpy.transpose(numpy.array(img, ndmin=3), (2, 0, 1))
+        IMG = numpy.transpose(numpy.array(img, ndmin=3), (1, 2, 0))
         IMG = numpy.tile(IMG, (1, IMG.shape[0], 1))
 
         #
