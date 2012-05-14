@@ -168,11 +168,11 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         # Calculate scattering and extiniction for air (wave length dependent)
         #
         extinction_aerosols = k / aerosol_params["visibility"]
-        scatter_aerosols = spdiag(w * extinction_aerosols * calcHG(scatter_angle, g)) * H_pol * ATMO_aerosols_
+        scatter_aerosols = w * extinction_aerosols * calcHG(scatter_angle, g) * (H_pol * ATMO_aerosols_)
         exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
         
         extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = spdiag(extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi)) * H_pol * ATMO_air_
+        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * (H_pol * ATMO_air_)
         exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
         
         #
@@ -352,7 +352,7 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         # Calculate the radiance
         #
         temp1 = (H_pol.T * spdiag(exp_aerosols) + exp_aerosols_grad * spdiag(H_pol * ATMO_aerosols_)) * scatter_aerosols
-        temp2 = exp_aerosols_grad * scatter_air * spdiag(H_pol * ATMO_air_)
+        temp2 = exp_aerosols_grad * spdiag(H_pol * ATMO_air_) * scatter_air
         radiance = (temp1 + temp2) * spdiag(exp_air)
 
         #

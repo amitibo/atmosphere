@@ -274,7 +274,7 @@ def cumsumTransformMatrix(X, Y, axis=0, direction=1):
 
         H = sps.kron(sps.eye(m, m), A)
 
-    return H
+    return H.tocsr()
 
 
 @memoized
@@ -303,7 +303,7 @@ def integralTransformMatrix(X, Y, axis=0, direction=1):
         dx = np.concatenate((dx, (dx[-1],)))
         H = sps.kron(np.eye(m), np.ones((1, n))*dx)
 
-    return H
+    return H.tocsr()
 
 
 def spdiag(X):

@@ -7,6 +7,7 @@ import numpy as np
 import simulateAtmoGeneral as sa
 import pickle
 import time
+import cProfile
 
 
 def main():
@@ -44,8 +45,19 @@ def main():
     ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
     ATMO_air = np.exp(-H/aerosol_params["air_typical_h"])
 
+    t0 = time.time()
     img = sa.calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params)
+    print time.time() - t0
 
+    t0 = time.time()
+    cProfile.runctx(
+        'sa.calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params)',
+        globals(),
+        locals()
+        
+        )
+    print time.time() - t0
 
+    
 if __name__=='__main__':
     main()
