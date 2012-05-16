@@ -86,7 +86,6 @@ class radiance(object):
 
         g = [2*(gimg[i] * img[i]) for i in range(3)]
         grad = np.sum(np.hstack(g), axis=1)
-        print grad
         return grad
     
     def constraints(self, x):

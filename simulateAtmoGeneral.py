@@ -77,13 +77,27 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
 
-    return H_pol#temp2 + temp1
+    return temp2 + temp1
 
 
 def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params):
     
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
+    #
+    # Calculate a mask over the atmosphere
+    # Note:
+    # The mask is used to maskout in the polar axis,
+    # pixels that are not in the cartesian axis.
+    # I set the boundary rows and columns to 0 so that when converting
+    # from cartisian to polar coords the interpolation will not 'create'
+    # atmosphere above the sky.
+    #
+    mask = numpy.ones(X.shape)
+    mask[:4, :] = 0
+    mask[:, :4] = 0
+    mask[:, -4:] = 0
+
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
@@ -91,9 +105,41 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
+    mask_polar_ = H_pol * mask.reshape((-1, 1))
     
+    ATMO_aerosols_ *= mask.reshape((-1, 1))
+    ATMO_air_ *= mask.reshape((-1, 1))
+    
+    #
+    # Calculate the distance matrices
+    #
+    H_aerosols = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            sky_params['sun_angle'],
+            H_pol,
+            T,
+            R
+            )
+    
+    H_air = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            sky_params['sun_angle'],
+            H_pol,
+            T,
+            R
+            )
+
     H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
-    
+        
+    #
+    # Calculate scattering angle
+    #
+    scatter_angle = sky_params['sun_angle'] + T.reshape((-1, 1)) + numpy.pi/2
+
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -108,7 +154,9 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         #
         # Calculate scattering and extiniction for air (wave length dependent)
         #
-        exp_aerosols = H_pol * ATMO_aerosols_
+        extinction_aerosols = k / aerosol_params["visibility"]
+        scatter_aerosols = w * extinction_aerosols * calcHG(scatter_angle, g) * (H_pol * ATMO_aerosols_)
+        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
         
         #
         # Calculate the radiance
@@ -118,7 +166,7 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         #
         # Calculate projection on camera
         #
-        img.append(radiance)
+        img.append(L_sun * H_int * radiance)
         
     return img
 
@@ -222,6 +270,20 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
 
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
+    #
+    # Calculate a mask over the atmosphere
+    # Note:
+    # The mask is used to maskout in the polar axis,
+    # pixels that are not in the cartesian axis.
+    # I set the boundary rows and columns to 0 so that when converting
+    # from cartisian to polar coords the interpolation will not 'create'
+    # atmosphere above the sky.
+    #
+    mask = numpy.ones(X.shape)
+    mask[:4, :] = 0
+    mask[:, :4] = 0
+    mask[:, -4:] = 0
+
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
@@ -229,8 +291,43 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
+    mask_polar_ = H_pol * mask.reshape((-1, 1))
     
+    ATMO_aerosols_ *= mask.reshape((-1, 1))
+    ATMO_air_ *= mask.reshape((-1, 1))
+    
+    #
+    # Calculate the distances
+    #
+    #
+    # Calculate the distance matrices
+    #
+    H_aerosols = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            sky_params['sun_angle'],
+            H_pol,
+            T,
+            R
+            )
+    
+    H_air = \
+        calcOpticalDistancesMatrix(
+            X,
+            H,
+            sky_params['sun_angle'],
+            H_pol,
+            T,
+            R
+            )
+
     H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
+        
+    #
+    # Calculate scattering angle
+    #
+    scatter_angle = sky_params['sun_angle'] + T + numpy.pi/2
 
     #
     # Calculate scattering for each channel (in case of the railey scattering)
@@ -246,7 +343,9 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         #
         # Calculate scattering and extiniction for aerosols
         #
-        exp_aerosols_grad = H_pol.T
+        extinction_aerosols = k / aerosol_params["visibility"]
+        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
+        exp_aerosols_grad = -extinction_aerosols * H_aerosols.T * spdiag(exp_aerosols)
 
         #
         # Calculate the radiance
@@ -256,7 +355,7 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         #
         # Calculate projection on camera
         #
-        img.append(radiance)
+        img.append(L_sun * radiance * H_int.T)
         
     return img
 
