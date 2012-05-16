@@ -108,7 +108,6 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
     mask_polar_ = H_pol * mask.reshape((-1, 1))
     
     ATMO_aerosols_ *= mask.reshape((-1, 1))
-    ATMO_air_ *= mask.reshape((-1, 1))
     
     #
     # Calculate the distance matrices
@@ -123,23 +122,8 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
             R
             )
     
-    H_air = \
-        calcOpticalDistancesMatrix(
-            X,
-            H,
-            sky_params['sun_angle'],
-            H_pol,
-            T,
-            R
-            )
-
     H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
         
-    #
-    # Calculate scattering angle
-    #
-    scatter_angle = sky_params['sun_angle'] + T.reshape((-1, 1)) + numpy.pi/2
-
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -155,17 +139,12 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         # Calculate scattering and extiniction for air (wave length dependent)
         #
         extinction_aerosols = k / aerosol_params["visibility"]
-        scatter_aerosols = w * extinction_aerosols * calcHG(scatter_angle, g) * (H_pol * ATMO_aerosols_)
         exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
-        
-        extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * (H_pol * ATMO_air_)
-        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
         
         #
         # Calculate the radiance
         #
-        radiance = (scatter_air + scatter_aerosols) * exp_air * exp_aerosols * mask_polar_
+        radiance = exp_aerosols * mask_polar_
 
         #
         # Calculate projection on camera
@@ -298,7 +277,6 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
     mask_polar_ = H_pol * mask.reshape((-1, 1))
     
     ATMO_aerosols_ *= mask.reshape((-1, 1))
-    ATMO_air_ *= mask.reshape((-1, 1))
     
     #
     # Calculate the distances
@@ -316,23 +294,8 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
             R
             )
     
-    H_air = \
-        calcOpticalDistancesMatrix(
-            X,
-            H,
-            sky_params['sun_angle'],
-            H_pol,
-            T,
-            R
-            )
-
     H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
         
-    #
-    # Calculate scattering angle
-    #
-    scatter_angle = sky_params['sun_angle'] + T + numpy.pi/2
-
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -348,23 +311,13 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         # Calculate scattering and extiniction for aerosols
         #
         extinction_aerosols = k / aerosol_params["visibility"]
-        scatter_aerosols = spdiag(w * extinction_aerosols * calcHG(scatter_angle, g))
         exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
         exp_aerosols_grad = -extinction_aerosols * H_aerosols.T * spdiag(exp_aerosols)
 
         #
-        # Calculate scattering and extiniction for air (wave length dependent)
-        #
-        extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = spdiag(extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi))
-        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
-
-        #
         # Calculate the radiance
         #
-        temp1 = (H_pol.T * spdiag(exp_aerosols) + exp_aerosols_grad * spdiag(H_pol * ATMO_aerosols_)) * scatter_aerosols
-        temp2 = exp_aerosols_grad * spdiag(H_pol * ATMO_air_) * scatter_air
-        radiance = (temp1 + temp2) * spdiag(exp_air)
+        radiance = exp_aerosols_grad
 
         #
         # Calculate projection on camera
