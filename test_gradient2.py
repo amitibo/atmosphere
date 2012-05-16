@@ -59,7 +59,7 @@ class radiance(object):
             self.sky_params
             )
 
-        o = [np.linalg.norm(self.I[i] - img[i]) for i in range(3)]
+        o = [np.dot((self.I[i] - img[i]).T, (self.I[i] - img[i])) for i in range(3)]
 
         return np.sum(np.array(o))
     
@@ -85,7 +85,7 @@ class radiance(object):
             self.sky_params
             )
 
-        g = [-2*gimg[i]*self.I[i] - 2*gimg[i]*img[i] for i in range(3)]
+        g = [-2*(gimg[i]*(self.I[i] - img[i])) for i in range(3)]
         grad = np.vstack(g).ravel()
         
         return grad
