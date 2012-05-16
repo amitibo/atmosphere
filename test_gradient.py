@@ -32,7 +32,8 @@ def main():
 
     
     sky_params = sa.SKY_PARAMS
-
+    sky_params['dxh'] = 10
+    
     X, H = np.meshgrid(
         np.arange(0, sky_params['width'], sky_params['dxh']),
         np.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
@@ -53,8 +54,8 @@ def main():
     cProfile.runctx(
         'sa.calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params)',
         globals(),
-        locals()
-        
+        locals(),
+        'profile.txt'
         )
     print time.time() - t0
 

@@ -21,6 +21,8 @@ SKY_PARAMS = {
     'height': 50,
     'dxh': 1,
     'camera_center': (80, 2),
+    'camera_dist_res': 100,
+    'camera_angle_res': 100,
     'sun_angle': -45/180*math.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
@@ -78,27 +80,9 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
     return temp2 + temp1
 
 
-def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
-
-    #
-    # Create the sky
-    #
-    X, H = numpy.meshgrid(
-        numpy.arange(0, sky_params['width'], sky_params['dxh']),
-        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
-        )
-
-    #
-    # Create the distributions of air and aerosols
-    #
-    #ATMO_aerosols = numpy.zeros_like(H, dtype=numpy.float64)
-    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
-    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
-    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
+def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params):
     
-    #ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
-    ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
-    ATMO_air_ = ATMO_air.reshape((-1, 1))
+    ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
     #
     # Calculate a mask over the atmosphere
@@ -114,15 +98,18 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     mask[:, :4] = 0
     mask[:, -4:] = 0
 
-    H_pol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
+    H_pol, T, R = atmo_utils.polarTransformMatrix(
+        X,
+        H,
+        sky_params['camera_center'],
+        radius_res=sky_params['camera_dist_res'],
+        angle_res=sky_params['camera_angle_res']
+        )
     mask_polar_ = H_pol * mask.reshape((-1, 1))
     
-    ATMO_aerosols *= mask
-    ATMO_air *= mask
+    ATMO_aerosols_ *= mask.reshape((-1, 1))
+    ATMO_air_ *= mask.reshape((-1, 1))
     
-    #
-    # Calculate the distances
-    #
     #
     # Calculate the distance matrices
     #
@@ -151,7 +138,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Calculate scattering angle
     #
-    scatter_angle = sky_params['sun_angle'] + T + numpy.pi/2
+    scatter_angle = sky_params['sun_angle'] + T.reshape((-1, 1)) + numpy.pi/2
 
     #
     # Calculate scattering for each channel (in case of the railey scattering)
@@ -185,6 +172,36 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         #
         img.append(L_sun * H_int * radiance)
         
+    return img
+
+
+def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
+
+    #
+    # Create the sky
+    #
+    X, H = numpy.meshgrid(
+        numpy.arange(0, sky_params['width'], sky_params['dxh']),
+        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
+        )
+
+    #
+    # Create the distributions of air and aerosols
+    #
+    #ATMO_aerosols = numpy.zeros_like(H, dtype=numpy.float64)
+    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
+    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
+    
+    #ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
+    ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
+    ATMO_air_ = ATMO_air.reshape((-1, 1))
+
+    #
+    # Using the helper to do the actual calculations.
+    #
+    img = calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params)
+    
     if plot_results:
         #
         # Create the image
@@ -252,23 +269,11 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
 
     return img
     
+
+def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params):
+
+    ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
-def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
-
-    #
-    # Rowwise representation of the atmosphere 
-    #
-    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
-    ATMO_air_ = ATMO_air.reshape((-1, 1))
-
-    #
-    # Create the sky
-    #
-    X, H = numpy.meshgrid(
-        numpy.arange(0, sky_params['width'], sky_params['dxh']),
-        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
-        )
-
     #
     # Calculate a mask over the atmosphere
     # Note:
@@ -283,11 +288,17 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
     mask[:, :4] = 0
     mask[:, -4:] = 0
 
-    H_pol, T, R = atmo_utils.polarTransformMatrix(X, H, sky_params['camera_center'])
+    H_pol, T, R = atmo_utils.polarTransformMatrix(
+        X,
+        H,
+        sky_params['camera_center'],
+        radius_res=sky_params['camera_dist_res'],
+        angle_res=sky_params['camera_angle_res']
+        )
     mask_polar_ = H_pol * mask.reshape((-1, 1))
     
-    ATMO_aerosols *= mask
-    ATMO_air *= mask
+    ATMO_aerosols_ *= mask.reshape((-1, 1))
+    ATMO_air_ *= mask.reshape((-1, 1))
     
     #
     # Calculate the distances
@@ -359,11 +370,32 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         # Calculate projection on camera
         #
         #img.append(L_sun * numpy.sum(radiance, axis=0))
-        img = radiance * H_int.T
+        img.append(radiance * H_int.T)
         
     return img
-    
-    
+
+
+def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
+
+    #
+    # Rowwise representation of the atmosphere 
+    #
+    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
+    ATMO_air_ = ATMO_air.reshape((-1, 1))
+
+    #
+    # Create the sky
+    #
+    X, H = numpy.meshgrid(
+        numpy.arange(0, sky_params['width'], sky_params['dxh']),
+        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
+        )
+
+    img = calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params)
+
+    return img
+
+
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
