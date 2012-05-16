@@ -84,15 +84,6 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
     
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
-    #
-    # Calculate a mask over the atmosphere
-    # Note:
-    # The mask is used to maskout in the polar axis,
-    # pixels that are not in the cartesian axis.
-    # I set the boundary rows and columns to 0 so that when converting
-    # from cartisian to polar coords the interpolation will not 'create'
-    # atmosphere above the sky.
-    #
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
@@ -261,15 +252,6 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
 
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
-    #
-    # Calculate a mask over the atmosphere
-    # Note:
-    # The mask is used to maskout in the polar axis,
-    # pixels that are not in the cartesian axis.
-    # I set the boundary rows and columns to 0 so that when converting
-    # from cartisian to polar coords the interpolation will not 'create'
-    # atmosphere above the sky.
-    #
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
