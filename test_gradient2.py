@@ -59,7 +59,7 @@ class radiance(object):
             self.sky_params
             )
 
-        o = [np.dot(img[i].T, img[i]) for i in range(3)]
+        o = [np.dot((self.I[i] - img[i]).T, (self.I[i] - img[i])) for i in range(3)]
         return np.sum(o)
     
     def gradient(self, x):
@@ -84,7 +84,7 @@ class radiance(object):
             self.sky_params
             )
 
-        g = [2*(gimg[i] * img[i]) for i in range(3)]
+        g = [-2*(gimg[i]*(self.I[i] - img[i])) for i in range(3)]
         grad = np.sum(np.hstack(g), axis=1)
         return grad
     
