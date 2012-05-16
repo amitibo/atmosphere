@@ -28,7 +28,7 @@ class radiance(object):
 
         self.sky_params = sa.SKY_PARAMS
 
-        self.sky_params['dxh'] = 10
+        self.sky_params['dxh'] = 2
         
         self.X, self.H = \
           np.meshgrid(
@@ -60,8 +60,7 @@ class radiance(object):
             )
 
         o = [np.dot((self.I[i] - img[i]).T, (self.I[i] - img[i])) for i in range(3)]
-
-        return np.sum(np.array(o))
+        return np.sum(o)
     
     def gradient(self, x):
         #
@@ -86,8 +85,7 @@ class radiance(object):
             )
 
         g = [-2*(gimg[i]*(self.I[i] - img[i])) for i in range(3)]
-        grad = np.vstack(g).ravel()
-        
+        grad = np.sum(np.hstack(g), axis=1)
         return grad
     
     def constraints(self, x):
