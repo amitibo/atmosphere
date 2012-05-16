@@ -93,11 +93,6 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
     # from cartisian to polar coords the interpolation will not 'create'
     # atmosphere above the sky.
     #
-    mask = numpy.ones(X.shape)
-    mask[:4, :] = 0
-    mask[:, :4] = 0
-    mask[:, -4:] = 0
-
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
@@ -105,10 +100,6 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
-    mask_polar_ = H_pol * mask.reshape((-1, 1))
-    
-    ATMO_aerosols_ *= mask.reshape((-1, 1))
-    ATMO_air_ *= mask.reshape((-1, 1))
     
     #
     # Calculate the distance matrices
@@ -279,11 +270,6 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
     # from cartisian to polar coords the interpolation will not 'create'
     # atmosphere above the sky.
     #
-    mask = numpy.ones(X.shape)
-    mask[:4, :] = 0
-    mask[:, :4] = 0
-    mask[:, -4:] = 0
-
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
@@ -291,10 +277,6 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
-    mask_polar_ = H_pol * mask.reshape((-1, 1))
-    
-    ATMO_aerosols_ *= mask.reshape((-1, 1))
-    ATMO_air_ *= mask.reshape((-1, 1))
     
     #
     # Calculate the distances
