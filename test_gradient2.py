@@ -8,6 +8,9 @@ import pickle
 import ipopt
 import logging
 import matplotlib.pyplot as plt
+import amitibo
+import os
+
 
 CAMERA_CENTERS = [(i, 1) for i in range(5, 50, 5)]
 
@@ -25,34 +28,16 @@ SKY_PARAMS = {
 
 VISIBILITY = 10
 
-MAX_ITERATIONS = 100
+MAX_ITERATIONS = 200
+
 
 class radiance(object):
-    def __init__(self):
+    def __init__(self, aerosol_params, sky_params):
         #
-        # Load the MISR database.
+        # Set the sky and aerosols params
         #
-        with open('misr.pkl', 'rb') as f:
-            misr = pickle.load(f)
-
-        #
-        # Set aerosol parameters
-        #
-        particles_list = misr.keys()
-        particle = misr[particles_list[0]]
-        self.aerosol_params = {
-            "k_RGB": np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
-            "w_RGB": particle['w'],
-            "g_RGB": (particle['g']),
-            "visibility": VISIBILITY,
-            "air_typical_h": 8,
-            "aerosols_typical_h": 8,        
-        }
-
-        #
-        # Set the sky params
-        #
-        self.sky_params = SKY_PARAMS
+        self.aerosol_params = aerosol_params
+        self.sky_params = sky_params
         
         self.X, self.H = \
           np.meshgrid(
@@ -166,9 +151,34 @@ class radiance(object):
     
 def main():
     #
+    # Load the MISR database.
+    #
+    with open('misr.pkl', 'rb') as f:
+        misr = pickle.load(f)
+
+    #
+    # Set aerosol parameters
+    #
+    particles_list = misr.keys()
+    particle = misr[particles_list[0]]
+    aerosol_params = {
+        "k_RGB": np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
+        "w_RGB": particle['w'],
+        "g_RGB": (particle['g']),
+        "visibility": VISIBILITY,
+        "air_typical_h": 8,
+        "aerosols_typical_h": 8,        
+    }
+
+    #
+    # Create afolder for results
+    #
+    results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
+
+    #
     # Define the problem
     #
-    sky = radiance()
+    sky = radiance(aerosol_params, SKY_PARAMS)
     
     x0 = sky.getX0()
 
@@ -210,10 +220,12 @@ def main():
     print "Solution of the dual variables: lambda=%s\n" % repr(info['mult_g'])
     print "Objective=%s\n" % repr(info['obj_val'])
 
+    print info.keys()
+    
     #
     # Show the result
     #
-    plt.figure()
+    fig1 = plt.figure()
     plt.subplot(221)
     plt.imshow(sky.ATMO_aerosols, interpolation='nearest', cmap='gray')    
     plt.title('target')
@@ -223,7 +235,46 @@ def main():
     plt.subplot(224)
     plt.imshow(x.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
     plt.title('After %d iterations' % MAX_ITERATIONS)
+
+    amitibo.saveFigures(results_path, (fig1,), bbox_inches='tight')
+
+    #
+    # Save the results
+    #
+    np.save(os.path.join(results_path, 'target.npy'), sky.ATMO_aerosols)
+    np.save(os.path.join(results_path, 'x_%d_iterations.npy' % MAX_ITERATIONS), x)
     
+    #
+    # Show some of the images used
+    #
+    for img in sky.Images:
+        IMG = np.transpose(np.array(img, ndmin=3), (1, 2, 0))
+        IMG = np.tile(IMG, (1, IMG.shape[0], 1))
+
+        #
+        # Account for gamma correction
+        #
+        IMG **= 0.45
+    
+        IMG_scaled = IMG / np.max(IMG)
+        h = int(IMG_scaled.shape[0] / 2)
+
+        fig1 = plt.figure()
+        plt.subplot(211)
+        extent = (0, 1, 90, 0)
+        plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
+        plt.xticks([0, 0.5, 1.0])
+        plt.yticks([0, 30, 60, 90])
+        plt.title('Visibility Parameter %d' % aerosol_params["visibility"])
+
+        plt.subplot(212)
+        extent = (0, 1, -90, 0)
+        plt.imshow(IMG_scaled[h:, ...], aspect=1/270, extent=extent, interpolation='nearest')
+        plt.xticks([0, 0.5, 1.0])
+        plt.yticks([0, -30, -60, -90])
+
+        amitibo.saveFigures(results_path, (fig1,), bbox_inches='tight')
+        
     plt.show()
     
 if __name__ == '__main__':
