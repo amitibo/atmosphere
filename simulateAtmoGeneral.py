@@ -80,14 +80,14 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
     return temp2 + temp1
 
 
-def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params):
+def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params, camera_center):
     
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
-        sky_params['camera_center'],
+        camera_center,
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
@@ -182,7 +182,15 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Using the helper to do the actual calculations.
     #
-    img = calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params)
+    img = calcRadianceHelper(
+        ATMO_aerosols_,
+        ATMO_air_,
+        X,
+        H,
+        aerosol_params,
+        sky_params,
+        sky_params['camera_center']
+        )
     
     if plot_results:
         #
@@ -252,14 +260,14 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     return img
     
 
-def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params):
+def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params, camera_center):
 
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
     H_pol, T, R = atmo_utils.polarTransformMatrix(
         X,
         H,
-        sky_params['camera_center'],
+        camera_center,
         radius_res=sky_params['camera_dist_res'],
         angle_res=sky_params['camera_angle_res']
         )
@@ -354,7 +362,15 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
         numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
         )
 
-    img = calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params)
+    img = calcRadianceGradientHelper(
+        ATMO_aerosols_,
+        ATMO_air_,
+        X,
+        H,
+        aerosol_params,
+        sky_params,
+        sky_params['camera_center']
+        )
 
     return img
 

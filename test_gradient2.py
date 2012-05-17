@@ -2,12 +2,30 @@
 from __future__ import division
 import numpy as np
 import scipy.sparse as sps
+from atmo_utils import L_SUN_RGB, RGB_WAVELENGTH
 import simulateAtmoGeneral as sa
 import pickle
 import ipopt
 import logging
 import matplotlib.pyplot as plt
 
+CAMERA_CENTERS = [(i, 1) for i in range(5, 50, 5)]
+
+SKY_PARAMS = {
+    'width': 50,
+    'height': 20,
+    'dxh': 1,
+    'camera_center': (80, 2),
+    'camera_dist_res': 100,
+    'camera_angle_res': 100,
+    'sun_angle': -45/180*np.pi,
+    'L_SUN_RGB': L_SUN_RGB,
+    'RGB_WAVELENGTH': RGB_WAVELENGTH
+}
+
+VISIBILITY = 10
+
+MAX_ITERATIONS = 100
 
 class radiance(object):
     def __init__(self):
@@ -26,7 +44,7 @@ class radiance(object):
             "k_RGB": np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
             "w_RGB": particle['w'],
             "g_RGB": (particle['g']),
-            "visibility": sa.VISIBILITY,
+            "visibility": VISIBILITY,
             "air_typical_h": 8,
             "aerosols_typical_h": 8,        
         }
@@ -34,8 +52,7 @@ class radiance(object):
         #
         # Set the sky params
         #
-        self.sky_params = sa.SKY_PARAMS
-        self.sky_params['dxh'] = 2
+        self.sky_params = SKY_PARAMS
         
         self.X, self.H = \
           np.meshgrid(
@@ -53,15 +70,19 @@ class radiance(object):
         #
         # Create the first image
         #
-        self.I = sa.calcRadianceHelper(
-            self.ATMO_aerosols.reshape((-1, 1)),
-            self.ATMO_air.reshape((-1, 1)),
-            self.X,
-            self.H,
-            self.aerosol_params,
-            self.sky_params
-            )
-
+        self.Images = []
+        for camera_center in CAMERA_CENTERS:
+            self.Images.append(
+                sa.calcRadianceHelper(
+                    self.ATMO_aerosols.reshape((-1, 1)),
+                    self.ATMO_air.reshape((-1, 1)),
+                    self.X,
+                    self.H,
+                    self.aerosol_params,
+                    self.sky_params,
+                    camera_center
+                    )
+                )
 
     def getX0(self):
         #
@@ -71,43 +92,62 @@ class radiance(object):
         return ATMO_aerosols.reshape((-1, 1))
     
     def objective(self, x):
+        """Calculate the objective"""
+        
+        obj = 0
+        for camera_index, camera_center in enumerate(CAMERA_CENTERS):
+            img = sa.calcRadianceHelper(
+                x,
+                self.ATMO_air.reshape((-1, 1)),
+                self.X,
+                self.H,
+                self.aerosol_params,
+                self.sky_params,
+                camera_center
+                )
 
-        img = sa.calcRadianceHelper(
-            x,
-            self.ATMO_air.reshape((-1, 1)),
-            self.X,
-            self.H,
-            self.aerosol_params,
-            self.sky_params
-            )
-
-        o = [np.dot((self.I[i] - img[i]).T, (self.I[i] - img[i])) for i in range(3)]
-        return np.sum(o)
+            o = [np.dot(
+                (self.Images[camera_index][i] - img[i]).T,
+                (self.Images[camera_index][i] - img[i])
+                ) for i in range(3)]
+            obj += np.sum(o)
+            
+        return obj
     
     def gradient(self, x):
-        #
-        # The callback for calculating the gradient
-        #
-        img = sa.calcRadianceHelper(
-            x,
-            self.ATMO_air.reshape((-1, 1)),
-            self.X,
-            self.H,
-            self.aerosol_params,
-            self.sky_params
-            )
-        
-        gimg = sa.calcRadianceGradientHelper(
-            x,
-            self.ATMO_air.reshape((-1, 1)),
-            self.X,
-            self.H,
-            self.aerosol_params,
-            self.sky_params
-            )
+        """The callback for calculating the gradient"""
 
-        g = [-2*(gimg[i]*(self.I[i] - img[i])) for i in range(3)]
-        grad = np.sum(np.hstack(g), axis=1)
+        grad = None
+        for camera_index, camera_center in enumerate(CAMERA_CENTERS):
+            img = sa.calcRadianceHelper(
+                x,
+                self.ATMO_air.reshape((-1, 1)),
+                self.X,
+                self.H,
+                self.aerosol_params,
+                self.sky_params,
+                camera_center
+                )
+
+            gimg = sa.calcRadianceGradientHelper(
+                x,
+                self.ATMO_air.reshape((-1, 1)),
+                self.X,
+                self.H,
+                self.aerosol_params,
+                self.sky_params,
+                camera_center
+                )
+
+            temp = [-2*(gimg[i]*(self.Images[camera_index][i] - img[i])) for i in range(3)]
+            
+            g = np.sum(np.hstack(temp), axis=1)
+
+            if grad == None:
+                grad = g
+            else:
+                grad += g
+            
         return grad
     
     def constraints(self, x):
@@ -159,7 +199,7 @@ def main():
     nlp.addOption('hessian_approximation', 'limited-memory')
     nlp.addOption('mu_strategy', 'adaptive')
     nlp.addOption('tol', 1e-7)
-    nlp.addOption('max_iter', 1000)
+    nlp.addOption('max_iter', MAX_ITERATIONS)
 
     #
     # Solve the problem
@@ -182,7 +222,7 @@ def main():
     plt.title('initial')
     plt.subplot(224)
     plt.imshow(x.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
-    plt.title('final')
+    plt.title('After %d iterations' % MAX_ITERATIONS)
     
     plt.show()
     
