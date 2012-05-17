@@ -5,6 +5,8 @@ import scipy.sparse as sps
 import simulateAtmoGeneral as sa
 import pickle
 import ipopt
+import logging
+import matplotlib.pyplot as plt
 
 
 class radiance(object):
@@ -15,6 +17,9 @@ class radiance(object):
         with open('misr.pkl', 'rb') as f:
             misr = pickle.load(f)
 
+        #
+        # Set aerosol parameters
+        #
         particles_list = misr.keys()
         particle = misr[particles_list[0]]
         self.aerosol_params = {
@@ -26,8 +31,10 @@ class radiance(object):
             "aerosols_typical_h": 8,        
         }
 
+        #
+        # Set the sky params
+        #
         self.sky_params = sa.SKY_PARAMS
-
         self.sky_params['dxh'] = 2
         
         self.X, self.H = \
@@ -37,16 +44,31 @@ class radiance(object):
               )
         
         #
-        # Create the distributions of air and aerosols
+        # Create the distributions of air & aerosols
         #
+        self.ATMO_air = np.exp(-self.H/self.aerosol_params["air_typical_h"])
         self.ATMO_aerosols = np.exp(-self.H/self.aerosol_params["aerosols_typical_h"])
         self.ATMO_aerosols[:, :int(self.H.shape[1]/2)] = 0
-        self.ATMO_air = np.exp(-self.H/self.aerosol_params["air_typical_h"])
+        
+        #
+        # Create the first image
+        #
+        self.I = sa.calcRadianceHelper(
+            self.ATMO_aerosols.reshape((-1, 1)),
+            self.ATMO_air.reshape((-1, 1)),
+            self.X,
+            self.H,
+            self.aerosol_params,
+            self.sky_params
+            )
 
-        self.I = [np.random.rand(self.sky_params['camera_angle_res'], 1) for i in range(3)]
 
     def getX0(self):
-        return self.ATMO_aerosols.reshape((-1, 1))
+        #
+        # Create the initial aerosols distribution
+        #
+        ATMO_aerosols = np.ones(self.H.shape)
+        return ATMO_aerosols.reshape((-1, 1))
     
     def objective(self, x):
 
@@ -116,6 +138,10 @@ def main():
     cl = []
     cu = []
 
+    import logging
+    logging.basicConfig(filename='run.log',level=logging.DEBUG)
+    ipopt.setLoggingLevel(logging.DEBUG)
+    
     nlp = ipopt.problem(
                 n=len(x0),
                 m=len(cl),
@@ -129,21 +155,36 @@ def main():
     #
     # Set solver options
     #
-    nlp.addOption('derivative_test', 'first-order')
+    #nlp.addOption('derivative_test', 'first-order')
+    nlp.addOption('hessian_approximation', 'limited-memory')
     nlp.addOption('mu_strategy', 'adaptive')
     nlp.addOption('tol', 1e-7)
+    nlp.addOption('max_iter', 1000)
 
     #
     # Solve the problem
     #
     x, info = nlp.solve(x0)
-    
+
     print "Solution of the primal variables: x=%s\n" % repr(x)
-    
     print "Solution of the dual variables: lambda=%s\n" % repr(info['mult_g'])
-    
     print "Objective=%s\n" % repr(info['obj_val'])
 
-
+    #
+    # Show the result
+    #
+    plt.figure()
+    plt.subplot(221)
+    plt.imshow(sky.ATMO_aerosols, interpolation='nearest', cmap='gray')    
+    plt.title('target')
+    plt.subplot(223)
+    plt.imshow(x0.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
+    plt.title('initial')
+    plt.subplot(224)
+    plt.imshow(x.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
+    plt.title('final')
+    
+    plt.show()
+    
 if __name__ == '__main__':
     main()
