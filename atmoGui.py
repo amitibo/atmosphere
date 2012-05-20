@@ -147,10 +147,11 @@ class skyAnalayzer(HasTraits):
         SKY_PARAMS['camera_center'] = (self.tr_camera_center, 2)
 
         tmp_img = calcRadiance(aerosol_params, SKY_PARAMS)
-        tmp_img = np.transpose(np.array(tmp_img, ndmin=3), (2, 0, 1))
+        tmp_img = np.transpose(np.array(tmp_img, ndmin=3), (1, 2, 0))
         
         self.base_img = np.tile(tmp_img, (1, tmp_img.shape[0], 1))
         self.tr_sky_max = np.max(self.base_img)
+
         
     @on_trait_change('tr_scaling, tr_gamma')
     def _updateImgScale(self):
