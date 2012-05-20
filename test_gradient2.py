@@ -10,9 +10,11 @@ import logging
 import matplotlib.pyplot as plt
 import amitibo
 import os
+import cv
+import cv2
 
 
-CAMERA_CENTERS = [(i, 1) for i in range(5, 50, 5)]
+CAMERA_CENTERS = [(i, 1) for i in range(15, 50, 20)]
 
 SKY_PARAMS = {
     'width': 50,
@@ -28,11 +30,11 @@ SKY_PARAMS = {
 
 VISIBILITY = 10
 
-MAX_ITERATIONS = 200
+MAX_ITERATIONS = 100
 
 
 class radiance(object):
-    def __init__(self, aerosol_params, sky_params):
+    def __init__(self, aerosol_params, sky_params, results_path):
         #
         # Set the sky and aerosols params
         #
@@ -50,7 +52,14 @@ class radiance(object):
         #
         self.ATMO_air = np.exp(-self.H/self.aerosol_params["air_typical_h"])
         self.ATMO_aerosols = np.exp(-self.H/self.aerosol_params["aerosols_typical_h"])
-        self.ATMO_aerosols[:, :int(self.H.shape[1]/2)] = 0
+
+        aerosols_mask = np.zeros(self.ATMO_aerosols.shape)
+        Z1 = (self.X - self.sky_params['width']/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
+        Z2 = (self.X - self.sky_params['width']*2/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
+        aerosols_mask[Z1<25] = 1
+        aerosols_mask[Z2<25] = 1
+        
+        self.ATMO_aerosols = self.ATMO_aerosols * aerosols_mask
         
         #
         # Create the first image
@@ -69,6 +78,18 @@ class radiance(object):
                     )
                 )
 
+        #
+        # Create a video writer for the temporary results
+        #
+        self.video_writer = cv2.VideoWriter(
+            os.path.join(results_path, 'optimization.avi'),
+            cv.CV_FOURCC(*"ffds"),
+            12,
+            (160, 120)
+            )
+
+        self.obj_value = []
+
     def getX0(self):
         #
         # Create the initial aerosols distribution
@@ -78,6 +99,8 @@ class radiance(object):
     
     def objective(self, x):
         """Calculate the objective"""
+
+        self.temp_x = x
         
         obj = 0
         for camera_index, camera_center in enumerate(CAMERA_CENTERS):
@@ -134,6 +157,33 @@ class radiance(object):
                 grad += g
             
         return grad
+
+    def intermediate(
+            self,
+            alg_mod,
+            iter_count,
+            obj_value,
+            inf_pr,
+            inf_du,
+            mu,
+            d_norm,
+            regularization_size,
+            alpha_du,
+            alpha_pr,
+            ls_trials
+            ):
+
+        try:
+            x = cv2.resize(
+                255*self.temp_x.reshape(self.ATMO_aerosols.shape),
+                dsize=(160, 120), interpolation=cv.CV_INTER_NN
+                )
+            self.video_writer.write(x.astype('uint8'))
+        except Exception as inst:
+            print 'error has occured:\n%s' % repr(inst)
+
+        self.obj_value.append(obj_value)
+        return True
     
     def constraints(self, x):
         #
@@ -178,8 +228,8 @@ def main():
     #
     # Define the problem
     #
-    sky = radiance(aerosol_params, SKY_PARAMS)
-    
+    sky = radiance(aerosol_params, SKY_PARAMS, results_path)
+
     x0 = sky.getX0()
 
     lb = np.zeros(x0.shape)
@@ -216,12 +266,10 @@ def main():
     #
     x, info = nlp.solve(x0)
 
-    print "Solution of the primal variables: x=%s\n" % repr(x)
-    print "Solution of the dual variables: lambda=%s\n" % repr(info['mult_g'])
+    #print "Solution of the primal variables: x=%s\n" % repr(x)
+    #print "Solution of the dual variables: lambda=%s\n" % repr(info['mult_g'])
     print "Objective=%s\n" % repr(info['obj_val'])
 
-    print info.keys()
-    
     #
     # Show the result
     #
@@ -234,9 +282,16 @@ def main():
     plt.title('initial')
     plt.subplot(224)
     plt.imshow(x.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
-    plt.title('After %d iterations' % MAX_ITERATIONS)
+    plt.title('Reconstruction Using %d Cameras\nAfter %d iterations' % (len(CAMERA_CENTERS), MAX_ITERATIONS))
+    plt.suptitle('Reconstruction Using %d Cameras' % len(CAMERA_CENTERS))
+    
+    fig2 = plt.figure()
+    plt.plot(sky.obj_value)
+    plt.title('Objective Value per Iteration')
+    plt.xlabel('Iteration')
+    plt.ylabel('Objective Value')
 
-    amitibo.saveFigures(results_path, (fig1,), bbox_inches='tight')
+    amitibo.saveFigures(results_path, (fig1, fig2), bbox_inches='tight')
 
     #
     # Save the results
