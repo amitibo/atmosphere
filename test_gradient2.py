@@ -14,7 +14,7 @@ import cv
 import cv2
 
 
-CAMERA_CENTERS = [(i, 1) for i in range(15, 50, 20)]
+CAMERA_CENTERS = [(i, 1) for i in range(5, 50, 5)]
 
 SKY_PARAMS = {
     'width': 50,
@@ -28,7 +28,7 @@ SKY_PARAMS = {
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
 
-VISIBILITY = 10
+VISIBILITY = 100
 
 MAX_ITERATIONS = 100
 
@@ -271,27 +271,32 @@ def main():
     print "Objective=%s\n" % repr(info['obj_val'])
 
     #
-    # Show the result
+    # Show the optimization result
     #
-    fig1 = plt.figure()
-    plt.subplot(221)
+    pdf = amitibo.figuresPdf(os.path.join(results_path, 'report.pdf'))
+    figures = []
+    figures.append(plt.figure())
+    plt.subplot(211)
     plt.imshow(sky.ATMO_aerosols, interpolation='nearest', cmap='gray')    
     plt.title('target')
-    plt.subplot(223)
-    plt.imshow(x0.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
-    plt.title('initial')
-    plt.subplot(224)
+    plt.subplot(212)
     plt.imshow(x.reshape(sky.ATMO_air.shape), interpolation='nearest', cmap='gray')
+    plt.hold = True
+    camera_x, camera_y = zip(*CAMERA_CENTERS)
+    plt.plot(camera_x, sky.ATMO_air.shape[0]-1-np.array(camera_y), 'or')
+    plt.xlim((0, sky.ATMO_air.shape[1]-1))
+    plt.ylim((sky.ATMO_air.shape[0]-1, 0))
     plt.title('Reconstruction Using %d Cameras\nAfter %d iterations' % (len(CAMERA_CENTERS), MAX_ITERATIONS))
     plt.suptitle('Reconstruction Using %d Cameras' % len(CAMERA_CENTERS))
-    
-    fig2 = plt.figure()
-    plt.plot(sky.obj_value)
-    plt.title('Objective Value per Iteration')
-    plt.xlabel('Iteration')
-    plt.ylabel('Objective Value')
 
-    amitibo.saveFigures(results_path, (fig1, fig2), bbox_inches='tight')
+    #
+    # Plot the objective
+    #
+    figures.append(plt.figure())
+    plt.plot(np.log10(np.array(sky.obj_value)))
+    plt.title('Log of Objective Value per Iteration')
+    plt.xlabel('Iteration')
+    plt.ylabel(r'$\log_{10}(Objective)$')
 
     #
     # Save the results
@@ -314,7 +319,7 @@ def main():
         IMG_scaled = IMG / np.max(IMG)
         h = int(IMG_scaled.shape[0] / 2)
 
-        fig1 = plt.figure()
+        figures.append(plt.figure())
         plt.subplot(211)
         extent = (0, 1, 90, 0)
         plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
@@ -328,7 +333,7 @@ def main():
         plt.xticks([0, 0.5, 1.0])
         plt.yticks([0, -30, -60, -90])
 
-        amitibo.saveFigures(results_path, (fig1,), bbox_inches='tight')
+    pdf.saveFigures(figures)
         
     plt.show()
     
