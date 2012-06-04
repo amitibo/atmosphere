@@ -80,7 +80,16 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
     return temp2 + temp1
 
 
-def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params, camera_center):
+def calcRadianceHelper(
+        ATMO_aerosols_,
+        ATMO_air_,
+        X,
+        H,
+        aerosol_params,
+        sky_params,
+        camera_center,
+        added_noise=0
+        ):
     
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
@@ -152,7 +161,10 @@ def calcRadianceHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_para
         #
         # Calculate projection on camera
         #
-        img.append(L_sun * H_int * radiance)
+        temp_img = L_sun * H_int * radiance
+        temp_img = temp_img + added_noise*temp_img.std()*numpy.random.randn(*temp_img.shape)
+        temp_img[temp_img<0] = 0
+        img.append(temp_img)
         
     return img
 

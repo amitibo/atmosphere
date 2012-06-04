@@ -29,12 +29,12 @@ SKY_PARAMS = {
 }
 
 VISIBILITY = 100
-
+ADDED_NOISE = 0.0
 MAX_ITERATIONS = 100
 
 
 class radiance(object):
-    def __init__(self, aerosol_params, sky_params, results_path):
+    def __init__(self, aerosol_params, sky_params, results_path, added_noise=0):
         #
         # Set the sky and aerosols params
         #
@@ -74,7 +74,8 @@ class radiance(object):
                     self.H,
                     self.aerosol_params,
                     self.sky_params,
-                    camera_center
+                    camera_center,
+                    added_noise=added_noise
                     )
                 )
 
@@ -228,7 +229,7 @@ def main():
     #
     # Define the problem
     #
-    sky = radiance(aerosol_params, SKY_PARAMS, results_path)
+    sky = radiance(aerosol_params, SKY_PARAMS, results_path, added_noise=ADDED_NOISE)
 
     x0 = sky.getX0()
 
@@ -325,7 +326,7 @@ def main():
         plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
         plt.xticks([0, 0.5, 1.0])
         plt.yticks([0, 30, 60, 90])
-        plt.title('Visibility Parameter %d' % aerosol_params["visibility"])
+        plt.title('Visibility Parameter %d, Added Noise (of std) %g' % (aerosol_params["visibility"], ADDED_NOISE))
 
         plt.subplot(212)
         extent = (0, 1, -90, 0)
