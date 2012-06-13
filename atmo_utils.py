@@ -68,10 +68,11 @@ def calcTransformMatrix(src_grids, dst_coords):
     #
     # Shape of grid
     #
-    src_dims = src_grids[0].shape
-    src_size = np.prod(np.array(src_dims))
-    dst_dims = dst_coords[0].shape
-    dst_size = np.prod(np.array(dst_dims))
+    src_shape = src_grids[0].shape
+    src_size = np.prod(np.array(src_shape))
+    dst_shape = dst_coords[0].shape
+    dst_size = np.prod(np.array(dst_shape))
+    dims = len(src_shape)
     
     #
     # Calculate grid indices of coords.
@@ -82,7 +83,7 @@ def calcTransformMatrix(src_grids, dst_coords):
     # Filter out coords outside of the grids.
     #
     nnz = np.ones(indices[0].shape, dtype=np.bool_)
-    for ind, dim in zip(indices, src_dims):
+    for ind, dim in zip(indices, src_shape):
         nnz *= (ind > 0) * (ind < dim)
 
     dst_indices = np.arange(dst_size)[nnz]
@@ -102,12 +103,14 @@ def calcTransformMatrix(src_grids, dst_coords):
         indices.append([ind-1, ind])
 
     diffs = np.array(diffs)
+    diffs /= np.sum(diffs, axis=1).reshape((dims, 1, -1))
     indices = np.array(indices)
 
-    dims_range = np.arange(len(src_dims))
-    strides = np.array(list(src_dims[1:])+[1]).reshape((-1, 1))
+    dims_range = np.arange(dims)
+    strides = np.array(src_grids[0].strides).reshape((-1, 1))
+    strides /= strides[-1]
     I, J, VALUES = [], [], []
-    for sli in itertools.product(*[[0, 1]]*len(src_dims)):
+    for sli in itertools.product(*[[0, 1]]*dims):
         i = np.array(sli)
         c = indices[dims_range, sli, Ellipsis]
         v = diffs[dims_range, sli, Ellipsis]
@@ -177,6 +180,44 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     H = calcTransformMatrix((Y, X), (Y_, X_))
 
     return H, T, R
+
+
+@memoized
+def sphericalTransformMatrix(X, Y, Z, center, radius_res=None, angle_res=None):
+    """(sparse) matrix representation of cartesian to polar transform.
+    params:
+        X, Y - 2D arrays that define the cartesian coordinates
+        center - Center (in cartesian coords) of the polar coordinates.
+        radius_res, angle_res - Resolution of polar coordinates.
+ """
+
+    import numpy as np
+
+    if radius_res == None:
+        radius_res = max(*X.shape)
+
+    if angle_res == None:
+        angle_res = radius_res
+
+    #
+    # Create the polar grid over which the target matrix (H) will sample.
+    #
+    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2 + (Z-center[2])**2))
+    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi:complex(0, angle_res)]
+
+    #
+    # Calculate the indices of the polar grid in the Cartesian grid.
+    #
+    X_ = R * np.sin(THETA) * np.cos(PHI) + center[0]
+    Y_ = R * np.sin(THETA) * np.sin(PHI) + center[1]
+    Z_ = R * np.cos(THETA) + center[2]
+
+    #
+    # Calculate the transform
+    #
+    H = calcTransformMatrix((Y, X, Z), (Y_, X_, Z_))
+
+    return H, R, PHI, THETA
 
 
 @memoized
@@ -393,3 +434,39 @@ if __name__ == '__main__':
     # t2 = time.time() - t0
 
     # print 'first calculation: %g, memoized: %g' % (t1, t2)
+
+    Y, X, Z = np.mgrid[-10:10:50j, -10:10:50j, -10:10:50j]
+    V = np.sqrt(Y**2 + X**2 + Z**2)
+    V_ = V.reshape((-1, 1))
+    
+    #
+    # Spherical transform
+    #
+    t0 = time.time()
+    Hsph = sphericalTransformMatrix(X, Y, Z, (0, 0, 0))[0]
+    Vsph = Hsph * V_
+    print time.time() - t0
+     
+    import mayavi.mlab as mlab
+    
+    # mlab.figure()
+    # s = mlab.pipeline.scalar_field(V)
+    # ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
+    # ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
+    # mlab.colorbar()
+    # # mlab.contour3d(V, contours=[3], transparent=True)
+    # mlab.outline()
+    
+    mlab.figure()
+    s = mlab.pipeline.scalar_field(Vsph.reshape(V.shape))
+    ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
+    ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
+    mlab.colorbar()
+    #     mlab.contour3d(Vsph.reshape(V.shape), contours=[3], transparent=True)
+    mlab.outline()
+    
+    mlab.figure()
+    mlab.contour3d(Vsph.reshape(V.shape), contours=[1, 2, 3], transparent=True)
+    mlab.outline()
+    
+    mlab.show()
