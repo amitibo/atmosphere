@@ -76,7 +76,7 @@ def calcTransformMatrix(src_grids, dst_coords):
     #
     # Calculate grid indices of coords.
     #
-    indices, src_grids = coords2Indices(src_grids, dst_coords)
+    indices, src_grids_slim = coords2Indices(src_grids, dst_coords)
 
     #
     # Filter out coords outside of the grids.
@@ -97,15 +97,15 @@ def calcTransformMatrix(src_grids, dst_coords):
     #
     diffs = []
     indices = []
-    for grid, coord, ind in zip(src_grids, nnz_coords, nnz_indices):
-        diffs.append([coord - grid[ind-1], grid[ind] - coord])
+    for grid, coord, ind in zip(src_grids_slim, nnz_coords, nnz_indices):
+        diffs.append([grid[ind] - coord, coord - grid[ind-1]])
         indices.append([ind-1, ind])
 
     diffs = np.array(diffs)
     indices = np.array(indices)
 
     dims_range = np.arange(len(src_dims))
-    strides = np.array([1] + list(src_dims[1:])).reshape((-1, 1))
+    strides = np.array(list(src_dims[1:])+[1]).reshape((-1, 1))
     I, J, VALUES = [], [], []
     for sli in itertools.product(*[[0, 1]]*len(src_dims)):
         i = np.array(sli)
@@ -248,7 +248,7 @@ def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
     X_indices = XY_[0, :].reshape(X_unscaled.shape)
     Y_indices = XY_[1, :].reshape(X_unscaled.shape)
 
-    H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
+    H = calcTransformMatrix((Y, X), (Y_indices, X_indices))
 
     return H, X_rot, Y_rot
 
@@ -335,6 +335,7 @@ if __name__ == '__main__':
     import time
 
     lena = sm.lena()
+    lena = lena[:256, ...]
     lena_ = lena.reshape((-1, 1))    
     X, Y = np.meshgrid(np.arange(lena.shape[1]), np.arange(lena.shape[0]))
 
@@ -347,21 +348,21 @@ if __name__ == '__main__':
     print time.time() - t0
     
     plt.figure()
-    plt.imshow(lena_pol.reshape(lena.shape))
+    plt.imshow(lena_pol.reshape((512, 512)), interpolation='nearest')
 
-    # #
-    # # Rotation transform
-    # #
-    # Hrot1, X_rot, Y_rot = rotationTransformMatrix(X, Y, angle=-np.pi/3)
-    # Hrot2 = rotationTransformMatrix(X_rot, Y_rot, np.pi/3, X, Y)[0]
-    # lena_rot1 = Hrot1 * lena_
-    # lena_rot2 = Hrot2 * lena_rot1
+    #
+    # Rotation transform
+    #
+    Hrot1, X_rot, Y_rot = rotationTransformMatrix(X, Y, angle=-np.pi/3)
+    Hrot2 = rotationTransformMatrix(X_rot, Y_rot, np.pi/3, X, Y)[0]
+    lena_rot1 = Hrot1 * lena_
+    lena_rot2 = Hrot2 * lena_rot1
 
-    # plt.figure()
-    # plt.subplot(121)
-    # plt.imshow(lena_rot1.reshape(X_rot.shape))
-    # plt.subplot(122)
-    # plt.imshow(lena_rot2.reshape(lena.shape))
+    plt.figure()
+    plt.subplot(121)
+    plt.imshow(lena_rot1.reshape(X_rot.shape))
+    plt.subplot(122)
+    plt.imshow(lena_rot2.reshape(lena.shape))
 
     # #
     # # Cumsum transform
