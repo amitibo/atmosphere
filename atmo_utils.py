@@ -29,6 +29,7 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 from __future__ import division
 from amitibo import memoized
 import numpy as np
+import itertools
 
 
 #
@@ -51,7 +52,7 @@ def calcHG(PHI, g):
     return HG
 
 
-def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
+def calcTransformMatrix(src_grids, dst_coords):
     """Calculate a sparse transformation matrix.
     params:
         X_indices, Y_indices - 2D arrays containing the indices (as floats)
@@ -60,74 +61,84 @@ def calcTransformMatrix(X_indices, Y_indices, src_shape=()):
     return:
         H - Sparse matrix representing the transform.
 """
-
+    
     import numpy as np
     import scipy.sparse as sps
 
-    m_dst, n_dst = X_indices.shape
+    #
+    # Shape of grid
+    #
+    src_dims = src_grids[0].shape
+    src_size = np.prod(np.array(src_dims))
+    dst_dims = dst_coords[0].shape
+    dst_size = np.prod(np.array(dst_dims))
     
-    if src_shape == ():
-        src_shape = X_indices.shape
-        
-    m_src, n_src = src_shape
-        
     #
-    # Calculate the transform matrix. Based on linear interpolation
-    # of neighbouring indices.
+    # Calculate grid indices of coords.
     #
-    I = []
-    J = []
-    VALUES = []
-    for index, (x, y) in enumerate(zip(X_indices.flat, Y_indices.flat)):
-	i = int(y)
-	j = int(x)
+    indices, src_grids = coords2Indices(src_grids, dst_coords)
 
-        if i < 1 or j < 1:
-	    continue
-	
-	if i >= m_src-1 or j >= n_src-1:
-	    continue
-	
-	di = y - i
-	dj = x - j
-	
-	I.append(index)
-	J.append(j + i*n_src)
-	VALUES.append((1-di)*(1-dj))
+    #
+    # Filter out coords outside of the grids.
+    #
+    nnz = np.ones(indices[0].shape, dtype=np.bool_)
+    for ind, dim in zip(indices, src_dims):
+        nnz *= (ind > 0) * (ind < dim)
 
-	I.append(index)
-	J.append(j + (i+1)*n_src)
-	VALUES.append(di*(1-dj))
+    dst_indices = np.arange(dst_size)[nnz]
+    nnz_indices = []
+    nnz_coords = []
+    for ind, coord in zip(indices, dst_coords):
+        nnz_indices.append(ind[nnz])
+        nnz_coords.append(coord.ravel()[nnz])
+    
+    #
+    # Calculate the transform matrix.
+    #
+    diffs = []
+    indices = []
+    for grid, coord, ind in zip(src_grids, nnz_coords, nnz_indices):
+        diffs.append([coord - grid[ind-1], grid[ind] - coord])
+        indices.append([ind-1, ind])
 
-	I.append(index)
-	J.append(j+1 + i*n_src)
-	VALUES.append((1-di)*dj)
+    diffs = np.array(diffs)
+    indices = np.array(indices)
 
-	I.append(index)
-	J.append(j+1 + (i+1)*n_src)
-	VALUES.append(di*dj)
-
+    dims_range = np.arange(len(src_dims))
+    strides = np.array([1] + list(src_dims[1:])).reshape((-1, 1))
+    I, J, VALUES = [], [], []
+    for sli in itertools.product(*[[0, 1]]*len(src_dims)):
+        i = np.array(sli)
+        c = indices[dims_range, sli, Ellipsis]
+        v = diffs[dims_range, sli, Ellipsis]
+        I.append(dst_indices)
+        J.append(np.sum(c*strides, axis=0))
+        VALUES.append(np.prod(v, axis=0))
+        
     H = sps.coo_matrix(
-        (np.array(VALUES), np.array((I, J))),
-        shape=(m_dst*n_dst, m_src*n_src)
+        (np.array(VALUES).ravel(), np.array((np.array(I).ravel(), np.array(J).ravel()))),
+        shape=(dst_size, src_size)
         ).tocsr()
 
     return H
 
 
-def coords2indices(X_grid, Y_grid, X_pts, Y_pts):
-    """Calculate indices of 2D points (given in X_pts, Y_pts) in a 2D grid
-(given in X_grid, Y_grid)."""
+def coords2Indices(grids, coords):
+    """
+    """
 
-    dx = X_grid[0, 1] - X_grid[0, 0]
-    dy = Y_grid[1, 0] - Y_grid[0, 0]
+    inds = []
+    slim_grids = []
+    for dim, (grid, coord) in enumerate(zip(grids, coords)):
+        sli = [0] * len(grid.shape)
+        sli[dim] = Ellipsis
+        grid = grid[sli]
+        slim_grids.append(grid)
+        inds.append(np.searchsorted(grid, coord.ravel()))
 
-    X_indices = (X_pts - X_grid[0, 0])/dx
-    Y_indices = (Y_pts - Y_grid[0, 0])/dy
+    return inds, slim_grids
 
-    return X_indices, Y_indices
-
-
+        
 @memoized
 def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
@@ -159,12 +170,11 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     #
     X_ = R * np.cos(T) + center[0]
     Y_ = R * np.sin(T) + center[1]
-    X_indices, Y_indices = coords2indices(X, Y, X_, Y_)
 
     #
     # Calculate the transform
     #
-    H = calcTransformMatrix(X_indices, Y_indices, src_shape=X.shape)
+    H = calcTransformMatrix((Y, X), (Y_, X_))
 
     return H, T, R
 
@@ -333,52 +343,52 @@ if __name__ == '__main__':
     #
     t0 = time.time()
     Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
-    t1 = time.time() - t0
     lena_pol = Hpol * lena_
+    print time.time() - t0
     
     plt.figure()
     plt.imshow(lena_pol.reshape(lena.shape))
 
-    #
-    # Rotation transform
-    #
-    Hrot1, X_rot, Y_rot = rotationTransformMatrix(X, Y, angle=-np.pi/3)
-    Hrot2 = rotationTransformMatrix(X_rot, Y_rot, np.pi/3, X, Y)[0]
-    lena_rot1 = Hrot1 * lena_
-    lena_rot2 = Hrot2 * lena_rot1
+    # #
+    # # Rotation transform
+    # #
+    # Hrot1, X_rot, Y_rot = rotationTransformMatrix(X, Y, angle=-np.pi/3)
+    # Hrot2 = rotationTransformMatrix(X_rot, Y_rot, np.pi/3, X, Y)[0]
+    # lena_rot1 = Hrot1 * lena_
+    # lena_rot2 = Hrot2 * lena_rot1
 
-    plt.figure()
-    plt.subplot(121)
-    plt.imshow(lena_rot1.reshape(X_rot.shape))
-    plt.subplot(122)
-    plt.imshow(lena_rot2.reshape(lena.shape))
+    # plt.figure()
+    # plt.subplot(121)
+    # plt.imshow(lena_rot1.reshape(X_rot.shape))
+    # plt.subplot(122)
+    # plt.imshow(lena_rot2.reshape(lena.shape))
 
-    #
-    # Cumsum transform
-    #
-    Hcs1 = cumsumTransformMatrix(X, Y, axis=0, direction=1)
-    Hcs2 = cumsumTransformMatrix(X, Y, axis=1, direction=1)
-    Hcs3 = cumsumTransformMatrix(X, Y, axis=0, direction=-1)
-    Hcs4 = cumsumTransformMatrix(X, Y, axis=1, direction=-1)
-    lena_cs1 = Hcs1 * lena_
-    lena_cs2 = Hcs2 * lena_
-    lena_cs3 = Hcs3 * lena_
-    lena_cs4 = Hcs4 * lena_
+    # #
+    # # Cumsum transform
+    # #
+    # Hcs1 = cumsumTransformMatrix(X, Y, axis=0, direction=1)
+    # Hcs2 = cumsumTransformMatrix(X, Y, axis=1, direction=1)
+    # Hcs3 = cumsumTransformMatrix(X, Y, axis=0, direction=-1)
+    # Hcs4 = cumsumTransformMatrix(X, Y, axis=1, direction=-1)
+    # lena_cs1 = Hcs1 * lena_
+    # lena_cs2 = Hcs2 * lena_
+    # lena_cs3 = Hcs3 * lena_
+    # lena_cs4 = Hcs4 * lena_
     
-    plt.figure()
-    plt.subplot(221)
-    plt.imshow(lena_cs1.reshape(lena.shape))
-    plt.subplot(222)
-    plt.imshow(lena_cs2.reshape(lena.shape))
-    plt.subplot(223)
-    plt.imshow(lena_cs3.reshape(lena.shape))
-    plt.subplot(224)
-    plt.imshow(lena_cs4.reshape(lena.shape))
+    # plt.figure()
+    # plt.subplot(221)
+    # plt.imshow(lena_cs1.reshape(lena.shape))
+    # plt.subplot(222)
+    # plt.imshow(lena_cs2.reshape(lena.shape))
+    # plt.subplot(223)
+    # plt.imshow(lena_cs3.reshape(lena.shape))
+    # plt.subplot(224)
+    # plt.imshow(lena_cs4.reshape(lena.shape))
 
     plt.show()
     
-    t0 = time.time()
-    Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
-    t2 = time.time() - t0
+    # t0 = time.time()
+    # Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
+    # t2 = time.time() - t0
 
-    print 'first calculation: %g, memoized: %g' % (t1, t2)
+    # print 'first calculation: %g, memoized: %g' % (t1, t2)
