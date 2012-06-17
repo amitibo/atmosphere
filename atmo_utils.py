@@ -293,9 +293,27 @@ def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
 
     return H, X_rot, Y_rot
 
+
+def gridDerivatives(grids, forward=True):
+    """Calculate partial derivatives to grids"""
     
+    derivatives = []
+    for dim, grid in enumerate(grids):
+        sli = [0] * len(grid.shape)
+        sli[dim] = Ellipsis
+        grid = grid[sli]
+        derivative = np.abs(grid[1:] - grid[:-1])
+        if forward:
+            derivative = np.concatenate((derivative, (derivative[-1],)))
+        else:
+            derivative = np.concatenate(((derivative[0],), derivative))
+        derivatives.append(derivative)
+
+    return derivatives
+    
+
 @memoized
-def cumsumTransformMatrix(X, Y, axis=0, direction=1):
+def cumsumTransformMatrix(grids, axis=0, direction=1):
     """Calculate a (sparse) matrix representation of integration (cumsum) transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -306,30 +324,35 @@ def cumsumTransformMatrix(X, Y, axis=0, direction=1):
     import numpy as np
     import scipy.sparse as sps
 
-    m, n = X.shape
+    grid_shape = grids[0].shape
+    strides = np.array(grids[0].strides).reshape((-1, 1))
+    strides /= strides[-1]
 
+    derivatives = gridDerivatives(grids)
+
+    inner_stride = strides[axis]
+    if direction == 1:
+        inner_stride = -inner_stride
+        
+    inner_size = np.prod(grid_shape[axis:])
+
+    inner_H = sps.spdiags(
+        np.ones((grid_shape[axis], inner_size))*derivatives[axis].reshape((-1, 1)),
+        inner_stride*np.arange(grid_shape[axis]),
+        inner_size,
+        inner_size)
+    
     if axis == 0:
-        dy = np.abs(Y[1:, 0] - Y[:-1, 0])
-        dy = np.concatenate((dy, (dy[-1],)))
-        if direction == 1:
-            H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), -n*np.arange(m), m*n, m*n)
-        else:
-            H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), n*np.arange(m), m*n, m*n)                
+        H = inner_H
     else:
-        dx = np.abs(X[0, 1:] - X[0, :-1])
-        dx = np.concatenate((dx, (dx[-1],)))
-        if direction == 1:
-            A = sps.csr_matrix(np.tril(np.ones((n, n))*dx))
-        else:
-            A = sps.csr_matrix(np.triu(np.ones((n, n))*dx))
-
-        H = sps.kron(sps.eye(m, m), A)
+        m = np.prod(grid_shape[:axis])
+        H = sps.kron(sps.eye(m, m), inner_H)
 
     return H.tocsr()
 
 
 @memoized
-def integralTransformMatrix(X, Y, axis=0, direction=1):
+def integralTransformMatrix(grids, axis=0, direction=1):
     """Calculate a (sparse) matrix representation of integration transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -340,19 +363,31 @@ def integralTransformMatrix(X, Y, axis=0, direction=1):
     import numpy as np
     import scipy.sparse as sps
 
-    m, n = X.shape
+    grid_shape = grids[0].shape
+    strides = np.array(grids[0].strides).reshape((-1, 1))
+    strides /= strides[-1]
 
-    if direction != 1:
-        direction == -1
+    derivatives = gridDerivatives(grids)
+
+    inner_stride = strides[axis]
+    if direction == 1:
+        inner_stride = -inner_stride
         
+    inner_height = np.abs(inner_stride)
+    inner_width = np.prod(grid_shape[axis:])
+    
+    inner_H = sps.spdiags(
+        np.ones((grid_shape[axis], inner_height))*derivatives[axis].reshape((-1, 1)),
+        inner_stride*np.arange(grid_shape[axis]),
+        inner_height,
+        inner_width
+    )
+    
     if axis == 0:
-        dy = (Y[1:, 0] - Y[:-1, 0]) * direction
-        dy = np.concatenate((dy, (dy[-1],)))
-        H = sps.spdiags(np.ones((m, m*n))*dy.reshape((-1, 1)), n*np.arange(m), n, m*n)
+        H = inner_H
     else:
-        dx = (X[0, 1:] - X[0, :-1]) * direction
-        dx = np.concatenate((dx, (dx[-1],)))
-        H = sps.kron(np.eye(m), np.ones((1, n))*dx)
+        m = np.prod(grid_shape[:axis])
+        H = sps.kron(sps.eye(m, m), inner_H)
 
     return H.tocsr()
 
@@ -366,15 +401,15 @@ def spdiag(X):
     return sps.dia_matrix((X.ravel(), 0), (X.size, X.size))
 
 
-if __name__ == '__main__':
-    #
-    # Test several of the above functions
-    #
+def test2D():
     import matplotlib.pyplot as plt
     import numpy as np
     import scipy.misc as sm
     import time
 
+    ##############################################################
+    # 2D data
+    ##############################################################
     lena = sm.lena()
     lena = lena[:256, ...]
     lena_ = lena.reshape((-1, 1))    
@@ -405,36 +440,46 @@ if __name__ == '__main__':
     plt.subplot(122)
     plt.imshow(lena_rot2.reshape(lena.shape))
 
-    # #
-    # # Cumsum transform
-    # #
-    # Hcs1 = cumsumTransformMatrix(X, Y, axis=0, direction=1)
-    # Hcs2 = cumsumTransformMatrix(X, Y, axis=1, direction=1)
-    # Hcs3 = cumsumTransformMatrix(X, Y, axis=0, direction=-1)
-    # Hcs4 = cumsumTransformMatrix(X, Y, axis=1, direction=-1)
-    # lena_cs1 = Hcs1 * lena_
-    # lena_cs2 = Hcs2 * lena_
-    # lena_cs3 = Hcs3 * lena_
-    # lena_cs4 = Hcs4 * lena_
-    
-    # plt.figure()
-    # plt.subplot(221)
-    # plt.imshow(lena_cs1.reshape(lena.shape))
-    # plt.subplot(222)
-    # plt.imshow(lena_cs2.reshape(lena.shape))
-    # plt.subplot(223)
-    # plt.imshow(lena_cs3.reshape(lena.shape))
-    # plt.subplot(224)
-    # plt.imshow(lena_cs4.reshape(lena.shape))
+    #
+    # Cumsum transform
+    #
+    Hcs1 = cumsumTransformMatrix((Y, X), axis=0, direction=1)
+    Hcs2 = cumsumTransformMatrix((Y, X), axis=1, direction=1)
+    Hcs3 = cumsumTransformMatrix((Y, X), axis=0, direction=-1)
+    Hcs4 = cumsumTransformMatrix((Y, X), axis=1, direction=-1)
+    lena_cs1 = Hcs1 * lena_
+    lena_cs2 = Hcs2 * lena_
+    lena_cs3 = Hcs3 * lena_
+    lena_cs4 = Hcs4 * lena_
+
+    plt.figure()
+    plt.subplot(221)
+    plt.imshow(lena_cs1.reshape(lena.shape))
+    plt.subplot(222)
+    plt.imshow(lena_cs2.reshape(lena.shape))
+    plt.subplot(223)
+    plt.imshow(lena_cs3.reshape(lena.shape))
+    plt.subplot(224)
+    plt.imshow(lena_cs4.reshape(lena.shape))
 
     plt.show()
     
     # t0 = time.time()
     # Hpol = polarTransformMatrix(X, Y, (256, 2))[0]
     # t2 = time.time() - t0
-
     # print 'first calculation: %g, memoized: %g' % (t1, t2)
 
+
+def test3D():
+    import numpy as np
+    import time
+
+    #
+    # Test several of the above functions
+    #
+    ##############################################################
+    # 3D data
+    ##############################################################
     Y, X, Z = np.mgrid[-10:10:50j, -10:10:50j, -10:10:50j]
     V = np.sqrt(Y**2 + X**2 + Z**2)
     V_ = V.reshape((-1, 1))
@@ -447,26 +492,44 @@ if __name__ == '__main__':
     Vsph = Hsph * V_
     print time.time() - t0
      
+    #
+    # Cumsum transform
+    #
+    Hcs1 = cumsumTransformMatrix((Y, X, Z), axis=0, direction=-1)
+    Vcs1 = Hcs1 * V_
+
+    #
+    # Integral transform
+    #
+    Hit1 = integralTransformMatrix((Y, X, Z), axis=0, direction=-1)
+    Vit1 = Hit1 * V_
+
+    #
+    # 3D visualization
+    #
     import mayavi.mlab as mlab
-    
-    # mlab.figure()
-    # s = mlab.pipeline.scalar_field(V)
-    # ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
-    # ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
-    # mlab.colorbar()
-    # # mlab.contour3d(V, contours=[3], transparent=True)
-    # mlab.outline()
-    
     mlab.figure()
-    s = mlab.pipeline.scalar_field(Vsph.reshape(V.shape))
+    s = mlab.pipeline.scalar_field(Vcs1.reshape(V.shape))
     ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
     ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
     mlab.colorbar()
-    #     mlab.contour3d(Vsph.reshape(V.shape), contours=[3], transparent=True)
     mlab.outline()
     
-    mlab.figure()
-    mlab.contour3d(Vsph.reshape(V.shape), contours=[1, 2, 3], transparent=True)
-    mlab.outline()
+    # mlab.figure()
+    # mlab.contour3d(Vcs1.reshape(V.shape), contours=[1, 2, 3], transparent=True)
+    # mlab.outline()
     
     mlab.show()
+    
+    #
+    # 2D visualization
+    #
+    import matplotlib.pyplot as plt
+    
+    plt.figure()
+    plt.imshow(Vit1.reshape(V.shape[:2]))
+    plt.show()
+
+if __name__ == '__main__':
+    test2D()
+    
