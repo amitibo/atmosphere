@@ -44,7 +44,7 @@ class radiance(object):
         self.X, self.H = \
           np.meshgrid(
               np.arange(0, self.sky_params['width'], self.sky_params['dxh']),
-              np.arange(0, self.sky_params['height'], self.sky_params['dxh'])[::-1]
+              np.arange(0, self.sky_params['height'], self.sky_params['dxh'])
               )
         
         #
