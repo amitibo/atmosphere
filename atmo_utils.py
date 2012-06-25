@@ -221,7 +221,7 @@ def sphericalTransformMatrix(X, Y, Z, center, radius_res=None, angle_res=None):
 
 
 @memoized
-def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
+def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
     """(sparse) matrix representation of rotation transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -231,11 +231,6 @@ def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
         X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
 """
 
-    dy = Y[1, 0] - Y[0, 0]
-    dx = X[0, 1] - X[0, 0]
-
-    assert abs(dx) == abs(dy), "Currently not supporting non-isotropic grids (dx=%g, dy=%g)" % (dx, dy)
-
     H_rot = np.array(
         [[np.cos(angle), -np.sin(angle), 0],
          [np.sin(angle), np.cos(angle), 0],
@@ -244,54 +239,43 @@ def rotationTransformMatrix(X, Y, angle, X_rot=None, Y_rot=None):
 
     m_src, n_src = X.shape
 
-    if X_rot == None:
+    if X_dst == None:
+        X_slim = X[0, :]
+        Y_slim = Y[:, 0]
+        x0_src = np.floor(np.min(X_slim)).astype(np.int)
+        y0_src = np.floor(np.min(Y_slim)).astype(np.int)
+        x1_src = np.ceil(np.max(X_slim)).astype(np.int)
+        y1_src = np.ceil(np.max(Y_slim)).astype(np.int)
+        
         coords = np.hstack((
-            np.dot(H_rot, np.array([[0], [0], [1]])),
-            np.dot(H_rot, np.array([[0], [m_src], [1]])),
-            np.dot(H_rot, np.array([[n_src], [0], [1]])),
-            np.dot(H_rot, np.array([[n_src], [m_src], [1]]))
+            np.dot(H_rot, np.array([[x0_src], [y0_src], [1]])),
+            np.dot(H_rot, np.array([[x0_src], [y1_src], [1]])),
+            np.dot(H_rot, np.array([[x1_src], [y0_src], [1]])),
+            np.dot(H_rot, np.array([[x1_src], [y1_src], [1]]))
             ))
 
-        x0, y0, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
-        x1, y1, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
-        dst_shape = (y1-y0, x1-x0)
+        x0_dst, y0_dst, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
+        x1_dst, y1_dst, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
+        dst_shape = (y1_dst-y0_dst, x1_dst-x0_dst)
 
-        X_rot, Y_rot = np.meshgrid(np.arange(x1-x0) * dx, np.arange(y1-y0) * dy)
-
-    m_dst, n_dst = X_rot.shape
-
-    #
-    # Calculate the rotation matrix.
-    # Note:
-    # The rotation is applied at the center, therefore
-    # the coordinates are first centered, rotated and decentered.
-    # For simplicity we calculate the rotation on 'integer' grid and
-    # not on the original grid. This is why we don't support when
-    # dx != dy.
-    #
-    H_center = np.eye(3)
-    H_center[0, -1] = -n_dst/2
-    H_center[1, -1] = -m_dst/2
-
-    H_decenter = np.eye(3)
-    H_decenter[0, -1] = n_src/2
-    H_decenter[1, -1] = m_src/2
-
-    H = np.dot(H_decenter, np.dot(H_rot, H_center))
+        dxy_dst = min(np.min(np.abs(X_slim[1:]-X_slim[:-1])), np.min(np.abs(Y_slim[1:]-Y_slim[:-1])))
+        X_dst, Y_dst = np.meshgrid(
+            np.linspace(x0_dst, x1_dst, int((x1_dst-x0_dst)/dxy_dst)+1),
+            np.linspace(y0_dst, y1_dst, int((y1_dst-y0_dst)/dxy_dst)+1)
+        )
 
     #
     # Calculate a rotated grid by applying the rotation.
     #
-    X_unscaled, Y_unscaled = np.meshgrid(np.arange(n_dst), np.arange(m_dst))
-    XY = np.vstack((X_unscaled.ravel(), Y_unscaled.ravel(), np.ones(X_unscaled.size)))
-    XY_ = np.dot(H, XY)
+    XY_dst = np.vstack((X_dst.ravel(), Y_dst.ravel(), np.ones(X_dst.size)))
+    XY_src_ = np.dot(np.linalg.inv(H_rot), XY_dst)
 
-    X_indices = XY_[0, :].reshape(X_unscaled.shape)
-    Y_indices = XY_[1, :].reshape(X_unscaled.shape)
+    X_indices = XY_src_[0, :].reshape(X_dst.shape)
+    Y_indices = XY_src_[1, :].reshape(X_dst.shape)
 
     H = calcTransformMatrix((Y, X), (Y_indices, X_indices))
 
-    return H, X_rot, Y_rot
+    return H, X_dst, Y_dst
 
 
 def gridDerivatives(grids, forward=True):
@@ -364,20 +348,21 @@ def integralTransformMatrix(grids, axis=0, direction=1):
     import scipy.sparse as sps
 
     grid_shape = grids[0].shape
-    strides = np.array(grids[0].strides).reshape((-1, 1))
+    strides = np.array(grids[0].strides)
     strides /= strides[-1]
 
     derivatives = gridDerivatives(grids)
 
     inner_stride = strides[axis]
-    if direction == 1:
-        inner_stride = -inner_stride
+    
+    if direction != 1:
+        direction  = -1
         
     inner_height = np.abs(inner_stride)
     inner_width = np.prod(grid_shape[axis:])
-    
+
     inner_H = sps.spdiags(
-        np.ones((grid_shape[axis], inner_height))*derivatives[axis].reshape((-1, 1)),
+        np.ones((grid_shape[axis], max(inner_height, inner_width)))*derivatives[axis].reshape((-1, 1))*direction,
         inner_stride*np.arange(grid_shape[axis]),
         inner_height,
         inner_width

@@ -18,6 +18,8 @@ SKY_PARAMS = {
     'dxh': 1,
     'camera_center': (80, 2),
     'sun_angle': 0,
+    'camera_dist_res': 100,
+    'camera_angle_res': 100,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }

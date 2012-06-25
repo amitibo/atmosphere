@@ -41,8 +41,8 @@ def calcOpticalDistancesTransform(X, Y, ATMO, sun_angle, H_pol, T, R):
     Hrot_forward, X_dst, Y_dst = atmo_utils.rotationTransformMatrix(X, Y, angle=sun_angle)
     Hrot_backward = atmo_utils.rotationTransformMatrix(X_dst, Y_dst, -sun_angle, X, Y)[0]
     
-    Hint1 = atmo_utils.cumsumTransformMatrix(X_dst, Y_dst)
-    Hint2 = atmo_utils.cumsumTransformMatrix(T, R, direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix((Y_dst, X_dst))
+    Hint2 = atmo_utils.cumsumTransformMatrix((R, T), direction=-1)
 
     #
     # Apply transform matrices to calculate the path up to the
@@ -71,8 +71,8 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
     Hrot_forward, X_dst, Y_dst = atmo_utils.rotationTransformMatrix(X, Y, angle=sun_angle)
     Hrot_backward = atmo_utils.rotationTransformMatrix(X_dst, Y_dst, -sun_angle, X, Y)[0]
     
-    Hint1 = atmo_utils.cumsumTransformMatrix(X_dst, Y_dst)
-    Hint2 = atmo_utils.cumsumTransformMatrix(T, R, direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix((Y_dst, X_dst))
+    Hint2 = atmo_utils.cumsumTransformMatrix((R, T), direction=-1)
 
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
@@ -124,7 +124,7 @@ def calcRadianceHelper(
             R
             )
 
-    H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
+    H_int = atmo_utils.integralTransformMatrix((R, T), axis=0)
         
     #
     # Calculate scattering angle
@@ -176,7 +176,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     X, H = numpy.meshgrid(
         numpy.arange(0, sky_params['width'], sky_params['dxh']),
-        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
+        numpy.arange(0, sky_params['height'], sky_params['dxh'])
         )
 
     #
@@ -310,7 +310,7 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
             R
             )
 
-    H_int = atmo_utils.integralTransformMatrix(T, R, axis=0)
+    H_int = atmo_utils.integralTransformMatrix((R, T), axis=0)
         
     #
     # Calculate scattering angle
@@ -407,7 +407,8 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
                         'numpy',
                         'scipy.interpolate',
                         'skimage.transform',
-                        'math'
+                        'math',
+                        'atmo_utils'
                         )
                     ) for h in h_range]
         jobs.append(temp_jobs)
@@ -431,7 +432,8 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
 def main_serial(aerosol_params, sky_params, results_path=''):
     """Run the calculation on a single parameters set."""
 
-    calcRadiance(aerosol_params, sky_params, results_path, True)
+    result = calcRadiance(aerosol_params, sky_params, results_path, plot_results=False)
+    print result
     
 
 if __name__ == '__main__':
@@ -458,5 +460,5 @@ if __name__ == '__main__':
     #
     results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
 
-    #main_parallel(aerosol_params, SKY_PARAMS)
+    #main_parallel(aerosol_params, SKY_PARAMS, results_path)
     main_serial(aerosol_params, SKY_PARAMS, results_path)
