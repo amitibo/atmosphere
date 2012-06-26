@@ -3,17 +3,13 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 """
 
 from __future__ import division
-from mpl_toolkits.mplot3d import axes3d
-import scipy.interpolate
 import matplotlib.pyplot as plt
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag
 import atmo_utils
 import os.path
 import pickle
-import math
 import amitibo
-import IPython
 
 
 SKY_PARAMS = {
@@ -23,7 +19,7 @@ SKY_PARAMS = {
     'camera_center': (40, 40, 2),
     'camera_dist_res': 100,
     'camera_angle_res': 100,
-    'sun_angle': -45/180*math.pi,
+    'sun_angle': 0/180*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
@@ -36,7 +32,7 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     #
     # Prepare transformation matrices
     #
-    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(sun_angle, 0, 0))
+    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
     Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, numpy.linalg.inv(rotation), Y, X, Z)[0]
     
     Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot))
@@ -85,7 +81,7 @@ def calcRadianceHelper(
             )
     
     H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
-    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.1)
+    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.3)
     
     #
     # Calculate scattering angle
@@ -303,43 +299,28 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
-    vis_range = numpy.logspace(-10, 10, 20)
-    h_range = numpy.logspace(-10, 10, 20)
-
+    sun_angle_range = numpy.linspace(0, numpy.pi/4, 8)
+    
     job_server = amitibo.start_jobServer()
     jobs = []
 
-    aerosol_params.pop('aerosols_typical_h')
-    for visibility in vis_range:
-        aerosol_params['visibility'] = visibility
-        temp_jobs = [job_server.submit(
-                    calcRadiance,
-                    args=(dict(aerosols_typical_h=h, **aerosol_params), sky_params),
-                    depfuncs=amitibo.depfuncs(globals()),
-                    modules=(
-                        'numpy',
-                        'scipy.interpolate',
-                        'skimage.transform',
-                        'math',
-                        'atmo_utils'
-                        )
-                    ) for h in h_range]
-        jobs.append(temp_jobs)
+    for sun_angle in sun_angle_range:
+        sky_params['sun_angle'] = sun_angle
+        jobs.append(
+            job_server.submit(
+                calcRadiance,
+                args=(aerosol_params, sky_params, results_path, True),
+                depfuncs=amitibo.depfuncs(globals()),
+                modules=(
+                    'numpy',
+                    'math',
+                    'atmo_utils'
+                )
+            )
+        )
 
-    results = []
-    for temp_jobs in jobs:
-        results.append([numpy.max(job()) for job in temp_jobs])
-
- 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    X, Y = numpy.meshgrid(numpy.log10(h_range), numpy.log10(vis_range))
-    Z = numpy.array(results)
-    ax.plot_wireframe(X, Y, Z, rstride=1, cstride=1)
-    
-    amitibo.saveFigures(results_path, bbox_inches='tight')
-
-    plt.show()
+    for job in jobs:
+        job()
 
 
 def main_serial(aerosol_params, sky_params, results_path=''):
@@ -372,5 +353,6 @@ if __name__ == '__main__':
     #
     results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
 
-    #main_parallel(aerosol_params, SKY_PARAMS, results_path)
-    main_serial(aerosol_params, SKY_PARAMS, results_path)
+    main_parallel(aerosol_params, SKY_PARAMS, results_path)
+    #main_serial(aerosol_params, SKY_PARAMS, results_path)
+

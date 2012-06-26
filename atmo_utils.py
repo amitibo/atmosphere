@@ -63,6 +63,7 @@ def calcTransformMatrix(src_grids, dst_coords):
     
     import numpy as np
     import scipy.sparse as sps
+    import itertools
 
     #
     # Shape of grid
@@ -128,6 +129,8 @@ def calcTransformMatrix(src_grids, dst_coords):
 def coords2Indices(grids, coords):
     """
     """
+
+    import numpy as np
 
     inds = []
     slim_grids = []
@@ -202,7 +205,7 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, angle_res=None):
     # Create the polar grid over which the target matrix (H) will sample.
     #
     max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2 + (Z-center[2])**2))
-    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi:complex(0, angle_res)]
+    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi/2*0.8:complex(0, angle_res)]
 
     #
     # Calculate the indices of the polar grid in the Cartesian grid.
@@ -230,6 +233,8 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
         X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
 """
 
+    import numpy as np
+    
     H_rot = np.array(
         [[np.cos(angle), -np.sin(angle), 0],
          [np.sin(angle), np.cos(angle), 0],
@@ -284,6 +289,7 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
         X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
 """
 
+    import numpy as np
 
     if isinstance(rotation, np.ndarray) and rotation.shape == (4, 4):
         H_rot = rotation
@@ -360,6 +366,8 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
 
 def gridDerivatives(grids, forward=True):
     """Calculate partial derivatives to grids"""
+
+    import numpy as np
     
     derivatives = []
     for dim, grid in enumerate(grids):
@@ -468,6 +476,8 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, x_resolution=256, y_resol
         X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
 """
 
+    import numpy as np
+    
     if y_resolution == None:
         y_resolution = x_resolution
 
@@ -647,9 +657,9 @@ def testProjection():
     
     l = scm.lena()
 
-    PHI, THETA = np.mgrid[0:2*np.pi:512j, 0:np.pi/2:512j]
+    PHI, THETA = np.mgrid[0:2*np.pi:512j, 0:np.pi/2*0.9:512j]
     
-    H = cameraTransformMatrix(PHI, THETA, focal_ratio=0.5)
+    H = cameraTransformMatrix(PHI, THETA, focal_ratio=0.15)
     lp = H * l.reshape((-1, 1))
 
     plt.figure()
