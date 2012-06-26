@@ -17,10 +17,10 @@ import IPython
 
 
 SKY_PARAMS = {
-    'width': 50,
+    'width': 80,
     'height': 20,
-    'dxh': 1,
-    'camera_center': (80, 2),
+    'dxh': 4,
+    'camera_center': (40, 40, 2),
     'camera_dist_res': 100,
     'camera_angle_res': 100,
     'sun_angle': -45/180*math.pi,
@@ -31,16 +31,16 @@ SKY_PARAMS = {
 VISIBILITY = 10
 
 
-def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
+def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
 
     #
     # Prepare transformation matrices
     #
-    Hrot_forward, X_dst, Y_dst = atmo_utils.rotationTransformMatrix(X, Y, angle=sun_angle)
-    Hrot_backward = atmo_utils.rotationTransformMatrix(X_dst, Y_dst, -sun_angle, X, Y)[0]
+    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(sun_angle, 0, 0))
+    Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, numpy.linalg.inv(rotation), Y, X, Z)[0]
     
-    Hint1 = atmo_utils.cumsumTransformMatrix((Y_dst, X_dst))
-    Hint2 = atmo_utils.cumsumTransformMatrix((R, T), direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot))
+    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), direction=-1)
 
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
@@ -51,6 +51,7 @@ def calcOpticalDistancesMatrix(X, Y, sun_angle, H_pol, T, R):
 def calcRadianceHelper(
         ATMO_aerosols_,
         ATMO_air_,
+        Y,
         X,
         H,
         aerosol_params,
@@ -59,9 +60,8 @@ def calcRadianceHelper(
         added_noise=0
         ):
     
-    ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
-    
-    H_pol, T, R = atmo_utils.polarTransformMatrix(
+    H_pol, R, PHI, THETA = atmo_utils.sphericalTransformMatrix(
+        Y,
         X,
         H,
         camera_center,
@@ -72,32 +72,25 @@ def calcRadianceHelper(
     #
     # Calculate the distance matrices
     #
-    H_aerosols = \
+    H_distances = \
         calcOpticalDistancesMatrix(
+            Y,
             X,
             H,
             sky_params['sun_angle'],
             H_pol,
-            T,
-            R
+            R,
+            PHI,
+            THETA
             )
     
-    H_air = \
-        calcOpticalDistancesMatrix(
-            X,
-            H,
-            sky_params['sun_angle'],
-            H_pol,
-            T,
-            R
-            )
-
-    H_int = atmo_utils.integralTransformMatrix((R, T), axis=0)
-        
+    H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
+    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.1)
+    
     #
     # Calculate scattering angle
     #
-    scatter_angle = sky_params['sun_angle'] + T.reshape((-1, 1)) + numpy.pi/2
+    scatter_angle = sky_params['sun_angle'] + THETA.reshape((-1, 1)) + numpy.pi/2
 
     #
     # Calculate scattering for each channel (in case of the railey scattering)
@@ -115,11 +108,11 @@ def calcRadianceHelper(
         #
         extinction_aerosols = k / aerosol_params["visibility"]
         scatter_aerosols = w * extinction_aerosols * calcHG(scatter_angle, g) * (H_pol * ATMO_aerosols_)
-        exp_aerosols = numpy.exp(-extinction_aerosols * H_aerosols * ATMO_aerosols_)
+        exp_aerosols = numpy.exp(-extinction_aerosols * H_distances * ATMO_aerosols_)
         
         extinction_air = 1.09e-3 * lambda_**-4.05
         scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * (H_pol * ATMO_air_)
-        exp_air = numpy.exp(-extinction_air * H_air * ATMO_air_)
+        exp_air = numpy.exp(-extinction_air * H_distances * ATMO_air_)
         
         #
         # Calculate the radiance
@@ -129,10 +122,10 @@ def calcRadianceHelper(
         #
         # Calculate projection on camera
         #
-        temp_img = L_sun * H_int * radiance
+        temp_img = L_sun * H_camera * H_int * radiance
         temp_img = temp_img + added_noise*temp_img.std()*numpy.random.randn(*temp_img.shape)
         temp_img[temp_img<0] = 0
-        img.append(temp_img)
+        img.append(temp_img.reshape(256, 256))
         
     return img
 
@@ -142,20 +135,14 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Create the sky
     #
-    X, H = numpy.meshgrid(
-        numpy.arange(0, sky_params['width'], sky_params['dxh']),
-        numpy.arange(0, sky_params['height'], sky_params['dxh'])
-        )
+    Y, X, H = numpy.mgrid[0:sky_params['width']:sky_params['dxh'], 0:sky_params['width']:sky_params['dxh'], 0:sky_params['height']:sky_params['dxh']]
 
     #
     # Create the distributions of air and aerosols
     #
-    #ATMO_aerosols = numpy.zeros_like(H, dtype=numpy.float64)
     ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
-    ATMO_aerosols[:, :int(H.shape[1]/2)] = 0
     ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
     
-    #ATMO_air = numpy.zeros_like(H, dtype=numpy.float64)
     ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
     ATMO_air_ = ATMO_air.reshape((-1, 1))
 
@@ -165,6 +152,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     img = calcRadianceHelper(
         ATMO_aerosols_,
         ATMO_air_,
+        Y,
         X,
         H,
         aerosol_params,
@@ -176,64 +164,21 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         #
         # Create the image
         #
-        IMG = numpy.transpose(numpy.array(img, ndmin=3), (1, 2, 0))
-        IMG = numpy.tile(IMG, (1, IMG.shape[0], 1))
+        IMG = numpy.transpose(numpy.array(img), (1, 2, 0))
 
         #
         # Account for gamma correction
         #
         IMG **= 0.45
+        IMG_scaled = IMG / numpy.max(IMG)
 
         #
         # Plot results
         #
-        fig1 = plt.figure()
-        plt.subplot(331)
-        plt.imshow(ATMO_air, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_air\nmax:%g' % numpy.max(ATMO_air))
-        plt.subplot(332)
-        plt.imshow(ATMO_aerosols, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_aerosols\nmax:%g' % numpy.max(ATMO_aerosols))
-        plt.subplot(333)
-        plt.imshow(mask_polar, interpolation='nearest', cmap='gray')
-        plt.title('mask_polar\nmax:%g' % numpy.max(mask_polar))
-        plt.subplot(334)
-        plt.imshow(ATMO_air_to_polar, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_air_to_polar\nmax:%g' % numpy.max(ATMO_air_to_polar))
-        plt.subplot(335)
-        plt.imshow(ATMO_air_from_polar, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_air_from_polar\nmax:%g' % numpy.max(ATMO_air_from_polar))
-        plt.subplot(336)
-        plt.imshow(ATMO_aerosols_to_polar, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_aerosols_to_polar\nmax:%g' % numpy.max(ATMO_aerosols_to_polar))
-        plt.subplot(337)
-        plt.imshow(ATMO_aerosols_from_polar, interpolation='nearest', cmap='gray')
-        plt.title('ATMO_aerosols_from_polar\nmax:%g' % numpy.max(ATMO_aerosols_from_polar))
-        plt.subplot(338)
-        plt.imshow(radiance, interpolation='nearest', cmap='gray')
-        plt.title('radiance\nmax:%g' % numpy.max(radiance))
-        plt.subplot(339)
-        plt.imshow(IMG/numpy.max(IMG), interpolation='nearest')
-        plt.title('IMG\nmax:%g' % numpy.max(IMG))
+        fig = plt.figure()
+        plt.imshow(IMG_scaled, interpolation='nearest')
 
-        IMG_scaled = IMG / numpy.max(IMG)
-        h = int(IMG_scaled.shape[0] / 2)
-
-        fig2 = plt.figure()
-        plt.subplot(211)
-        extent = (0, 1, 90, 0)
-        plt.imshow(IMG_scaled[h:0:-1, ...], aspect=1/270, extent=extent, interpolation='nearest')
-        plt.xticks([0, 0.5, 1.0])
-        plt.yticks([0, 30, 60, 90])
-        plt.title('Visibility Parameter %d' % aerosol_params["visibility"])
-
-        plt.subplot(212)
-        extent = (0, 1, -90, 0)
-        plt.imshow(IMG_scaled[h:, ...], aspect=1/270, extent=extent, interpolation='nearest')
-        plt.xticks([0, 0.5, 1.0])
-        plt.yticks([0, -30, -60, -90])
-
-        amitibo.saveFigures(results_path, (fig1, fig2), bbox_inches='tight')
+        amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
 
         plt.show()
 
@@ -400,8 +345,7 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
 def main_serial(aerosol_params, sky_params, results_path=''):
     """Run the calculation on a single parameters set."""
 
-    result = calcRadiance(aerosol_params, sky_params, results_path, plot_results=False)
-    print result
+    calcRadiance(aerosol_params, sky_params, results_path, plot_results=True)
     
 
 if __name__ == '__main__':

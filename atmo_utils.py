@@ -182,7 +182,7 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
 
 
 @memoized
-def sphericalTransformMatrix(X, Y, Z, center, radius_res=None, angle_res=None):
+def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, angle_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -579,7 +579,7 @@ def test3D():
     # # Spherical transform
     # #
     # t0 = time.time()
-    # Hsph = sphericalTransformMatrix(X, Y, Z, (0, 0, 0))[0]
+    # Hsph = sphericalTransformMatrix(Y, X, Z, (0, 0, 0))[0]
     # Vsph = Hsph * V_
     # print time.time() - t0
      
