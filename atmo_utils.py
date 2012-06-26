@@ -55,9 +55,8 @@ def calcHG(PHI, g):
 def calcTransformMatrix(src_grids, dst_coords):
     """Calculate a sparse transformation matrix.
     params:
-        X_indices, Y_indices - 2D arrays containing the indices (as floats)
-            from where transformation should sample values.
-        src_shape - Shape of the source matrix (defaults to the destination shape)
+        src_grids - The array of source grids.
+        dst_coords - The array of destination grids in as points in the source grids.
     return:
         H - Sparse matrix representing the transform.
 """
@@ -237,8 +236,6 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
          [0, 0, 1]]
         )
 
-    m_src, n_src = X.shape
-
     if X_dst == None:
         X_slim = X[0, :]
         Y_slim = Y[:, 0]
@@ -256,7 +253,6 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
 
         x0_dst, y0_dst, dump = np.floor(np.min(coords, axis=1)).astype(np.int)
         x1_dst, y1_dst, dump = np.ceil(np.max(coords, axis=1)).astype(np.int)
-        dst_shape = (y1_dst-y0_dst, x1_dst-x0_dst)
 
         dxy_dst = min(np.min(np.abs(X_slim[1:]-X_slim[:-1])), np.min(np.abs(Y_slim[1:]-Y_slim[:-1])))
         X_dst, Y_dst = np.meshgrid(
@@ -276,6 +272,90 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
     H = calcTransformMatrix((Y, X), (Y_indices, X_indices))
 
     return H, X_dst, Y_dst
+
+
+def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=None):
+    """(sparse) matrix representation of rotation transform.
+    params:
+        X, Y - 2D arrays that define the cartesian coordinates
+        angle - Angle of rotation [radians].
+        dst_shape - Shape of the destination matrix (after rotation). Defaults
+             to the shape of the full matrix after rotation (no cropping).
+        X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
+"""
+
+
+    if isinstance(rotation, np.ndarray) and rotation.shape == (4, 4):
+        H_rot = rotation
+    else:
+        theta, phi, psi = rotation
+
+        H_rotx = np.array(
+            [
+                [1, 0, 0, 0],
+                [0, np.cos(theta), -np.sin(theta), 0],
+                [0, np.sin(theta), np.cos(theta), 0],
+                [0, 0, 0, 1]]
+            )
+
+        H_roty = np.array(
+            [
+                [np.cos(phi), 0, np.sin(phi), 0],
+                [0, 1, 0, 0],
+                [-np.sin(phi), 0, np.cos(phi), 0],
+                [0, 0, 0, 1]]
+            )
+
+        H_rotz = np.array(
+            [
+                [np.cos(psi), -np.sin(psi), 0, 0],
+                [np.sin(psi), np.cos(psi), 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1]]
+            )
+
+        H_rot = np.dot(H_rotz, np.dot(H_roty, H_rotx))
+    
+    if X_dst == None:
+        Y_slim = Y[:, 0, 0]
+        X_slim = X[0, :, 0]
+        Z_slim = Z[0, 0, :]
+        x0_src = np.floor(np.min(X_slim)).astype(np.int)
+        y0_src = np.floor(np.min(Y_slim)).astype(np.int)
+        z0_src = np.floor(np.min(Z_slim)).astype(np.int)
+        x1_src = np.ceil(np.max(X_slim)).astype(np.int)
+        y1_src = np.ceil(np.max(Y_slim)).astype(np.int)
+        z1_src = np.ceil(np.max(Z_slim)).astype(np.int)
+
+        src_coords = np.array(
+            [
+                [x0_src, x0_src, x1_src, x1_src, x0_src, x0_src, x1_src, x1_src],
+                [y0_src, y1_src, y0_src, y1_src, y0_src, y1_src, y0_src, y1_src],
+                [z0_src, z0_src, z0_src, z0_src, z1_src, z1_src, z1_src, z1_src],
+                [1, 1, 1, 1, 1, 1, 1, 1]
+            ]
+        )
+        dst_coords = np.dot(H_rot, src_coords)
+
+        x0_dst, y0_dst, z0_dst, dump = np.floor(np.min(dst_coords, axis=1)).astype(np.int)
+        x1_dst, y1_dst, z1_dst, dump = np.ceil(np.max(dst_coords, axis=1)).astype(np.int)
+
+        dxyz_dst = min(np.min(np.abs(X_slim[1:]-X_slim[:-1])), np.min(np.abs(Y_slim[1:]-Y_slim[:-1])), np.min(np.abs(Z_slim[1:]-Z_slim[:-1])))
+        Y_dst, X_dst, Z_dst = np.mgrid[y0_dst:y1_dst:dxyz_dst, x0_dst:x1_dst:dxyz_dst, z0_dst:z1_dst:dxyz_dst]
+
+    #
+    # Calculate a rotated grid by applying the rotation.
+    #
+    XYZ_dst = np.vstack((X_dst.ravel(), Y_dst.ravel(), Z_dst.ravel(), np.ones(X_dst.size)))
+    XYZ_src_ = np.dot(np.linalg.inv(H_rot), XYZ_dst)
+
+    Y_indices = XYZ_src_[1, :].reshape(X_dst.shape)
+    X_indices = XYZ_src_[0, :].reshape(X_dst.shape)
+    Z_indices = XYZ_src_[2, :].reshape(X_dst.shape)
+
+    H = calcTransformMatrix((Y, X, Z), (Y_indices, X_indices, Z_indices))
+
+    return H, H_rot, Y_dst, X_dst, Z_dst
 
 
 def gridDerivatives(grids, forward=True):
@@ -377,6 +457,31 @@ def integralTransformMatrix(grids, axis=0, direction=1):
     return H.tocsr()
 
 
+@memoized
+def cameraTransformMatrix(PHI, THETA, x_resolution=256, y_resolution=None):
+    """(sparse) matrix representation of rotation transform.
+    params:
+        X, Y - 2D arrays that define the cartesian coordinates
+        angle - Angle of rotation [radians].
+        dst_shape - Shape of the destination matrix (after rotation). Defaults
+             to the shape of the full matrix after rotation (no cropping).
+        X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
+"""
+
+    if y_resolution == None:
+        y_resolution = x_resolution
+    
+    X_ = (np.sin(THETA) * np.cos(PHI) + 1) * x_resolution/2
+    Y_ = (np.sin(THETA) * np.sin(PHI) + 1) * y_resolution/2
+
+    #
+    # Calculate the transform
+    #
+    H = calcTransformMatrix((PHI, THETA), (Y_, X_))
+
+    return H
+
+
 def spdiag(X):
     """Return a sparse diagonal matrix. The elements of the diagonal are made of 
  the elements of the vector X."""
@@ -469,34 +574,53 @@ def test3D():
     V = np.sqrt(Y**2 + X**2 + Z**2)
     V_ = V.reshape((-1, 1))
     
-    #
-    # Spherical transform
-    #
-    t0 = time.time()
-    Hsph = sphericalTransformMatrix(X, Y, Z, (0, 0, 0))[0]
-    Vsph = Hsph * V_
-    print time.time() - t0
+    # #
+    # # Spherical transform
+    # #
+    # t0 = time.time()
+    # Hsph = sphericalTransformMatrix(X, Y, Z, (0, 0, 0))[0]
+    # Vsph = Hsph * V_
+    # print time.time() - t0
      
     #
-    # Cumsum transform
+    # Rotation transform
     #
-    Hcs1 = cumsumTransformMatrix((Y, X, Z), axis=0, direction=-1)
-    Vcs1 = Hcs1 * V_
+    t0 = time.time()
+    Hrot, rotation, Y_rot, X_rot, Z_rot = rotation3DTransformMatrix(Y, X, Z, (np.pi/4, np.pi/4, 0))
+    Vrot = Hrot * V_
+    Hrot2 = rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, np.linalg.inv(rotation), Y, X, Z)[0]
+    Vrot2 = Hrot2 * Vrot
+    print time.time() - t0
+     
+    # #
+    # # Cumsum transform
+    # #
+    # Hcs1 = cumsumTransformMatrix((Y, X, Z), axis=0, direction=-1)
+    # Vcs1 = Hcs1 * V_
 
-    #
-    # Integral transform
-    #
-    Hit1 = integralTransformMatrix((Y, X, Z), axis=0, direction=-1)
-    Vit1 = Hit1 * V_
+    # #
+    # # Integral transform
+    # #
+    # Hit1 = integralTransformMatrix((Y, X, Z), axis=0, direction=-1)
+    # Vit1 = Hit1 * V_
 
     #
     # 3D visualization
     #
     import mayavi.mlab as mlab
     mlab.figure()
-    s = mlab.pipeline.scalar_field(Vcs1.reshape(V.shape))
+    s = mlab.pipeline.scalar_field(Vrot.reshape(Y_rot.shape))
     ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
     ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
+    mlab.title('V Rotated')
+    mlab.colorbar()
+    mlab.outline()
+    
+    mlab.figure()
+    s = mlab.pipeline.scalar_field(Vrot2.reshape(Y.shape))
+    ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
+    ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
+    mlab.title('V Rotated Back')
     mlab.colorbar()
     mlab.outline()
     
@@ -509,12 +633,12 @@ def test3D():
     #
     # 2D visualization
     #
-    import matplotlib.pyplot as plt
+    # import matplotlib.pyplot as plt
     
-    plt.figure()
-    plt.imshow(Vit1.reshape(V.shape[:2]))
-    plt.show()
+    # plt.figure()
+    # plt.imshow(Vit1.reshape(V.shape[:2]))
+    # plt.show()
 
 if __name__ == '__main__':
-    test2D()
+    test3D()
     
