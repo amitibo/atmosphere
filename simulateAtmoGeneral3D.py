@@ -155,24 +155,24 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         sky_params,
         sky_params['camera_center']
         )
-    
-    if plot_results:
-        #
-        # Create the image
-        #
-        IMG = numpy.transpose(numpy.array(img), (1, 2, 0))
 
+    #
+    # Create the image
+    #
+    img = numpy.transpose(numpy.array(img), (1, 2, 0))
+
+    if plot_results:
         #
         # Account for gamma correction
         #
-        IMG **= 0.45
-        IMG_scaled = IMG / numpy.max(IMG)
-
+        IMG = img**0.45
+        IMG /= numpy.max(IMG)
+    
         #
         # Plot results
         #
         fig = plt.figure()
-        plt.imshow(IMG_scaled, interpolation='nearest')
+        plt.imshow(IMG, interpolation='nearest')
 
         amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
 
@@ -299,7 +299,7 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
-    sun_angle_range = numpy.linspace(0, numpy.pi/4, 8)
+    sun_angle_range = numpy.linspace(0, numpy.pi/4, 2)
     
     job_server = amitibo.start_jobServer()
     jobs = []
@@ -309,7 +309,7 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
         jobs.append(
             job_server.submit(
                 calcRadiance,
-                args=(aerosol_params, sky_params, results_path, True),
+                args=(aerosol_params, sky_params, results_path),
                 depfuncs=amitibo.depfuncs(globals()),
                 modules=(
                     'numpy',
@@ -320,7 +320,21 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
         )
 
     for job in jobs:
-        job()
+        img = job()
+        #
+        # Account for gamma correction
+        #
+        IMG = img**0.45
+        IMG /= numpy.max(IMG)
+    
+        #
+        # Plot results
+        #
+        fig = plt.figure()
+        plt.imshow(IMG, interpolation='nearest')
+
+        amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
+
 
 
 def main_serial(aerosol_params, sky_params, results_path=''):
