@@ -458,7 +458,7 @@ def integralTransformMatrix(grids, axis=0, direction=1):
 
 
 @memoized
-def cameraTransformMatrix(PHI, THETA, x_resolution=256, y_resolution=None):
+def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, x_resolution=256, y_resolution=None):
     """(sparse) matrix representation of rotation transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -470,14 +470,15 @@ def cameraTransformMatrix(PHI, THETA, x_resolution=256, y_resolution=None):
 
     if y_resolution == None:
         y_resolution = x_resolution
-    
-    X_ = (np.sin(THETA) * np.cos(PHI) + 1) * x_resolution/2
-    Y_ = (np.sin(THETA) * np.sin(PHI) + 1) * y_resolution/2
+
+    Y, X = np.mgrid[-1:1:complex(0, y_resolution), -1:1:complex(0, x_resolution)]
+    PHI_ = np.arctan2(Y, X) + np.pi
+    THETA_ = np.arccos(focal_ratio / np.sqrt(X**2 + Y**2 + focal_ratio**2))
 
     #
     # Calculate the transform
     #
-    H = calcTransformMatrix((PHI, THETA), (Y_, X_))
+    H = calcTransformMatrix((PHI, THETA), (PHI_, THETA_))
 
     return H
 
@@ -639,6 +640,27 @@ def test3D():
     # plt.imshow(Vit1.reshape(V.shape[:2]))
     # plt.show()
 
+def testProjection():
+
+    import scipy.misc as scm
+    import matplotlib.pyplot as plt
+    
+    l = scm.lena()
+
+    PHI, THETA = np.mgrid[0:2*np.pi:512j, 0:np.pi/2:512j]
+    
+    H = cameraTransformMatrix(PHI, THETA, focal_ratio=0.5)
+    lp = H * l.reshape((-1, 1))
+
+    plt.figure()
+    plt.imshow(l)
+    
+    plt.figure()
+    plt.imshow(lp.reshape((256, 256)))
+
+    plt.show()
+    
+
 if __name__ == '__main__':
-    test3D()
+    testProjection()
     
