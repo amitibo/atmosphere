@@ -10,21 +10,39 @@ import atmo_utils
 import os.path
 import pickle
 import amitibo
+import mayavi.mlab as mlab
+    
 
 
 SKY_PARAMS = {
     'width': 80,
     'height': 40,
-    'dxh': 10,
+    'dxh': 2,
     'camera_center': (40, 40, 2),
-    'camera_dist_res': 20,
-    'camera_angle_res': 20,
-    'sun_angle': 0/180*numpy.pi,
+    'radius_res': 40,
+    'phi_res': 40,
+    'theta_res': 80,
+    'image_res': 512,
+    'focal_ratio': 0.15,
+    'sun_angle': 45/180*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
 
-VISIBILITY = 10
+VISIBILITY = 50
+
+
+def viz3D(V):
+
+    mlab.figure()
+    
+    s = mlab.pipeline.scalar_field(V)
+    ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
+    ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
+    ipw_z = mlab.pipeline.image_plane_widget(s, plane_orientation='z_axes')
+    mlab.colorbar()
+    mlab.outline()
+    mlab.axes()    
 
 
 def calcScatterAngle(R, PHI, THETA, rotation):
@@ -38,12 +56,48 @@ def calcScatterAngle(R, PHI, THETA, rotation):
     XYZ_dst = numpy.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), numpy.ones(R.size)))
     XYZ_src_ = numpy.dot(rotation, XYZ_dst)
 
-    Z_ = XYZ_src_[2, :]
-    R_ = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
+    Z_rotated = XYZ_src_[2, :]
+    R_rotated = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
 
-    angle = numpy.arccos(Z_/(R_+amitibo.eps(R_)))
+    angle = numpy.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
 
-    return numpy.pi-angle
+    return angle
+
+
+def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle):
+
+    ATMO = numpy.exp(-Z/8)
+    ATMO_ = ATMO.reshape((-1, 1))
+    
+    ATMO_pol_= H_pol * ATMO_
+    ATMO_rot_ = Hrot_forward * ATMO_
+    ATMO_back_ = Hrot_backward * ATMO_rot_
+    ATMO_int1_ = Hint1 * ATMO_rot_
+    ATMO_int2_ = Hint2 * ATMO_pol_
+     
+    viz3D(ATMO)
+    viz3D(ATMO_pol_.reshape(R.shape))
+    viz3D(ATMO_rot_.reshape(Y_rot.shape))
+    viz3D(ATMO_back_.reshape(Y.shape))
+    viz3D(ATMO_int1_.reshape(Y_rot.shape))
+    viz3D(ATMO_int2_.reshape(R.shape))
+    viz3D(scatter_angle.reshape(R.shape))
+
+    mlab.show()
+
+
+def vizTransforms2(H_pol, H_int, H_camera, ATMO_, X, R):
+    
+    ATMO_pol_= H_pol * ATMO_
+    ATMO_int_ = H_int * ATMO_pol_
+    ATMO_img_ = H_camera * ATMO_int_
+     
+    viz3D(ATMO_.reshape(X.shape))
+    viz3D(ATMO_pol_.reshape(R.shape))
+    viz3D(ATMO_int_.reshape((40, 40)))
+    viz3D(ATMO_img_.reshape((256, 256)))
+
+    mlab.show()
 
     
 def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
@@ -61,6 +115,8 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     temp2 = Hint2 * H_pol
 
     scatter_angle = calcScatterAngle(R, PHI, THETA, rotation)
+    
+    #vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle)
     
     return temp2 + temp1, scatter_angle
 
@@ -82,8 +138,9 @@ def calcRadianceHelper(
         X,
         H,
         camera_center,
-        radius_res=sky_params['camera_dist_res'],
-        angle_res=sky_params['camera_angle_res']
+        radius_res=sky_params['radius_res'],
+        phi_res=sky_params['phi_res'],
+        theta_res=sky_params['theta_res']
         )
     
     #
@@ -104,7 +161,9 @@ def calcRadianceHelper(
     scatter_angle.shape = (-1, 1)
     
     H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
-    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.15)
+    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=sky_params['focal_ratio'], image_res=sky_params['image_res'])
+
+    #vizTransforms2(H_pol, H_int, H_camera, ATMO_air_, X, R)
     
     #
     # Calculate scattering for each channel (in case of the railey scattering)
@@ -139,7 +198,7 @@ def calcRadianceHelper(
         temp_img = L_sun * H_camera * H_int * radiance
         temp_img = temp_img + added_noise*temp_img.std()*numpy.random.randn(*temp_img.shape)
         temp_img[temp_img<0] = 0
-        img.append(temp_img.reshape(256, 256))
+        img.append(temp_img.reshape(sky_params['image_res'], sky_params['image_res']))
         
     return img
 
@@ -154,8 +213,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Create the distributions of air and aerosols
     #
-    #ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
-    ATMO_aerosols = numpy.zeros(H.shape)
+    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
     ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
     
     ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
@@ -208,8 +266,8 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
         X,
         H,
         camera_center,
-        radius_res=sky_params['camera_dist_res'],
-        angle_res=sky_params['camera_angle_res']
+        radius_res=sky_params['radius_res'],
+        angle_res=sky_params['phi_res']
         )
     
     #
@@ -318,7 +376,7 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
-    sun_angle_range = numpy.linspace(0, numpy.pi/2, 16)
+    sun_angle_range = numpy.linspace(0, numpy.pi/2, 32)
     
     job_server = amitibo.start_jobServer()
     jobs = []

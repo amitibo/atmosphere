@@ -185,7 +185,7 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
 
 
 @memoized
-def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, angle_res=None):
+def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, theta_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -198,14 +198,15 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, angle_res=None):
     if radius_res == None:
         radius_res = max(*X.shape)
 
-    if angle_res == None:
-        angle_res = radius_res
+    if phi_res == None:
+        phi_res = radius_res
+        theta_res = radius_res
 
     #
     # Create the polar grid over which the target matrix (H) will sample.
     #
     max_R = np.max(np.sqrt((Y-center[0])**2 + (X-center[1])**2 + (Z-center[2])**2))
-    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi/2*0.9:complex(0, angle_res)]
+    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, phi_res), 0:np.pi/2*0.9:complex(0, theta_res)]
 
     #
     # Calculate the indices of the polar grid in the Cartesian grid.
@@ -466,7 +467,7 @@ def integralTransformMatrix(grids, axis=0, direction=1):
 
 
 @memoized
-def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, x_resolution=256, y_resolution=None):
+def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
     """(sparse) matrix representation of rotation transform.
     params:
         X, Y - 2D arrays that define the cartesian coordinates
@@ -477,13 +478,12 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, x_resolution=256, y_resol
 """
 
     import numpy as np
+    import amitibo
     
-    if y_resolution == None:
-        y_resolution = x_resolution
-
-    Y, X = np.mgrid[-1:1:complex(0, y_resolution), -1:1:complex(0, x_resolution)]
+    Y, X = np.mgrid[-1:1:complex(0, image_res), -1:1:complex(0, image_res)]
     PHI_ = np.arctan2(Y, X) + np.pi
-    THETA_ = np.arccos(focal_ratio / np.sqrt(X**2 + Y**2 + focal_ratio**2))
+    R_ = np.sqrt(X**2 + Y**2 + focal_ratio**2)
+    THETA_ = np.arccos(focal_ratio / (R_ + amitibo.eps(R_)))
 
     #
     # Calculate the transform
