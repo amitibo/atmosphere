@@ -204,8 +204,8 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, angle_res=None):
     #
     # Create the polar grid over which the target matrix (H) will sample.
     #
-    max_R = np.max(np.sqrt((X-center[0])**2 + (Y-center[1])**2 + (Z-center[2])**2))
-    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi/2*0.8:complex(0, angle_res)]
+    max_R = np.max(np.sqrt((Y-center[0])**2 + (X-center[1])**2 + (Z-center[2])**2))
+    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, angle_res), 0:np.pi/2*0.9:complex(0, angle_res)]
 
     #
     # Calculate the indices of the polar grid in the Cartesian grid.

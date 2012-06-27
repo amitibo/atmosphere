@@ -14,11 +14,11 @@ import amitibo
 
 SKY_PARAMS = {
     'width': 80,
-    'height': 20,
-    'dxh': 4,
+    'height': 40,
+    'dxh': 10,
     'camera_center': (40, 40, 2),
-    'camera_dist_res': 100,
-    'camera_angle_res': 100,
+    'camera_dist_res': 20,
+    'camera_angle_res': 20,
     'sun_angle': 0/180*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
@@ -27,6 +27,25 @@ SKY_PARAMS = {
 VISIBILITY = 10
 
 
+def calcScatterAngle(R, PHI, THETA, rotation):
+    """
+    """
+
+    X_ = R * numpy.sin(THETA) * numpy.cos(PHI)
+    Y_ = R * numpy.sin(THETA) * numpy.sin(PHI)
+    Z_ = R * numpy.cos(THETA)
+
+    XYZ_dst = numpy.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), numpy.ones(R.size)))
+    XYZ_src_ = numpy.dot(rotation, XYZ_dst)
+
+    Z_ = XYZ_src_[2, :]
+    R_ = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
+
+    angle = numpy.arccos(Z_/(R_+amitibo.eps(R_)))
+
+    return numpy.pi-angle
+
+    
 def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
 
     #
@@ -35,13 +54,15 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
     Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, numpy.linalg.inv(rotation), Y, X, Z)[0]
     
-    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot))
-    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), direction=-1)
+    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot), axis=2)
+    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), axis=0, direction=-1)
 
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
 
-    return temp2 + temp1
+    scatter_angle = calcScatterAngle(R, PHI, THETA, rotation)
+    
+    return temp2 + temp1, scatter_angle
 
 
 def calcRadianceHelper(
@@ -66,9 +87,9 @@ def calcRadianceHelper(
         )
     
     #
-    # Calculate the distance matrices
+    # Calculate the distance matrices and scattering angle
     #
-    H_distances = \
+    H_distances, scatter_angle = \
         calcOpticalDistancesMatrix(
             Y,
             X,
@@ -79,15 +100,12 @@ def calcRadianceHelper(
             PHI,
             THETA
             )
+
+    scatter_angle.shape = (-1, 1)
     
     H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
-    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.3)
+    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=0.15)
     
-    #
-    # Calculate scattering angle
-    #
-    scatter_angle = sky_params['sun_angle'] + THETA.reshape((-1, 1)) + numpy.pi/2
-
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -136,7 +154,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Create the distributions of air and aerosols
     #
-    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    #ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    ATMO_aerosols = numpy.zeros(H.shape)
     ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
     
     ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
@@ -299,7 +318,7 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
 def main_parallel(aerosol_params, sky_params, results_path=''):
     """Run the calculation in parallel on a space of parameters"""
 
-    sun_angle_range = numpy.linspace(0, numpy.pi/4, 2)
+    sun_angle_range = numpy.linspace(0, numpy.pi/2, 16)
     
     job_server = amitibo.start_jobServer()
     jobs = []
@@ -314,7 +333,8 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
                 modules=(
                     'numpy',
                     'math',
-                    'atmo_utils'
+                    'atmo_utils',
+                    'amitibo'
                 )
             )
         )
