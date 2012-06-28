@@ -4,6 +4,7 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 
 from __future__ import division
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag
 import atmo_utils
@@ -11,7 +12,6 @@ import os.path
 import pickle
 import amitibo
 import mayavi.mlab as mlab
-    
 
 
 SKY_PARAMS = {
@@ -203,6 +203,47 @@ def calcRadianceHelper(
     return img
 
 
+def draw_image(img, focal_ratio, sun_angle):
+    """
+    """
+    
+    c = img.shape[0]/2
+    sun_x = c * (1 + focal_ratio * numpy.tan(sun_angle))
+
+    fig = plt.figure()
+    ax = plt.axes([0, 0, 1, 1])
+
+    #
+    # Draw the sky
+    #
+    plt.imshow(img)
+
+    #
+    # Draw the sun
+    #
+    sun_patch = mpatches.Circle((sun_x, c), 3, ec='r', fc='r')
+    ax.add_patch(sun_patch)
+
+    #
+    # Draw angle arcs
+    #
+    for arc_angle in range(0, 90, 15)[1:]:
+        d = c * focal_ratio * numpy.tan(arc_angle/180*numpy.pi)
+        arc_patch = mpatches.Arc(
+            (c, c),
+            2*d,
+            2*d,
+            90,
+            15,
+            345,
+            ec='r'
+        )
+        ax.add_patch(arc_patch)
+        plt.text(c, c+d, str(arc_angle), ha="center", va="center", size=10, color='r')
+
+    return fig
+    
+    
 def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
 
     #
@@ -248,11 +289,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
         #
         # Plot results
         #
-        fig = plt.figure()
-        plt.imshow(IMG, interpolation='nearest')
-
+        fig = draw_image(IMG, sky_params['focal_ratio'], sky_params['sun_angle'])
         amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
-
         plt.show()
 
     return img
@@ -397,22 +435,31 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
             )
         )
 
+    images = []
+    max_values = []
     for job in jobs:
         img = job()
+        max_values.append(numpy.max(img))
+        images.append(img)
+
+    max_value = numpy.max(numpy.array(max_values))
+    figures = []
+    for img, sun_angle in zip(images, sun_angle_range):
         #
         # Account for gamma correction
         #
-        IMG = img**0.45
-        IMG /= numpy.max(IMG)
+        img /= max_value
+        img = img**0.45
     
         #
         # Plot results
         #
-        fig = plt.figure()
-        plt.imshow(IMG, interpolation='nearest')
-
+        fig = draw_image(img, sky_params['focal_ratio'], sun_angle)
         amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
+        figures.append(fig)
 
+    pdf = amitibo.figuresPdf(os.path.join(results_path, 'report.pdf'))
+    pdf.saveFigures(figures)
 
 
 def main_serial(aerosol_params, sky_params, results_path=''):
