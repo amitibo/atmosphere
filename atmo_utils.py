@@ -40,14 +40,14 @@ L_SUN_RGB=(255, 236, 224)
 RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
 
 
-def calcHG(PHI, g):
+def calcHG(mu, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
 
     import numpy as np
     
-    HG = (1 - g**2) / (1 + g**2 - 2*g*np.cos(PHI))**(3/2) / (2*np.pi)
+    HG = (1 - g**2) * (1+mu**2) / (1 + g**2 - 2*g*mu)**(3/2) * 3 / (8*np.pi)
     
     return HG
 

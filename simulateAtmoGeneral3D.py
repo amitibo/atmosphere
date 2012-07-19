@@ -45,25 +45,6 @@ def viz3D(V):
     mlab.axes()    
 
 
-def calcScatterAngle(R, PHI, THETA, rotation):
-    """
-    """
-
-    X_ = R * numpy.sin(THETA) * numpy.cos(PHI)
-    Y_ = R * numpy.sin(THETA) * numpy.sin(PHI)
-    Z_ = R * numpy.cos(THETA)
-
-    XYZ_dst = numpy.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), numpy.ones(R.size)))
-    XYZ_src_ = numpy.dot(rotation, XYZ_dst)
-
-    Z_rotated = XYZ_src_[2, :]
-    R_rotated = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
-
-    angle = numpy.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
-
-    return angle
-
-
 def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle):
 
     ATMO = numpy.exp(-Z/8)
@@ -100,8 +81,32 @@ def vizTransforms2(H_pol, H_int, H_camera, ATMO_, X, R):
     mlab.show()
 
     
-def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
+def calcScatterAngle(R, PHI, THETA, rotation):
+    """
+    Calclculate the scattering angle at each voxel.
+    """
 
+    X_ = R * numpy.sin(THETA) * numpy.cos(PHI)
+    Y_ = R * numpy.sin(THETA) * numpy.sin(PHI)
+    Z_ = R * numpy.cos(THETA)
+
+    XYZ_dst = numpy.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), numpy.ones(R.size)))
+    XYZ_src_ = numpy.dot(rotation, XYZ_dst)
+
+    Z_rotated = XYZ_src_[2, :]
+    R_rotated = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
+
+    angle = numpy.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
+
+    return angle
+
+
+def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
+    """
+    Calculate the optical distances from the sun through any voxel in the atmosphere and
+    from there to the camera.
+    """
+    
     #
     # Prepare transformation matrices
     #
@@ -165,6 +170,8 @@ def calcRadianceHelper(
 
     #vizTransforms2(H_pol, H_int, H_camera, ATMO_air_, X, R)
     
+    mu = numpy.cos(scatter_angle)
+
     #
     # Calculate scattering for each channel (in case of the railey scattering)
     #
@@ -180,11 +187,11 @@ def calcRadianceHelper(
         # Calculate scattering and extiniction for air (wave length dependent)
         #
         extinction_aerosols = k / aerosol_params["visibility"]
-        scatter_aerosols = w * extinction_aerosols * calcHG(scatter_angle, g) * (H_pol * ATMO_aerosols_)
+        scatter_aerosols = w * extinction_aerosols * calcHG(mu, g) * (H_pol * ATMO_aerosols_)
         exp_aerosols = numpy.exp(-extinction_aerosols * H_distances * ATMO_aerosols_)
         
         extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air * (1 + numpy.cos(scatter_angle)**2) / (2*numpy.pi) * (H_pol * ATMO_air_)
+        scatter_air = extinction_air * (1 + mu**2) * 3 / (16*numpy.pi) * (H_pol * ATMO_air_)
         exp_air = numpy.exp(-extinction_air * H_distances * ATMO_air_)
         
         #
@@ -245,7 +252,10 @@ def draw_image(img, focal_ratio, sun_angle):
     
     
 def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
-
+    """
+    Calculate the radiance of the atmosphere according to aerosol and sky parameters.
+    """
+    
     #
     # Create the sky
     #
@@ -297,7 +307,10 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     
 
 def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, sky_params, camera_center):
-
+    """
+    Helper function that does the actual calculation of the radiance gradient.
+    """
+    
     ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
     
     H_pol, T, R = atmo_utils.polarTransformMatrix(
@@ -383,6 +396,9 @@ def calcRadianceGradientHelper(ATMO_aerosols_, ATMO_air_, X, H, aerosol_params, 
 
 
 def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
+    """
+    Calculate the gradient of the radiance at some atmospheric distribution.
+    """
 
     #
     # Rowwise representation of the atmosphere 
@@ -492,6 +508,6 @@ if __name__ == '__main__':
     #
     results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
 
-    main_parallel(aerosol_params, SKY_PARAMS, results_path)
-    #main_serial(aerosol_params, SKY_PARAMS, results_path)
+    #main_parallel(aerosol_params, SKY_PARAMS, results_path)
+    main_serial(aerosol_params, SKY_PARAMS, results_path)
 
