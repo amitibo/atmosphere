@@ -386,12 +386,31 @@ def gridDerivatives(grids, forward=True):
     
 
 @memoized
-def cumsumTransformMatrix(grids, axis=0, direction=1):
-    """Calculate a (sparse) matrix representation of integration (cumsum) transform.
-    params:
-        X, Y - 2D arrays that define the cartesian coordinates
-        axis - axis along which the integration is preformed
-        direction - 1: integrate up the indices, -1: integrate down the indices.
+def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
+    """
+    Calculate a (sparse) matrix representation of integration (cumsum) transform.
+    
+    Parameters
+    ----------
+    grids : list,
+        List of grids. The length of grids should correspond to the
+        dimensions of the grid.
+        
+    axis : int, optional (default=0)
+        Axis along which the cumsum operation is preformed.
+    
+    direction : {1, -1}, optional (default=1)
+        Direction of integration, 1 for integrating up the indices
+        -1 for integrating down the indices.
+       
+    masked_rows: array, optional(default=None)
+        If not None, leave only the rows that are non zero in the
+        masked_rows array.
+    
+    Returns
+    -------
+    H : sparse matrix in CSR format,
+        Transform matrix the implements the cumsum transform.
 """
         
     import numpy as np
@@ -421,6 +440,13 @@ def cumsumTransformMatrix(grids, axis=0, direction=1):
         m = np.prod(grid_shape[:axis])
         H = sps.kron(sps.eye(m, m), inner_H)
 
+    if masked_rows != None:
+        H = H.tolil()
+        indices = masked_rows.ravel() == 0
+        for i in indices.nonzero()[0]:
+            H.rows[i] = []
+            H.data[i] = []
+    
     return H.tocsr()
 
 

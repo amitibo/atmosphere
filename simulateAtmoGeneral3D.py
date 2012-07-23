@@ -113,8 +113,14 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
     Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, numpy.linalg.inv(rotation), Y, X, Z)[0]
     
-    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot), axis=2)
-    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), axis=0, direction=-1)
+    #
+    # Calculate a mask for Hint2
+    #
+    mask = numpy.ones_like(X)
+    mask_pol = H_pol * mask.reshape((-1, 1))
+
+    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot), axis=2, direction=-1)
+    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), axis=0, masked_rows=mask_pol)
 
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
