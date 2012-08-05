@@ -15,13 +15,15 @@ import mayavi.mlab as mlab
 
 
 SKY_PARAMS = {
-    'width': 80,
-    'height': 40,
-    'dxh': 2,
+    'width': 300,
+    'height': 20,
+    'earth_radius': 4000,
+    'dx': 6,
+    'dh': 1,
     'camera_center': (40, 40, 2),
     'radius_res': 40,
-    'phi_res': 40,
-    'theta_res': 80,
+    'phi_res': 80,
+    'theta_res': 40,
     'image_res': 512,
     'focal_ratio': 0.15,
     'sun_angle': 45/180*numpy.pi,
@@ -32,11 +34,11 @@ SKY_PARAMS = {
 VISIBILITY = 50
 
 
-def viz3D(V):
+def viz3D(X, Y, Z, V):
 
     mlab.figure()
     
-    s = mlab.pipeline.scalar_field(V)
+    s = mlab.pipeline.scalar_field(X, Y, Z, V)
     ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
     ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
     ipw_z = mlab.pipeline.image_plane_widget(s, plane_orientation='z_axes')
@@ -44,6 +46,13 @@ def viz3D(V):
     mlab.outline()
     mlab.axes()    
 
+
+def viz2D(V):
+    
+    plt.figure()    
+    plt.imshow(V, interpolation='nearest')
+    plt.gray()
+    
 
 def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle):
 
@@ -56,7 +65,7 @@ def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, 
     ATMO_int1_ = Hint1 * ATMO_rot_
     ATMO_int2_ = Hint2 * ATMO_pol_
      
-    viz3D(ATMO)
+    viz3D(X, Y, Z, ATMO)
     viz3D(ATMO_pol_.reshape(R.shape))
     viz3D(ATMO_rot_.reshape(Y_rot.shape))
     viz3D(ATMO_back_.reshape(Y.shape))
@@ -67,18 +76,31 @@ def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, 
     mlab.show()
 
 
-def vizTransforms2(H_pol, H_int, H_camera, ATMO_, X, R):
+def vizTransforms2(
+    H_pol,
+    H_int,
+    H_camera,
+    ATMO_,
+    Y,
+    X,
+    H,
+    R,
+    PHI,
+    THETA
+    ):
     
     ATMO_pol_= H_pol * ATMO_
     ATMO_int_ = H_int * ATMO_pol_
     ATMO_img_ = H_camera * ATMO_int_
      
-    viz3D(ATMO_.reshape(X.shape))
-    viz3D(ATMO_pol_.reshape(R.shape))
-    viz3D(ATMO_int_.reshape((40, 40)))
-    viz3D(ATMO_img_.reshape((256, 256)))
-
+    viz3D(Y, X, H, ATMO_.reshape(X.shape))
+    viz3D(R, PHI, THETA, ATMO_pol_.reshape(R.shape))
     mlab.show()
+
+    viz2D(ATMO_int_.reshape(R.shape[1:]))
+    viz2D(ATMO_img_.reshape((SKY_PARAMS['image_res'], SKY_PARAMS['image_res'])))
+
+    plt.show()
 
     
 def calcScatterAngle(R, PHI, THETA, rotation):
@@ -174,7 +196,18 @@ def calcRadianceHelper(
     H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
     H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=sky_params['focal_ratio'], image_res=sky_params['image_res'])
 
-    #vizTransforms2(H_pol, H_int, H_camera, ATMO_air_, X, R)
+    vizTransforms2(
+        H_pol,
+        H_int,
+        H_camera,
+        ATMO_air_,
+        Y,
+        X,
+        H,
+        R,
+        PHI,
+        THETA
+    )
     
     mu = numpy.cos(scatter_angle)
 
@@ -265,15 +298,23 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     #
     # Create the sky
     #
-    Y, X, H = numpy.mgrid[0:sky_params['width']:sky_params['dxh'], 0:sky_params['width']:sky_params['dxh'], 0:sky_params['height']:sky_params['dxh']]
+    height = sky_params['height']
+    width = sky_params['width']
+    dx = sky_params['dx']
+    dh = sky_params['dh']
+    earth_radius = sky_params['earth_radius']
+    
+    Y, X, H = numpy.mgrid[0:width:dx, 0:width:dx, 0:height:dh]
 
     #
     # Create the distributions of air and aerosols
     #
-    ATMO_aerosols = numpy.exp(-H/aerosol_params["aerosols_typical_h"])
+    h = numpy.sqrt((X-width/2)**2 + (Y-width/2)**2 + (earth_radius+H)**2) - earth_radius
+    
+    ATMO_aerosols = numpy.exp(-h/aerosol_params["aerosols_typical_h"])
     ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
     
-    ATMO_air = numpy.exp(-H/aerosol_params["air_typical_h"])
+    ATMO_air = numpy.exp(-h/aerosol_params["air_typical_h"])
     ATMO_air_ = ATMO_air.reshape((-1, 1))
 
     #
@@ -416,8 +457,8 @@ def calcRadianceGradient(ATMO_aerosols, ATMO_air, aerosol_params, sky_params):
     # Create the sky
     #
     X, H = numpy.meshgrid(
-        numpy.arange(0, sky_params['width'], sky_params['dxh']),
-        numpy.arange(0, sky_params['height'], sky_params['dxh'])[::-1]
+        numpy.arange(0, sky_params['width'], sky_params['dx']),
+        numpy.arange(0, sky_params['height'], sky_params['dh'])[::-1]
         )
 
     img = calcRadianceGradientHelper(

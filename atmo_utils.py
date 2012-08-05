@@ -53,12 +53,22 @@ def calcHG(mu, g):
 
 
 def calcTransformMatrix(src_grids, dst_coords):
-    """Calculate a sparse transformation matrix.
-    params:
-        src_grids - The array of source grids.
-        dst_coords - The array of destination grids in as points in the source grids.
-    return:
-        H - Sparse matrix representing the transform.
+    """
+    Calculate a sparse transformation matrix. The transform
+    is represented as a mapping from the src_coords to the dst_coords.
+    
+    Parameters
+    ----------
+    src_grids : list of arrays
+        Array of source grids.
+        
+    dst_coords : list of arrays
+        Array of destination grids as points in the source grids.
+        
+    Returns
+    -------
+    H : parse matrix
+        Sparse matrix, in csr format, representing the transform.
 """
     
     import numpy as np
@@ -366,7 +376,26 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
 
 
 def gridDerivatives(grids, forward=True):
-    """Calculate partial derivatives to grids"""
+    """
+    Calculate first order partial derivatives for a list of grids.
+    
+    Parameters
+    ----------
+    grids : list,
+        List of grids. The grids are expected to be of the form created by mgrid
+        and in the same order of creation. This implies that the first member has
+        its changing dimension as the first dimension the second member should
+        have its second dimension changing etc. It also implies that the grid should
+        change only in one dimension each.
+        
+    forward : boolean, optional (default=True)
+        Forward or backward derivatives.
+        
+    Returns
+    -------
+    derivatives : list,
+        List of the corresponding derivatives, as 1D arrays.
+    """
 
     import numpy as np
     
@@ -452,11 +481,26 @@ def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
 
 @memoized
 def integralTransformMatrix(grids, axis=0, direction=1):
-    """Calculate a (sparse) matrix representation of integration transform.
-    params:
-        X, Y - 2D arrays that define the cartesian coordinates
-        axis - axis along which the integration is preformed
+    """
+    Calculate a (sparse) matrix representation of an integration transform.
+    
+    Parameters
+    ----------
+    grids : list
+        List of grids. The grids are expected to be of the form created by mgrid
+        and in the same order of creation.
+    
+    axis : int, optional (default=0)
+        The axis by which the integration is performed.
+        
+    direction : {1, -1}, optional (default=1)
+        Direction of integration
         direction - 1: integrate up the indices, -1: integrate down the indices.
+        
+    Returns
+    -------
+    H : sparse matrix
+        Sparse matrix, in csr format, representing the transform.
 """
 
     import numpy as np
@@ -494,13 +538,24 @@ def integralTransformMatrix(grids, axis=0, direction=1):
 
 @memoized
 def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
-    """(sparse) matrix representation of rotation transform.
-    params:
-        X, Y - 2D arrays that define the cartesian coordinates
-        angle - Angle of rotation [radians].
-        dst_shape - Shape of the destination matrix (after rotation). Defaults
-             to the shape of the full matrix after rotation (no cropping).
-        X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
+    """
+    Calculate a sparse matrix representation of camera projection transform.
+    
+    Parameters
+    ----------
+    PHI, THETA : 3D arrays
+        \phi and \theta angle grids.
+    
+    focal_ratio : float, optional (default=0.5)
+        Ratio between the focal length of the camera and the size of the sensor.
+    
+    image_res : int, optional (default=256)
+        Resolution of the camera image (both dimensions)
+        
+    Returns
+    -------
+    H : sparse matrix
+        Sparse matrix, in csr format, representing the transform.
 """
 
     import numpy as np
@@ -520,8 +575,20 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
 
 
 def spdiag(X):
-    """Return a sparse diagonal matrix. The elements of the diagonal are made of 
- the elements of the vector X."""
+    """
+    Return a sparse diagonal matrix. The elements of the diagonal are made of 
+    the elements of the vector X.
+
+    Parameters
+    ----------
+    X : array
+        1D array to be placed on the diagonal.
+        
+    Returns
+    -------
+    H : sparse matrix
+        Sparse diagonal matrix, in dia format.
+"""
 
     import scipy.sparse as sps
 
