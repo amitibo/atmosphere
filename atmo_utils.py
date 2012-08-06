@@ -39,6 +39,8 @@ L_SUN_RGB=(255, 236, 224)
 #RGB_WAVELENGTH = (700e-3, 530e-3, 470e-3)
 RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
 
+DIM_SIZE_LIMIT = 1e6
+
 
 def calcHG(mu, g):
     """Calculate the Henyey-Greenstein function for each voxel.
@@ -340,75 +342,10 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
     if isinstance(rotation, np.ndarray) and rotation.shape == (4, 4):
         H_rot = rotation
     else:
-        #
-        # Calculate the rotation transform
-        #
-        theta, phi, psi = rotation
-
-        H_rotx = np.array(
-            [
-                [1, 0, 0, 0],
-                [0, np.cos(theta), -np.sin(theta), 0],
-                [0, np.sin(theta), np.cos(theta), 0],
-                [0, 0, 0, 1]]
-            )
-
-        H_roty = np.array(
-            [
-                [np.cos(phi), 0, np.sin(phi), 0],
-                [0, 1, 0, 0],
-                [-np.sin(phi), 0, np.cos(phi), 0],
-                [0, 0, 0, 1]]
-            )
-
-        H_rotz = np.array(
-            [
-                [np.cos(psi), -np.sin(psi), 0, 0],
-                [np.sin(psi), np.cos(psi), 0, 0],
-                [0, 0, 1, 0],
-                [0, 0, 0, 1]]
-            )
-
-        H_rot = np.dot(H_rotz, np.dot(H_roty, H_rotx))
-    
-    if X_dst == None:
-        #
-        # Calculate the target grid.
-        # The calculation is based on calculating the minimal grid that contains
-        # the transformed input grid.
-        #
-        Y_slim = Y[:, 0, 0]
-        X_slim = X[0, :, 0]
-        Z_slim = Z[0, 0, :]
-        x0_src = np.floor(np.min(X_slim)).astype(np.int)
-        y0_src = np.floor(np.min(Y_slim)).astype(np.int)
-        z0_src = np.floor(np.min(Z_slim)).astype(np.int)
-        x1_src = np.ceil(np.max(X_slim)).astype(np.int)
-        y1_src = np.ceil(np.max(Y_slim)).astype(np.int)
-        z1_src = np.ceil(np.max(Z_slim)).astype(np.int)
-
-        src_coords = np.array(
-            [
-                [x0_src, x0_src, x1_src, x1_src, x0_src, x0_src, x1_src, x1_src],
-                [y0_src, y1_src, y0_src, y1_src, y0_src, y1_src, y0_src, y1_src],
-                [z0_src, z0_src, z0_src, z0_src, z1_src, z1_src, z1_src, z1_src],
-                [1, 1, 1, 1, 1, 1, 1, 1]
-            ]
-        )
-        dst_coords = np.dot(H_rot, src_coords)
-
-        x0_dst, y0_dst, z0_dst, dump = np.floor(np.min(dst_coords, axis=1)).astype(np.int)
-        x1_dst, y1_dst, z1_dst, dump = np.ceil(np.max(dst_coords, axis=1)).astype(np.int)
-
-        #
-        # Calculate the grid density.
-        # Note:
-        # This calculation is important as having a dense grid results in a huge transform
-        # matrix even if it is sparse.
-        #
+        H_rot = _calcRotationMatrix(rotation)
         
-        dxyz_dst = min(np.min(np.abs(X_slim[1:]-X_slim[:-1])), np.min(np.abs(Y_slim[1:]-Y_slim[:-1])), np.min(np.abs(Z_slim[1:]-Z_slim[:-1])))
-        Y_dst, X_dst, Z_dst = np.mgrid[y0_dst:y1_dst:dxyz_dst, x0_dst:x1_dst:dxyz_dst, z0_dst:z1_dst:dxyz_dst]
+    if X_dst == None:
+        Y_dst, X_dst, Z_dst = _calcRotateGrid(Y, X, Z, H_rot)
 
     #
     # Calculate a rotated grid by applying the rotation.
@@ -423,6 +360,118 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
     H = calcTransformMatrix((Y, X, Z), (Y_indices, X_indices, Z_indices))
 
     return H, H_rot, Y_dst, X_dst, Z_dst
+
+
+def _calcRotationMatrix(rotation):
+    
+    import numpy as np
+    
+    #
+    # Calculate the rotation transform
+    #
+    theta, phi, psi = rotation
+
+    H_rotx = np.array(
+        [
+            [1, 0, 0, 0],
+            [0, np.cos(theta), -np.sin(theta), 0],
+            [0, np.sin(theta), np.cos(theta), 0],
+            [0, 0, 0, 1]]
+        )
+
+    H_roty = np.array(
+        [
+            [np.cos(phi), 0, np.sin(phi), 0],
+            [0, 1, 0, 0],
+            [-np.sin(phi), 0, np.cos(phi), 0],
+            [0, 0, 0, 1]]
+        )
+
+    H_rotz = np.array(
+        [
+            [np.cos(psi), -np.sin(psi), 0, 0],
+            [np.sin(psi), np.cos(psi), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]]
+        )
+
+    H_rot = np.dot(H_rotz, np.dot(H_roty, H_rotx))
+    
+    return H_rot
+
+
+def _calcRotateGrid(Y, X, Z, H_rot):
+    #
+    # Calculate the target grid.
+    # The calculation is based on calculating the minimal grid that contains
+    # the transformed input grid.
+    #
+    Y_slim = Y[:, 0, 0]
+    X_slim = X[0, :, 0]
+    Z_slim = Z[0, 0, :]
+    x0_src = np.floor(np.min(X_slim)).astype(np.int)
+    y0_src = np.floor(np.min(Y_slim)).astype(np.int)
+    z0_src = np.floor(np.min(Z_slim)).astype(np.int)
+    x1_src = np.ceil(np.max(X_slim)).astype(np.int)
+    y1_src = np.ceil(np.max(Y_slim)).astype(np.int)
+    z1_src = np.ceil(np.max(Z_slim)).astype(np.int)
+
+    src_coords = np.array(
+        [
+            [x0_src, x0_src, x1_src, x1_src, x0_src, x0_src, x1_src, x1_src],
+            [y0_src, y1_src, y0_src, y1_src, y0_src, y1_src, y0_src, y1_src],
+            [z0_src, z0_src, z0_src, z0_src, z1_src, z1_src, z1_src, z1_src],
+            [1, 1, 1, 1, 1, 1, 1, 1]
+        ]
+    )
+    dst_coords = np.dot(H_rot, src_coords)
+
+    
+    x0_dst, y0_dst, z0_dst, dump = np.floor(np.min(dst_coords, axis=1)).astype(np.int)
+    x1_dst, y1_dst, z1_dst, dump = np.ceil(np.max(dst_coords, axis=1)).astype(np.int)
+
+    #
+    # Calculate the grid density.
+    # Note:
+    # This calculation is important as having a dense grid results in a huge transform
+    # matrix even if it is sparse.
+    #
+    dy = Y_slim[1] - Y_slim[0]
+    dx = X_slim[1] - X_slim[0]
+    dz = Z_slim[1] - Z_slim[0]
+
+    delta_src_coords = np.array(
+        [
+            [0, dx, 0, 0, -dx, 0, 0],
+            [0, 0, dy, 0, 0, -dy, 0],
+            [0, 0, 0, dz, 0, 0, -dz],
+            [1, 1, 1, 1, 1, 1, 1]
+        ]
+    )
+    delta_dst_coords = np.dot(H_rot, delta_src_coords)
+    delta_dst_coords.sort(axis=1)
+    delta_dst_coords = delta_dst_coords[:, 1:] - delta_dst_coords[:, :-1]
+    delta_dst_coords[delta_dst_coords<=0] = 10000000
+    
+    dx, dy, dz, dump = np.min(delta_dst_coords, axis=1)
+    x_samples = int((x1_dst-x0_dst)/dx)
+    y_samples = int((y1_dst-y0_dst)/dy)
+    z_samples = int((z1_dst-z0_dst)/dz)
+    
+    dim_ratio = x_samples * y_samples * z_samples / DIM_SIZE_LIMIT
+    if  dim_ratio > 1:
+        dim_reduction = dim_ratio ** (-1/3)
+        
+        x_samples = int(x_samples * dim_reduction)
+        y_samples = int(y_samples * dim_reduction)
+        z_samples = int(z_samples * dim_reduction)
+        
+    Y_dst, X_dst, Z_dst = np.mgrid[
+        y0_dst:y1_dst:complex(0, y_samples),
+        x0_dst:x1_dst:complex(0, x_samples),
+        z0_dst:z1_dst:complex(0, z_samples),
+    ]
+    return Y_dst, X_dst, Z_dst
 
 
 def gridDerivatives(grids, forward=True):
