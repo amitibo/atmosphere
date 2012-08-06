@@ -298,6 +298,41 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
         dst_shape - Shape of the destination matrix (after rotation). Defaults
              to the shape of the full matrix after rotation (no cropping).
         X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
+
+
+    Calculate a (sparse) matrix representation of rotation transform in 3D.
+    
+    Parameters
+    ----------
+    Y, X, Z : array,
+        List of grids. The grids are expected to be of the form created by mgrid
+        and in the same order of creation. This implies that the first member has
+        its changing dimension as the first dimension the second member should
+        have its second dimension changing etc. It also implies that the grid should
+        change only in one dimension each.
+        
+    rotation : list of floats or rotation matrix
+        Either a list of floats representating the rotation in Y, X, Z axes.
+        The rotations are applied separately in this order. Alternatively, rotation
+        can be a 4x4 rotation matrix
+    
+    Y_dst, X_dst, Z_dst : array, optional (default=None)
+        List of grids. The grids are expected to be of the form created by mgrid
+        and in the same order of creation. The transform is calculated into these
+        grids. This enables croping of the target domain after the rotation transform.
+        If none, the destination grids will be calculated to contain the full transformed
+        source.
+    
+    Returns
+    -------
+    H : sparse matrix in CSR format,
+        Transform matrix the implements the rotation transform.
+        
+    H_rot : array [4x4]
+        The rotation transform as calculated from the input rotation parameter.
+        
+    Y_dst, X_dst, Z_dst : array,
+        Target grid. Either the input Y_dst, X_dst, Z_dst or the calculated grid.
 """
 
     import numpy as np
