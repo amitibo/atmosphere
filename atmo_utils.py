@@ -39,7 +39,8 @@ L_SUN_RGB=(255, 236, 224)
 #RGB_WAVELENGTH = (700e-3, 530e-3, 470e-3)
 RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
 
-DIM_SIZE_LIMIT = 1e6
+SPARSE_SIZE_LIMIT = 1e6
+GRID_DIM_LIMIT = 200
 
 
 def calcHG(mu, g):
@@ -454,11 +455,11 @@ def _calcRotateGrid(Y, X, Z, H_rot):
     delta_dst_coords[delta_dst_coords<=0] = 10000000
     
     dx, dy, dz, dump = np.min(delta_dst_coords, axis=1)
-    x_samples = int((x1_dst-x0_dst)/dx)
-    y_samples = int((y1_dst-y0_dst)/dy)
-    z_samples = int((z1_dst-z0_dst)/dz)
+    x_samples = min(int((x1_dst-x0_dst)/dx), GRID_DIM_LIMIT)
+    y_samples = min(int((y1_dst-y0_dst)/dy), GRID_DIM_LIMIT)
+    z_samples = min(int((z1_dst-z0_dst)/dz), GRID_DIM_LIMIT)
     
-    dim_ratio = x_samples * y_samples * z_samples / DIM_SIZE_LIMIT
+    dim_ratio = x_samples * y_samples * z_samples / SPARSE_SIZE_LIMIT
     if  dim_ratio > 1:
         dim_reduction = dim_ratio ** (-1/3)
         

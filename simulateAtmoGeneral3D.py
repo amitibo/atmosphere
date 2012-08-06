@@ -26,7 +26,7 @@ SKY_PARAMS = {
     'theta_res': 40,
     'image_res': 512,
     'focal_ratio': 0.15,
-    'sun_angle': 45/180*numpy.pi,
+    'sun_angle': 75/180*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
@@ -196,18 +196,18 @@ def calcRadianceHelper(
     H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), axis=0)
     H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=sky_params['focal_ratio'], image_res=sky_params['image_res'])
 
-    vizTransforms2(
-        H_pol,
-        H_int,
-        H_camera,
-        ATMO_air_,
-        Y,
-        X,
-        H,
-        R,
-        PHI,
-        THETA
-    )
+    #vizTransforms2(
+        #H_pol,
+        #H_int,
+        #H_camera,
+        #ATMO_air_,
+        #Y,
+        #X,
+        #H,
+        #R,
+        #PHI,
+        #THETA
+    #)
     
     mu = numpy.cos(scatter_angle)
 
