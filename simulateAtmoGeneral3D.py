@@ -15,12 +15,12 @@ import mayavi.mlab as mlab
 
 
 SKY_PARAMS = {
-    'width': 300,
+    'width': 400,
     'height': 20,
     'earth_radius': 4000,
-    'dx': 6,
+    'dx': 8,
     'dh': 1,
-    'camera_center': (40, 40, 2),
+    'camera_center': (200, 200, 0.2),
     'radius_res': 40,
     'phi_res': 80,
     'theta_res': 40,
