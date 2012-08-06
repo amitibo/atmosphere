@@ -340,6 +340,9 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
     if isinstance(rotation, np.ndarray) and rotation.shape == (4, 4):
         H_rot = rotation
     else:
+        #
+        # Calculate the rotation transform
+        #
         theta, phi, psi = rotation
 
         H_rotx = np.array(
@@ -369,6 +372,11 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
         H_rot = np.dot(H_rotz, np.dot(H_roty, H_rotx))
     
     if X_dst == None:
+        #
+        # Calculate the target grid.
+        # The calculation is based on calculating the minimal grid that contains
+        # the transformed input grid.
+        #
         Y_slim = Y[:, 0, 0]
         X_slim = X[0, :, 0]
         Z_slim = Z[0, 0, :]
@@ -392,6 +400,13 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
         x0_dst, y0_dst, z0_dst, dump = np.floor(np.min(dst_coords, axis=1)).astype(np.int)
         x1_dst, y1_dst, z1_dst, dump = np.ceil(np.max(dst_coords, axis=1)).astype(np.int)
 
+        #
+        # Calculate the grid density.
+        # Note:
+        # This calculation is important as having a dense grid results in a huge transform
+        # matrix even if it is sparse.
+        #
+        
         dxyz_dst = min(np.min(np.abs(X_slim[1:]-X_slim[:-1])), np.min(np.abs(Y_slim[1:]-Y_slim[:-1])), np.min(np.abs(Z_slim[1:]-Z_slim[:-1])))
         Y_dst, X_dst, Z_dst = np.mgrid[y0_dst:y1_dst:dxyz_dst, x0_dst:x1_dst:dxyz_dst, z0_dst:z1_dst:dxyz_dst]
 
