@@ -547,7 +547,7 @@ if __name__ == '__main__':
         "g_RGB": (particle['g']),
         "visibility": VISIBILITY,
         "air_typical_h": 8,
-        "aerosols_typical_h": 8,        
+        "aerosols_typical_h": 1.2,        
     }
 
     #
