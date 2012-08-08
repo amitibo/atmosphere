@@ -3,7 +3,7 @@ from __future__ import division
 import numpy as np
 import scipy.sparse as sps
 from atmo_utils import L_SUN_RGB, RGB_WAVELENGTH
-import simulateAtmoGeneral as sa
+import simulateAtmoGeneral3D as sa
 import pickle
 import ipopt
 import logging
@@ -14,52 +14,64 @@ import cv
 import cv2
 
 
-CAMERA_CENTERS = [(i, 1) for i in range(5, 50, 5)]
-
 SKY_PARAMS = {
-    'width': 50,
+    'width': 400,
     'height': 20,
-    'dxh': 1,
-    'camera_center': (80, 2),
-    'camera_dist_res': 100,
-    'camera_angle_res': 100,
-    'sun_angle': -45/180*np.pi,
+    'earth_radius': 4000,
+    'dx': 8,
+    'dh': 1,
+    'camera_center': (200, 200, 0.2),
+    'radius_res': 40,
+    'phi_res': 80,
+    'theta_res': 40,
+    'image_res': 512,
+    'focal_ratio': 0.15,
+    'sun_angle': 75/180*np.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
 
-VISIBILITY = 100
+CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, 5)]
+
+VISIBILITY = 50
 ADDED_NOISE = 0.0
 MAX_ITERATIONS = 100
 
 
 class radiance(object):
     def __init__(self, aerosol_params, sky_params, results_path, added_noise=0):
+
         #
         # Set the sky and aerosols params
         #
         self.aerosol_params = aerosol_params
         self.sky_params = sky_params
         
-        self.X, self.H = \
-          np.meshgrid(
-              np.arange(0, self.sky_params['width'], self.sky_params['dxh']),
-              np.arange(0, self.sky_params['height'], self.sky_params['dxh'])
-              )
+        #
+        # Create the sky
+        #
+        height = sky_params['height']
+        width = sky_params['width']
+        dx = sky_params['dx']
+        dh = sky_params['dh']
+        earth_radius = sky_params['earth_radius']
         
-        #
-        # Create the distributions of air & aerosols
-        #
-        self.ATMO_air = np.exp(-self.H/self.aerosol_params["air_typical_h"])
-        self.ATMO_aerosols = np.exp(-self.H/self.aerosol_params["aerosols_typical_h"])
+        self.Y, self.X, self.H = np.mgrid[0:width:dx, 0:width:dx, 0:height:dh]
+    
+        ##
+        ## Create the distributions of air & aerosols
+        ##
+        h = np.sqrt((self.X-width/2)**2 + (self.Y-width/2)**2 + (earth_radius+self.H)**2) - earth_radius
+        self.ATMO_air = np.exp(-h/self.aerosol_params["air_typical_h"])
+        self.ATMO_aerosols = np.exp(-h/self.aerosol_params["aerosols_typical_h"])
 
-        aerosols_mask = np.zeros(self.ATMO_aerosols.shape)
-        Z1 = (self.X - self.sky_params['width']/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
-        Z2 = (self.X - self.sky_params['width']*2/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
-        aerosols_mask[Z1<25] = 1
-        aerosols_mask[Z2<25] = 1
+        #aerosols_mask = np.zeros(self.ATMO_aerosols.shape)
+        #Z1 = (self.X - self.sky_params['width']/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
+        #Z2 = (self.X - self.sky_params['width']*2/3)**2/4 + (self.H - self.sky_params['height']/2)**2/2
+        #aerosols_mask[Z1<25] = 1
+        #aerosols_mask[Z2<25] = 1
         
-        self.ATMO_aerosols = self.ATMO_aerosols * aerosols_mask
+        #self.ATMO_aerosols = self.ATMO_aerosols * aerosols_mask
         
         #
         # Create the first image
@@ -68,14 +80,14 @@ class radiance(object):
         for camera_center in CAMERA_CENTERS:
             self.Images.append(
                 sa.calcRadianceHelper(
-                    self.ATMO_aerosols.reshape((-1, 1)),
-                    self.ATMO_air.reshape((-1, 1)),
+                    self.ATMO_aerosols,
+                    self.ATMO_air,
+                    self.Y,
                     self.X,
                     self.H,
                     self.aerosol_params,
                     self.sky_params,
-                    camera_center,
-                    added_noise=added_noise
+                    camera_center
                     )
                 )
 
@@ -107,7 +119,8 @@ class radiance(object):
         for camera_index, camera_center in enumerate(CAMERA_CENTERS):
             img = sa.calcRadianceHelper(
                 x,
-                self.ATMO_air.reshape((-1, 1)),
+                self.ATMO_air,
+                self.Y,
                 self.X,
                 self.H,
                 self.aerosol_params,
@@ -130,7 +143,8 @@ class radiance(object):
         for camera_index, camera_center in enumerate(CAMERA_CENTERS):
             img = sa.calcRadianceHelper(
                 x,
-                self.ATMO_air.reshape((-1, 1)),
+                self.ATMO_air,
+                self.Y,
                 self.X,
                 self.H,
                 self.aerosol_params,
@@ -140,7 +154,8 @@ class radiance(object):
 
             gimg = sa.calcRadianceGradientHelper(
                 x,
-                self.ATMO_air.reshape((-1, 1)),
+                self.ATMO_air,
+                self.Y,
                 self.X,
                 self.H,
                 self.aerosol_params,
@@ -218,7 +233,7 @@ def main():
         "g_RGB": (particle['g']),
         "visibility": VISIBILITY,
         "air_typical_h": 8,
-        "aerosols_typical_h": 8,        
+        "aerosols_typical_h": 1.2,        
     }
 
     #

@@ -157,7 +157,7 @@ def coords2Indices(grids, coords):
     return inds, slim_grids
 
         
-@memoized
+#@memoized
 def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -197,7 +197,7 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     return H, T, R
 
 
-@memoized
+#@memoized
 def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, theta_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -236,7 +236,7 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, the
     return H, R, PHI, THETA
 
 
-@memoized
+#@memoized
 def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
     """(sparse) matrix representation of rotation transform.
     params:
@@ -514,7 +514,7 @@ def gridDerivatives(grids, forward=True):
     return derivatives
     
 
-@memoized
+#@memoized
 def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
     """
     Calculate a (sparse) matrix representation of integration (cumsum) transform.
@@ -579,7 +579,7 @@ def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
     return H.tocsr()
 
 
-@memoized
+#@memoized
 def integralTransformMatrix(grids, axis=0, direction=1):
     """
     Calculate a (sparse) matrix representation of an integration transform.
@@ -636,7 +636,7 @@ def integralTransformMatrix(grids, axis=0, direction=1):
     return H.tocsr()
 
 
-@memoized
+#@memoized
 def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
     """
     Calculate a sparse matrix representation of camera projection transform.
