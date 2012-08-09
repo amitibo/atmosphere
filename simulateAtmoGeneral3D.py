@@ -447,7 +447,7 @@ def calcRadianceGradientHelper(
         #
         extinction_air = 1.09e-3 * lambda_**-4.05
         scatter_air = spdiag(extinction_air * (1 + mu**2) * 3 / (16*numpy.pi) * (H_pol * ATMO_air_))
-        exp_air = spiag(numpy.exp(-extinction_air * H_distances * ATMO_air_))
+        exp_air = spdiag(numpy.exp(-extinction_air * H_distances * ATMO_air_))
 
         #
         # Calculate the gradient of the radiance

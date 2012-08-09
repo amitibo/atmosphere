@@ -18,8 +18,8 @@ SKY_PARAMS = {
     'width': 400,
     'height': 20,
     'earth_radius': 4000,
-    'dx': 8,
-    'dh': 1,
+    'dx': 40,
+    'dh': 2,
     'camera_center': (200, 200, 0.2),
     'radius_res': 40,
     'phi_res': 80,
@@ -163,7 +163,7 @@ class radiance(object):
                 camera_center
                 )
 
-            temp = [-2*(gimg[i]*(self.Images[camera_index][i] - img[i])) for i in range(3)]
+            temp = [-2*(gimg[i]*(self.Images[camera_index][i] - img[i]).reshape((-1, 1))) for i in range(3)]
             
             g = np.sum(np.hstack(temp), axis=1)
 
