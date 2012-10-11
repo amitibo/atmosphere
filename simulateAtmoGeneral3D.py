@@ -16,9 +16,9 @@ import mayavi.mlab as mlab
 
 SKY_PARAMS = {
     'width': 400,
-    'height': 20,
+    'height': 80,
     'earth_radius': 4000,
-    'dx': 8,
+    'dx': 4,
     'dh': 1,
     'camera_center': (200, 200, 0.2),
     'radius_res': 40,
@@ -26,7 +26,7 @@ SKY_PARAMS = {
     'theta_res': 40,
     'image_res': 512,
     'focal_ratio': 0.15,
-    'sun_angle': 75/180*numpy.pi,
+    'sun_angle': 0*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
@@ -341,7 +341,8 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     # Create the image
     #
     img = numpy.transpose(numpy.array(img), (1, 2, 0))
-
+    numpy.save(os.path.join(results_path, 'img.npy'), img)
+    
     if plot_results:
         #
         # Account for gamma correction

@@ -12,7 +12,7 @@ proj.file-list = [loc('analyzeSky.py'),
                   loc('simulateAtmoGeneral3D.py'),
                   loc('simulateAtmoGeneral.py'),
                   loc('simulateSky.py'),
-                  loc('test_gradient2.py'),
+                  loc('test_gradient3D.py'),
                   loc('test_gradient.py'),
                   loc('utils.py')]
 proj.file-type = 'shared'
