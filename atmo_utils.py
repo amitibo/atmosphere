@@ -866,5 +866,5 @@ def testProjection():
     
 
 if __name__ == '__main__':
-    testProjection()
+    test3D()
     

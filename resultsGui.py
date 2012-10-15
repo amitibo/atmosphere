@@ -12,6 +12,7 @@ from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.enable.component_editor import ComponentEditor
 import matplotlib.pyplot as plt
+import scipy.io as sio
 import numpy as np
 import amitibo
 import glob
@@ -71,7 +72,8 @@ class resultAnalayzer(HasTraits):
     @on_trait_change('tr_img_name')
     def _updateImgName(self):
         if self.tr_img_name in self.tr_img_list:
-            self._img = np.load(self.tr_img_name)
+            data = sio.loadmat(self.tr_img_name)
+            self._img = data['img']
         else:
             self._img = np.zeros((256, 256, 3), dtype=np.uint8)
             
@@ -80,7 +82,7 @@ class resultAnalayzer(HasTraits):
     @on_trait_change('tr_folder')
     def _updateFolder(self):
         
-        self.tr_img_list = glob.glob(os.path.join(self.tr_folder, "*.npy"))
+        self.tr_img_list = glob.glob(os.path.join(self.tr_folder, "*.mat"))
                 
         self.tr_img_name = ''
         

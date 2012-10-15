@@ -8,10 +8,10 @@ import matplotlib.patches as mpatches
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag
 import atmo_utils
-import os.path
-import pickle
 import amitibo
 import mayavi.mlab as mlab
+import scipy.io as sio
+import os
 
 
 SKY_PARAMS = {
@@ -26,7 +26,7 @@ SKY_PARAMS = {
     'theta_res': 40,
     'image_res': 512,
     'focal_ratio': 0.15,
-    'sun_angle': 0*numpy.pi,
+    'sun_angle': 30/180*numpy.pi,
     'L_SUN_RGB': L_SUN_RGB,
     'RGB_WAVELENGTH': RGB_WAVELENGTH
 }
@@ -341,7 +341,7 @@ def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False
     # Create the image
     #
     img = numpy.transpose(numpy.array(img), (1, 2, 0))
-    numpy.save(os.path.join(results_path, 'img.npy'), img)
+    sio.savemat(os.path.join(results_path, 'img.mat'), {'img':img}, do_compression=True)
     
     if plot_results:
         #
@@ -548,10 +548,10 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
     pdf.saveFigures(figures)
 
 
-def main_serial(aerosol_params, sky_params, results_path=''):
+def main_serial(aerosol_params, sky_params, results_path='', plot_results=False):
     """Run the calculation on a single parameters set."""
 
-    calcRadiance(aerosol_params, sky_params, results_path, plot_results=True)
+    calcRadiance(aerosol_params, sky_params, results_path, plot_results=plot_results)
     
 
 if __name__ == '__main__':
@@ -559,6 +559,8 @@ if __name__ == '__main__':
     #
     # Load the MISR database.
     #
+    import pickle
+    
     with open('misr.pkl', 'rb') as f:
         misr = pickle.load(f)
     
@@ -579,5 +581,8 @@ if __name__ == '__main__':
     results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
 
     #main_parallel(aerosol_params, SKY_PARAMS, results_path)
-    main_serial(aerosol_params, SKY_PARAMS, results_path)
+    import cProfile    
+
+    cmd = "main_serial(aerosol_params, SKY_PARAMS, results_path)"
+    cProfile.runctx(cmd, globals(), locals(), filename="atmosphere.profile")
 
