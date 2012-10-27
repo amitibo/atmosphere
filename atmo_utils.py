@@ -43,6 +43,40 @@ SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
 
 
+def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z'):
+
+    import mayavi.mlab as mlab
+    
+    mlab.figure()
+
+    src = mlab.pipeline.scalar_field(X, Y, Z, V)
+    src.spacing = [1, 1, 1]
+    src.update_image_data = True    
+    ipw_x = mlab.pipeline.image_plane_widget(src, plane_orientation='x_axes')
+    ipw_y = mlab.pipeline.image_plane_widget(src, plane_orientation='y_axes')
+    ipw_z = mlab.pipeline.image_plane_widget(src, plane_orientation='z_axes')
+    mlab.colorbar()
+    mlab.outline()
+    mlab.xlabel(X_label)
+    mlab.ylabel(Y_label)
+    mlab.zlabel(Z_label)
+
+    limits = []
+    for grid in (X, Y, Z):
+        limits += [grid.min()]
+        limits += [grid.max()]
+    mlab.axes(ranges=limits)
+
+
+def viz2D(V):
+    
+    import matplotlib.pyplot as plt
+    
+    plt.figure()    
+    plt.imshow(V, interpolation='nearest')
+    plt.gray()
+    
+
 def calcHG(mu, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
@@ -581,7 +615,7 @@ def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
 
 
 @memoized
-def integralTransformMatrix(grids, axis=0, direction=1):
+def integralTransformMatrix(grids, jacobian=None, axis=0, direction=1):
     """
     Calculate a (sparse) matrix representation of an integration transform.
     
@@ -634,11 +668,16 @@ def integralTransformMatrix(grids, axis=0, direction=1):
         m = np.prod(grid_shape[:axis])
         H = sps.kron(sps.eye(m, m), inner_H)
 
+    H = H.tocsr()
+    
+    if jacobian != None:
+        H = H * spdiag(jacobian)
+        
     return H.tocsr()
 
 
 @memoized
-def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
+def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256, theta_compensation=False):
     """
     Calculate a sparse matrix representation of camera projection transform.
     
@@ -652,6 +691,9 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
     
     image_res : int, optional (default=256)
         Resolution of the camera image (both dimensions)
+        
+    theta_compensation : bool, optional (default=False)
+        Compensate for angle between ray and pixel
         
     Returns
     -------
@@ -672,6 +714,56 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256):
     #
     H = calcTransformMatrix((PHI, THETA), (PHI_, THETA_))
 
+    #
+    # Account for cos(\theta)
+    #
+    if theta_compensation:
+        H = spdiag(np.cos(THETA_)) * H
+    
+    return H
+
+
+@memoized
+def fisheyeTransformMatrix(PHI, THETA, image_res=256, theta_compensation=False):
+    """
+    Calculate a sparse matrix representation of fisheye projection transform.
+    
+    Parameters
+    ----------
+    PHI, THETA : 3D arrays
+        \phi and \theta angle grids.
+    
+    image_res : int, optional (default=256)
+        Resolution of the camera image (both dimensions)
+        
+    Returns
+    -------
+    H : sparse matrix
+        Sparse matrix, in csr format, representing the transform.
+"""
+
+    import numpy as np
+    import amitibo
+    
+    Y, X = np.mgrid[-1:1:complex(0, image_res), -1:1:complex(0, image_res)]
+    PHI_ = np.arctan2(Y, X) + np.pi
+    R_ = np.sqrt(X**2 + Y**2)
+    R_[R_ > 1] = 1
+    THETA_ = np.arccos(1-R_)
+
+    #
+    # Calculate the transform
+    #
+    H = calcTransformMatrix((PHI, THETA), (PHI_, THETA_))
+
+    H = spdiag(np.cos(THETA_)) * H
+    
+    #
+    # Account for cos(\theta)
+    #
+    if theta_compensation:
+        H = spdiag(np.cos(THETA_)**2) * H
+    
     return H
 
 

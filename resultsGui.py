@@ -6,11 +6,12 @@ Enables scaling and applying gamma correction.
 
 from __future__ import division
 
-from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool
-from enthought.traits.ui.api import View, Item, Handler, Action, VGroup, EnumEditor, DirectoryEditor
+from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance
+from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, EnumEditor, DirectoryEditor
 from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.enable.component_editor import ComponentEditor
+from enthought.io.api import File
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import numpy as np
@@ -27,6 +28,7 @@ class resultAnalayzer(HasTraits):
     tr_img_list = List()
     tr_img_name = Str()
     tr_gamma_correction = Bool()
+    tr_DND = List(Instance(File))
     
     traits_view  = View(
         VGroup(
@@ -34,7 +36,8 @@ class resultAnalayzer(HasTraits):
             Item('tr_scaling', label='Radiance Scaling'),
             Item('tr_gamma_correction', label='Apply Gamma Correction'),
             Item('tr_folder', label='Result Folder', editor=DirectoryEditor()),
-            Item('tr_img_name', label='Images List', editor=EnumEditor(name="tr_img_list"))
+            Item('tr_img_name', label='Images List', editor=EnumEditor(name="tr_img_list")),
+            Item('tr_DND', label='Drag Here', editor=DropEditor())
             ),
             resizable = True,
         )
@@ -71,7 +74,7 @@ class resultAnalayzer(HasTraits):
 
     @on_trait_change('tr_img_name')
     def _updateImgName(self):
-        if self.tr_img_name in self.tr_img_list:
+        if os.path.exists(self.tr_img_name):
             data = sio.loadmat(self.tr_img_name)
             self._img = data['img']
         else:
@@ -86,6 +89,10 @@ class resultAnalayzer(HasTraits):
                 
         self.tr_img_name = ''
         
+    @on_trait_change('tr_DND')
+    def _updateDragNDrop(self):
+        self.tr_img_name = self.tr_DND[0].absolute_path
+ 
         
 def main():
     """Main function"""
