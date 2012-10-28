@@ -10,8 +10,6 @@ import logging
 import matplotlib.pyplot as plt
 import amitibo
 import os
-import cv
-import cv2
 
 
 SKY_PARAMS = {
@@ -90,16 +88,6 @@ class radiance(object):
                     camera_center
                     )
                 )
-
-        #
-        # Create a video writer for the temporary results
-        #
-        self.video_writer = cv2.VideoWriter(
-            os.path.join(results_path, 'optimization.avi'),
-            cv.CV_FOURCC(*"ffds"),
-            12,
-            (160, 120)
-            )
 
         self.obj_value = []
 
@@ -188,15 +176,6 @@ class radiance(object):
             alpha_pr,
             ls_trials
             ):
-
-        try:
-            x = cv2.resize(
-                255*self.temp_x.reshape(self.ATMO_aerosols.shape),
-                dsize=(160, 120), interpolation=cv.CV_INTER_NN
-                )
-            self.video_writer.write(x.astype('uint8'))
-        except Exception as inst:
-            print 'error has occured:\n%s' % repr(inst)
 
         self.obj_value.append(obj_value)
         return True

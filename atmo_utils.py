@@ -191,7 +191,6 @@ def coords2Indices(grids, coords):
     return inds, slim_grids
 
         
-@memoized
 def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -231,7 +230,6 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     return H, T, R
 
 
-@memoized
 def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, theta_res=None):
     """(sparse) matrix representation of cartesian to polar transform.
     params:
@@ -270,7 +268,6 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, the
     return H, R, PHI, THETA
 
 
-@memoized
 def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
     """(sparse) matrix representation of rotation transform.
     params:
@@ -327,7 +324,6 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
     return H, X_dst, Y_dst
 
 
-@memoized
 def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=None):
     """(sparse) matrix representation of rotation transform.
     params:
@@ -549,7 +545,6 @@ def gridDerivatives(grids, forward=True):
     return derivatives
     
 
-@memoized
 def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
     """
     Calculate a (sparse) matrix representation of integration (cumsum) transform.
@@ -614,7 +609,6 @@ def cumsumTransformMatrix(grids, axis=0, direction=1, masked_rows=None):
     return H.tocsr()
 
 
-@memoized
 def integralTransformMatrix(grids, jacobian=None, axis=0, direction=1):
     """
     Calculate a (sparse) matrix representation of an integration transform.
@@ -676,7 +670,6 @@ def integralTransformMatrix(grids, jacobian=None, axis=0, direction=1):
     return H.tocsr()
 
 
-@memoized
 def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256, theta_compensation=False):
     """
     Calculate a sparse matrix representation of camera projection transform.
@@ -723,7 +716,6 @@ def cameraTransformMatrix(PHI, THETA, focal_ratio=0.5, image_res=256, theta_comp
     return H
 
 
-@memoized
 def fisheyeTransformMatrix(PHI, THETA, image_res=256, theta_compensation=False):
     """
     Calculate a sparse matrix representation of fisheye projection transform.

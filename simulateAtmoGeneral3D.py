@@ -8,11 +8,13 @@ import matplotlib.patches as mpatches
 import numpy
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag, viz2D, viz3D
 import atmo_utils
+from camera import Camera
 import amitibo
 import mayavi.mlab as mlab
 import scipy.io as sio
 import os
 import warnings
+import time
 
 
 SKY_PARAMS = {
@@ -548,6 +550,70 @@ def main_serial(aerosol_params, sky_params, results_path='', plot_results=False,
         calcRadiance(aerosol_params, sky_params, results_path, plot_results=plot_results)
     
 
+def camera_serial(sky_params, aerosol_params, results_path):
+    
+    #
+    # Preparing the parameters
+    #
+    height = sky_params['height']
+    width = sky_params['width']
+    dx = sky_params['dx']
+    dh = sky_params['dh']
+    earth_radius = sky_params['earth_radius']
+    
+    atmosphere_params = amitibo.attrClass(
+        cartesian_grids=(slice(0, width, dx), slice(0, width, dx), slice(0, height, dh)),
+        L_SUN_RGB=sky_params["L_SUN_RGB"],
+        RGB_WAVELENGTH=sky_params["RGB_WAVELENGTH"]
+    )
+    
+    camera_params = amitibo.attrClass(
+        radius_res=sky_params["radius_res"],
+        phi_res=sky_params["phi_res"],
+        theta_res=sky_params["theta_res"],
+        focal_ratio=sky_params["focal_ratio"],
+        image_res=sky_params["image_res"],
+        theta_compensation=False
+    )
+    
+    particle = amitibo.attrClass(
+        k_RGB=aerosol_params["k_RGB"],
+        w_RGB=aerosol_params["w_RGB"],
+        g_RGB=aerosol_params["g_RGB"],
+        visibility=aerosol_params["visibility"]
+        )
+    
+    for i, sun_angle in enumerate((0,)):#numpy.linspace(0, numpy.pi/2, 4)):
+        t0 = time.time()
+
+        #
+        # Instantiating the camera
+        #
+        cam = Camera(
+            sun_angle,
+            atmosphere_params=atmosphere_params,
+            camera_params=camera_params,
+            camera_position=sky_params['camera_center']
+        )
+        
+        t1 = time.time() - t0
+        
+        #
+        # Calculating the image
+        #
+        Y, X, H = numpy.mgrid[0:width:dx, 0:width:dx, 0:height:dh]
+        h = numpy.sqrt((X-width/2)**2 + (Y-width/2)**2 + (earth_radius+H)**2) - earth_radius
+        ATMO_aerosols = numpy.exp(-h/aerosol_params["aerosols_typical_h"])
+        ATMO_air = numpy.exp(-h/aerosol_params["air_typical_h"])
+    
+        img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle=particle)
+        
+        sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
+        
+        t2 = time.time() - t1 - t0
+        
+        print t2, t1
+
 if __name__ == '__main__':
 
     #
@@ -575,5 +641,9 @@ if __name__ == '__main__':
     results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
 
     #main_parallel(aerosol_params, SKY_PARAMS, results_path)
-    main_serial(aerosol_params, SKY_PARAMS, results_path)
+    #main_serial(aerosol_params, SKY_PARAMS, results_path)
 
+    import cProfile    
+    cmd = "camera_serial(SKY_PARAMS, aerosol_params, results_path)"
+    cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
+    #camera_serial(SKY_PARAMS, aerosol_params, results_path)
