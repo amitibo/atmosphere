@@ -116,15 +116,15 @@ class Camera(object):
         self.H_distances = H_distances
         self.H_pol = H_pol
         self.H_sensor = H_camera * H_int
-        self.mu = np.cos(scatter_angle)
+        self.mu = np.cos(scatter_angle).reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
 
-    def calcImage(self, A_air, A_aerosols, particle):
+    def calcImage(self, A_air, A_aerosols, particle_params):
         """Calculate the image for a given aerosols distribution"""
         
-        A_aerosols_ = A_aerosols.ravel()
-        A_air_ = A_air.ravel()
+        A_aerosols_ = A_aerosols.reshape((-1, 1))
+        A_air_ = A_air.reshape((-1, 1))
         
         #
         # Precalcuate the air scattering and attenuation
@@ -138,14 +138,14 @@ class Camera(object):
         for L_sun, lambda_, k, w, g in zip(
                 self.atmosphere_params.L_SUN_RGB,
                 self.atmosphere_params.RGB_WAVELENGTH,
-                particle.k_RGB,
-                particle.w_RGB,
-                particle.g_RGB
+                particle_params.k_RGB,
+                particle_params.w_RGB,
+                particle_params.g_RGB
                 ):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            extinction_aerosols = k / particle.visibility
+            extinction_aerosols = k / particle_params.visibility
             scatter_aerosols = w * extinction_aerosols * atmo_utils.calcHG(self.mu, g) * scatter_aerosols_pre
             exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
             
@@ -178,8 +178,50 @@ class Camera(object):
         """Calculate the image gradient for a given aerosols distribution"""
         
         pass
+
+    def draw_image(self, img, focal_ratio, sun_angle):
+        """
+        """
+        
+        img = img**0.45
+        img /= np.max(img)
     
+        c = img.shape[0]/2
+        sun_x = c * (1 + focal_ratio * np.tan(sun_angle))
     
+        fig = plt.figure()
+        ax = plt.axes([0, 0, 1, 1])
+    
+        #
+        # Draw the sky
+        #
+        plt.imshow(img)
+    
+        #
+        # Draw the sun
+        #
+        sun_patch = mpatches.Circle((sun_x, c), 3, ec='r', fc='r')
+        ax.add_patch(sun_patch)
+    
+        #
+        # Draw angle arcs
+        #
+        for arc_angle in range(0, 90, 15)[1:]:
+            d = c * focal_ratio * np.tan(arc_angle/180*numpy.pi)
+            arc_patch = mpatches.Arc(
+                (c, c),
+                2*d,
+                2*d,
+                90,
+                15,
+                345,
+                ec='r'
+            )
+            ax.add_patch(arc_patch)
+            plt.text(c, c+d, str(arc_angle), ha="center", va="center", size=10, color='r')
+    
+        return fig
+        
 
 def main():
     """Main doc """

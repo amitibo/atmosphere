@@ -5,7 +5,7 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 from __future__ import division
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import numpy
+import numpy as np
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag, viz2D, viz3D
 import atmo_utils
 from camera import Camera
@@ -17,338 +17,33 @@ import warnings
 import time
 
 
-SKY_PARAMS = {
-    'width': 400,
-    'height': 80,
-    'earth_radius': 4000,
-    'dx': 4,
-    'dh': 1,
-    'camera_center': (200, 200, 0.2),
-    'radius_res': 40,
-    'phi_res': 80,
-    'theta_res': 80,
-    'image_res': 512,
-    'focal_ratio': 0.15,
-    'sun_angle': 75/180*numpy.pi,
-    'L_SUN_RGB': L_SUN_RGB,
-    'RGB_WAVELENGTH': RGB_WAVELENGTH
-}
+#
+# Global settings
+#
+atmosphere_params = amitibo.attrClass(
+    cartesian_grids=(
+        slice(0, 400, 4),
+        slice(0, 400, 4),
+        slice(0, 80, 1)
+        ),
+    earth_radius=4000,
+    L_SUN_RGB=L_SUN_RGB,
+    RGB_WAVELENGTH=RGB_WAVELENGTH,
+    air_typical_h=8,
+    aerosols_typical_h=1.2
+)
 
-VISIBILITY = 50
+camera_params = amitibo.attrClass(
+    radius_res=40,
+    phi_res=80,
+    theta_res=80,
+    focal_ratio=0.15,
+    image_res=512,
+    theta_compensation=False
+)
 
+profile = False
 
-
-def vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle):
-
-    ATMO = numpy.exp(-Z/8)
-    ATMO_ = ATMO.reshape((-1, 1))
-    
-    ATMO_pol_= H_pol * ATMO_
-    ATMO_rot_ = Hrot_forward * ATMO_
-    ATMO_back_ = Hrot_backward * ATMO_rot_
-    ATMO_int1_ = Hint1 * ATMO_rot_
-    ATMO_int2_ = Hint2 * ATMO_pol_
-     
-    viz3D(X, Y, Z, ATMO)
-    viz3D(ATMO_pol_.reshape(R.shape))
-    viz3D(ATMO_rot_.reshape(Y_rot.shape))
-    viz3D(ATMO_back_.reshape(Y.shape))
-    viz3D(ATMO_int1_.reshape(Y_rot.shape))
-    viz3D(ATMO_int2_.reshape(R.shape))
-    viz3D(scatter_angle.reshape(R.shape))
-
-    mlab.show()
-
-
-def vizTransforms2(
-    H_pol,
-    H_int,
-    H_camera,
-    ATMO_,
-    Y,
-    X,
-    H,
-    R,
-    PHI,
-    THETA
-    ):
-    
-    ATMO_pol_= H_pol * ATMO_
-    ATMO_int_ = H_int * ATMO_pol_
-    ATMO_img_ = H_camera * ATMO_int_
-     
-    viz3D(Y, X, H, ATMO_.reshape(X.shape))
-    viz3D(R, PHI, THETA, ATMO_pol_.reshape(R.shape))
-    mlab.show()
-
-    viz2D(ATMO_int_.reshape(R.shape[1:]))
-    viz2D(ATMO_img_.reshape((SKY_PARAMS['image_res'], SKY_PARAMS['image_res'])))
-
-    plt.show()
-
-    
-def calcScatterAngle(R, PHI, THETA, rotation):
-    """
-    Calclculate the scattering angle at each voxel.
-    """
-
-    X_ = R * numpy.sin(THETA) * numpy.cos(PHI)
-    Y_ = R * numpy.sin(THETA) * numpy.sin(PHI)
-    Z_ = R * numpy.cos(THETA)
-
-    XYZ_dst = numpy.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), numpy.ones(R.size)))
-    XYZ_src_ = numpy.dot(rotation, XYZ_dst)
-
-    Z_rotated = XYZ_src_[2, :]
-    R_rotated = numpy.sqrt(numpy.sum(XYZ_src_[:3, :]**2, axis=0))
-
-    angle = numpy.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
-
-    return angle
-
-
-def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
-    """
-    Calculate the optical distances from the sun through any voxel in the atmosphere and
-    from there to the camera.
-    """
-    
-    #
-    # Prepare transformation matrices
-    #
-    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
-    Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, numpy.linalg.inv(rotation), Y, X, Z)[0]
-    
-    #
-    # Calculate a mask for Hint2
-    #
-    mask = numpy.ones_like(X)
-    mask_pol = H_pol * mask.reshape((-1, 1))
-
-    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot), axis=2, direction=-1)
-    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), axis=0, masked_rows=mask_pol)
-
-    temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
-    temp2 = Hint2 * H_pol
-
-    scatter_angle = calcScatterAngle(R, PHI, THETA, rotation)
-    
-    #vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle)
-    
-    return temp2 + temp1, scatter_angle
-
-
-def calcRadianceHelper(
-        ATMO_aerosols_,
-        ATMO_air_,
-        Y,
-        X,
-        H,
-        aerosol_params,
-        sky_params,
-        camera_center,
-        added_noise=0
-        ):
-    
-    ATMO_aerosols_ = ATMO_aerosols_.reshape((-1, 1))
-    ATMO_air_ = ATMO_air_.reshape((-1, 1))
-    
-    H_pol, R, PHI, THETA = atmo_utils.sphericalTransformMatrix(
-        Y,
-        X,
-        H,
-        camera_center,
-        radius_res=sky_params['radius_res'],
-        phi_res=sky_params['phi_res'],
-        theta_res=sky_params['theta_res']
-        )
-    
-    #
-    # Calculate the distance matrices and scattering angle
-    #
-    H_distances, scatter_angle = \
-        calcOpticalDistancesMatrix(
-            Y,
-            X,
-            H,
-            sky_params['sun_angle'],
-            H_pol,
-            R,
-            PHI,
-            THETA
-            )
-
-    #jacobian_min = numpy.sin(numpy.pi/2/sky_params['theta_res'])
-    #jacobian = numpy.sin(THETA)
-    #jacobian[jacobian<jacobian_min] = jacobian_min
-
-    #H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA), jacobian=jacobian, axis=0)
-    H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA))
-    #H_camera = atmo_utils.fisheyeTransformMatrix(PHI[0, :, :], THETA[0, :, :], image_res=sky_params['image_res'], theta_compensation=True)
-    H_camera = atmo_utils.cameraTransformMatrix(PHI[0, :, :], THETA[0, :, :], focal_ratio=sky_params['focal_ratio'], image_res=sky_params['image_res'], theta_compensation=False)
-    #vizTransforms2(
-        #H_pol,
-        #H_int,
-        #H_camera,
-        #ATMO_air_,
-        #Y,
-        #X,
-        #H,
-        #R,
-        #PHI,
-        #THETA
-    #)
-    
-    scatter_angle.shape = (-1, 1)
-    mu = numpy.cos(scatter_angle)
-
-    #
-    # Calculate scattering for each channel
-    #
-    img = []
-    for L_sun, lambda_, k, w, g in zip(
-            sky_params["L_SUN_RGB"],
-            sky_params["RGB_WAVELENGTH"],
-            aerosol_params["k_RGB"],
-            aerosol_params["w_RGB"],
-            aerosol_params["g_RGB"]
-            ):
-        #
-        # Calculate scattering and extiniction for aerosols
-        #
-        extinction_aerosols = k / aerosol_params["visibility"]
-        scatter_aerosols = w * extinction_aerosols * calcHG(mu, g) * (H_pol * ATMO_aerosols_)
-        exp_aerosols = numpy.exp(-extinction_aerosols * H_distances * ATMO_aerosols_)
-        
-        #
-        # Calculate scattering and extiniction for air
-        #
-        extinction_air = 1.09e-3 * lambda_**-4.05
-        scatter_air = extinction_air * (1 + mu**2) * 3 / (16*numpy.pi) * (H_pol * ATMO_air_)
-        exp_air = numpy.exp(-extinction_air * H_distances * ATMO_air_)
-        
-        #
-        # Calculate the radiance
-        #
-        radiance = (scatter_air + scatter_aerosols) * exp_air * exp_aerosols
-
-        #
-        # Calculate projection on camera
-        #
-        temp_img = L_sun * H_camera * H_int * radiance
-        temp_img = temp_img + added_noise*temp_img.std()*numpy.random.randn(*temp_img.shape)
-        temp_img[temp_img<0] = 0
-        img.append(temp_img.reshape(sky_params['image_res'], sky_params['image_res']))
-        
-    return img
-
-
-def draw_image(img, focal_ratio, sun_angle):
-    """
-    """
-    
-    c = img.shape[0]/2
-    sun_x = c * (1 + focal_ratio * numpy.tan(sun_angle))
-
-    fig = plt.figure()
-    ax = plt.axes([0, 0, 1, 1])
-
-    #
-    # Draw the sky
-    #
-    plt.imshow(img)
-
-    #
-    # Draw the sun
-    #
-    sun_patch = mpatches.Circle((sun_x, c), 3, ec='r', fc='r')
-    ax.add_patch(sun_patch)
-
-    #
-    # Draw angle arcs
-    #
-    for arc_angle in range(0, 90, 15)[1:]:
-        d = c * focal_ratio * numpy.tan(arc_angle/180*numpy.pi)
-        arc_patch = mpatches.Arc(
-            (c, c),
-            2*d,
-            2*d,
-            90,
-            15,
-            345,
-            ec='r'
-        )
-        ax.add_patch(arc_patch)
-        plt.text(c, c+d, str(arc_angle), ha="center", va="center", size=10, color='r')
-
-    return fig
-    
-    
-def calcRadiance(aerosol_params, sky_params, results_path='', plot_results=False):
-    """
-    Calculate the radiance of the atmosphere according to aerosol and sky parameters.
-    """
-    
-    #
-    # Create the sky
-    #
-    height = sky_params['height']
-    width = sky_params['width']
-    dx = sky_params['dx']
-    dh = sky_params['dh']
-    earth_radius = sky_params['earth_radius']
-    
-    Y, X, H = numpy.mgrid[0:width:dx, 0:width:dx, 0:height:dh]
-
-    #
-    # Create the distributions of air and aerosols
-    #
-    h = numpy.sqrt((X-width/2)**2 + (Y-width/2)**2 + (earth_radius+H)**2) - earth_radius
-    
-    ATMO_aerosols = numpy.exp(-h/aerosol_params["aerosols_typical_h"])
-    #warnings.warn("Temporariliy using zero aerosols distribution")
-    #ATMO_aerosols = numpy.zeros_like(ATMO_aerosols)
-    ATMO_aerosols_ = ATMO_aerosols.reshape((-1, 1))
-    
-    ATMO_air = numpy.exp(-h/aerosol_params["air_typical_h"])
-    ATMO_air_ = ATMO_air.reshape((-1, 1))
-
-    #
-    # Using the helper to do the actual calculations.
-    #
-    img = calcRadianceHelper(
-        ATMO_aerosols_,
-        ATMO_air_,
-        Y,
-        X,
-        H,
-        aerosol_params,
-        sky_params,
-        sky_params['camera_center']
-        )
-
-    #
-    # Create the image
-    #
-    img = numpy.transpose(numpy.array(img), (1, 2, 0))
-    sio.savemat(os.path.join(results_path, 'img.mat'), {'img':img}, do_compression=True)
-    
-    if plot_results:
-        #
-        # Account for gamma correction
-        #
-        IMG = img**0.45
-        IMG /= numpy.max(IMG)
-    
-        #
-        # Plot results
-        #
-        fig = draw_image(IMG, sky_params['focal_ratio'], sky_params['sun_angle'])
-        amitibo.saveFigures(results_path, (fig, ), bbox_inches='tight')
-        plt.show()
-
-    return img
-    
 
 def calcRadianceGradientHelper(
     ATMO_aerosols_,
@@ -538,54 +233,20 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
     pdf.saveFigures(figures)
 
 
-def main_serial(aerosol_params, sky_params, results_path='', plot_results=False, profile=False):
-    """Run the calculation on a single parameters set."""
-
-    if profile:
-        import cProfile    
-
-        cmd = "calcRadiance(aerosol_params, sky_params, results_path, plot_results=False)"
-        cProfile.runctx(cmd, globals(), locals(), filename="atmosphere.profile")
-    else:
-        calcRadiance(aerosol_params, sky_params, results_path, plot_results=plot_results)
-    
-
-def camera_serial(sky_params, aerosol_params, results_path):
+def serial(particle_params, results_path):
     
     #
-    # Preparing the parameters
+    # Create some aerosols distribution
     #
-    height = sky_params['height']
-    width = sky_params['width']
-    dx = sky_params['dx']
-    dh = sky_params['dh']
-    earth_radius = sky_params['earth_radius']
-    
-    atmosphere_params = amitibo.attrClass(
-        cartesian_grids=(slice(0, width, dx), slice(0, width, dx), slice(0, height, dh)),
-        L_SUN_RGB=sky_params["L_SUN_RGB"],
-        RGB_WAVELENGTH=sky_params["RGB_WAVELENGTH"]
-    )
-    
-    camera_params = amitibo.attrClass(
-        radius_res=sky_params["radius_res"],
-        phi_res=sky_params["phi_res"],
-        theta_res=sky_params["theta_res"],
-        focal_ratio=sky_params["focal_ratio"],
-        image_res=sky_params["image_res"],
-        theta_compensation=False
-    )
-    
-    particle = amitibo.attrClass(
-        k_RGB=aerosol_params["k_RGB"],
-        w_RGB=aerosol_params["w_RGB"],
-        g_RGB=aerosol_params["g_RGB"],
-        visibility=aerosol_params["visibility"]
-        )
-    
+    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+    width = atmosphere_params.cartesian_grids[0].stop
+    height = atmosphere_params.cartesian_grids[2].stop
+    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
+    ATMO_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
+
+
     for i, sun_angle in enumerate((0,)):#numpy.linspace(0, numpy.pi/2, 4)):
-        t0 = time.time()
-
         #
         # Instantiating the camera
         #
@@ -593,26 +254,16 @@ def camera_serial(sky_params, aerosol_params, results_path):
             sun_angle,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=sky_params['camera_center']
+            camera_position=(width/2, width/2, 0.2)
         )
-        
-        t1 = time.time() - t0
         
         #
         # Calculating the image
         #
-        Y, X, H = numpy.mgrid[0:width:dx, 0:width:dx, 0:height:dh]
-        h = numpy.sqrt((X-width/2)**2 + (Y-width/2)**2 + (earth_radius+H)**2) - earth_radius
-        ATMO_aerosols = numpy.exp(-h/aerosol_params["aerosols_typical_h"])
-        ATMO_air = numpy.exp(-h/aerosol_params["air_typical_h"])
-    
-        img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle=particle)
+        img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle_params=particle_params)
         
         sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
         
-        t2 = time.time() - t1 - t0
-        
-        print t2, t1
 
 if __name__ == '__main__':
 
@@ -626,24 +277,21 @@ if __name__ == '__main__':
     
     particles_list = misr.keys()
     particle = misr[particles_list[0]]
-    aerosol_params = {
-        "k_RGB": numpy.array(particle['k']) / numpy.max(numpy.array(particle['k'])),#* 10**-12,
-        "w_RGB": particle['w'],
-        "g_RGB": (particle['g']),
-        "visibility": VISIBILITY,
-        "air_typical_h": 8,
-        "aerosols_typical_h": 1.2,        
-    }
+    particle_params = amitibo.attrClass(
+        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
+        w_RGB=particle['w'],
+        g_RGB=(particle['g']),
+        visibility=10
+        )
 
     #
     # Create afolder for results
     #
-    results_path = amitibo.createResultFolder(params=[aerosol_params, SKY_PARAMS])
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
 
-    #main_parallel(aerosol_params, SKY_PARAMS, results_path)
-    #main_serial(aerosol_params, SKY_PARAMS, results_path)
-
-    import cProfile    
-    cmd = "camera_serial(SKY_PARAMS, aerosol_params, results_path)"
-    cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
-    #camera_serial(SKY_PARAMS, aerosol_params, results_path)
+    if profile:
+        import cProfile    
+        cmd = "serial(SKY_PARAMS, aerosol_params, results_path)"
+        cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
+    else:
+        serial(particle_params, results_path)

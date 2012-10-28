@@ -27,7 +27,6 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 """
 
 from __future__ import division
-from amitibo import memoized
 import numpy as np
 import itertools
 
