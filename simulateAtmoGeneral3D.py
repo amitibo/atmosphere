@@ -3,18 +3,17 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 """
 
 from __future__ import division
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH, spdiag, viz2D, viz3D
 import atmo_utils
 from camera import Camera
 import amitibo
-import mayavi.mlab as mlab
 import scipy.io as sio
 import os
 import warnings
 import time
+import socket
+import sys
 
 
 #
@@ -233,6 +232,47 @@ def main_parallel(aerosol_params, sky_params, results_path=''):
     pdf.saveFigures(figures)
 
 
+def parallel(particle_params, results_path):
+    
+    from mpi4py import MPI
+    
+    comm = MPI.COMM_WORLD
+
+    print atmosphere_params.cartesian_grids
+    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+    width = atmosphere_params.cartesian_grids[0].stop
+    height = atmosphere_params.cartesian_grids[2].stop
+    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
+    ATMO_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
+
+    sun_angles = np.linspace(0, np.pi/2, comm.size)
+
+    #
+    # Instantiating the camera
+    #
+    cam = Camera(
+        sun_angles[comm.rank],
+        atmosphere_params=atmosphere_params,
+        camera_params=camera_params,
+        camera_position=(width/2, width/2, 0.2)
+    )
+    
+    #
+    # Calculating the image
+    #
+    img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle_params=particle_params)
+        
+    print 'finished processing %d on %s with %g and %g' % (comm.rank, socket.gethostname(), sun_angles[comm.rank], img.max())
+    
+    result = comm.gather(img, root=0)
+    if comm.rank == 0:
+        results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+        
+        for i, img in enumerate(result):
+            sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
+    
+    
 def serial(particle_params, results_path):
     
     #
@@ -287,11 +327,12 @@ if __name__ == '__main__':
     #
     # Create afolder for results
     #
-    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
-
+    #results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+    results_path = None
+    
     if profile:
         import cProfile    
         cmd = "serial(SKY_PARAMS, aerosol_params, results_path)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        serial(particle_params, results_path)
+        parallel(particle_params, results_path)
