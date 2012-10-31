@@ -174,10 +174,59 @@ class Camera(object):
         
         return img
     
-    def calcImageGradient(self, A_aserosols):
+    def calcImageGradient(self, A_air, A_aerosols, particle_params):
         """Calculate the image gradient for a given aerosols distribution"""
         
-        pass
+        A_aerosols_ = A_aerosols.reshape((-1, 1))
+        A_air_ = A_air.reshape((-1, 1))
+        
+        #
+        # Precalcuate the air scattering and attenuation
+        #
+        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * A_air_)
+        exp_air_pre = self.H_distances * A_air_
+        scatter_aerosols_pre = self.H_pol * A_aerosols_
+        exp_aerosols_pre = self.H_distances * A_aerosols_
+
+        gimg = []
+        for L_sun, lambda_, k, w, g in zip(
+                self.atmosphere_params.L_SUN_RGB,
+                self.atmosphere_params.RGB_WAVELENGTH,
+                particle_params.k_RGB,
+                particle_params.w_RGB,
+                particle_params.g_RGB
+                ):
+            #
+            # Calculate scattering and extiniction for aerosols
+            #
+            extinction_aerosols = k / particle_params.visibility
+            scatter_aerosols_partial = w * extinction_aerosols * atmo_utils.calcHG(self.mu, g)
+            scatter_aerosols =  atmo_utils.spdiag(scatter_aerosols_partial * scatter_aerosols_pre)
+            scatter_aerosols_grad = self.H_pol.T * atmo_utils.spdiag(scatter_aerosols_partial)
+            exp_aerosols = atmo_utils.spdiag(np.exp(-extinction_aerosols * exp_aerosols_pre))
+            exp_aerosols_grad = -extinction_aerosols * self.H_distances.T * exp_aerosols
+            
+            #
+            # Calculate scattering and extiniction for air
+            #
+            extinction_air = 1.09e-3 * lambda_**-4.05
+            scatter_air = atmo_utils.spdiag(extinction_air * scatter_air_pre)
+            exp_air = atmo_utils.spdiag(np.exp(-extinction_air * exp_air_pre))
+            
+            #
+            # Calculate the gradient of the radiance
+            #
+            temp1 = scatter_aerosols_grad * exp_aerosols + exp_aerosols_grad * scatter_aerosols
+            temp2 = exp_aerosols_grad * scatter_air
+            radiance_gradient = (temp1 + temp2) * exp_air
+    
+            #
+            # Calculate projection on camera
+            #
+            gimg.append(L_sun * radiance_gradient * self.H_sensor.T)
+
+        return gimg
+    
 
     def draw_image(self, img, focal_ratio, sun_angle):
         """
@@ -221,12 +270,82 @@ class Camera(object):
             plt.text(c, c+d, str(arc_angle), ha="center", va="center", size=10, color='r')
     
         return fig
-        
+
+
+def test_camera():
+
+    import pickle
+    from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+
+    atmosphere_params = amitibo.attrClass(
+        cartesian_grids=(
+            slice(0, 400, 4), # Y
+            slice(0, 400, 4), # X
+            slice(0, 80, 1)   # H
+            ),
+        earth_radius=4000,
+        L_SUN_RGB=L_SUN_RGB,
+        RGB_WAVELENGTH=RGB_WAVELENGTH,
+        air_typical_h=8,
+        aerosols_typical_h=1.2
+    )
+    
+    camera_params = amitibo.attrClass(
+        radius_res=20,
+        phi_res=40,
+        theta_res=40,
+        focal_ratio=0.15,
+        image_res=128,
+        theta_compensation=False
+    )
+    
+    CAMERA_CENTERS = (200, 200, 0.2)
+    SUN_ANGLE = np.pi/4
+
+    #
+    # Load the MISR database.
+    #
+    with open('misr.pkl', 'rb') as f:
+        misr = pickle.load(f)
+
+    #
+    # Set aerosol parameters
+    #
+    particles_list = misr.keys()
+    particle = misr[particles_list[0]]
+    particle_params = amitibo.attrClass(
+        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
+        w_RGB=particle['w'],
+        g_RGB=(particle['g']),
+        visibility=10
+        )
+    
+    cam = Camera(
+        SUN_ANGLE,
+        atmosphere_params=atmosphere_params,
+        camera_params=camera_params,
+        camera_position=CAMERA_CENTERS
+        )
+    
+    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+    width = atmosphere_params.cartesian_grids[0].stop
+    height = atmosphere_params.cartesian_grids[2].stop
+    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
+    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    A_air = np.exp(-h/atmosphere_params.air_typical_h)
+
+    gimg = cam.calcImageGradient(
+         A_air,
+         A_aerosols,
+         particle_params
+    )
+    
+    
 
 def main():
     """Main doc """
     
-    pass
+    test_camera()
 
     
 if __name__ == '__main__':
