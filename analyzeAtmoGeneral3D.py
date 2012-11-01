@@ -76,7 +76,7 @@ class radiance(object):
         # Create the first images
         #
         for i in range(1, mpi_size):
-            comm.send([self.ATMO_aerosols, self.ATMO_air], dest=i, tag=OBJTAG)
+            comm.send([np.ones((5, 1)), self.ATMO_air], dest=i, tag=OBJTAG)
 
         sts = MPI.Status()
         self.Images = range(mpi_size-1)
@@ -89,11 +89,9 @@ class radiance(object):
 
         self.obj_value = []
 
-        self.A = np.diag((1., -2., 3., -4., 5.))
-        self.b = np.array(((1.), (-2.), (3.), (-4.), (5.)))
-        self.c = 5
-        
     def getX0(self):
+        
+        print 'qurying x0'
         
         return np.ones((5, 1))
     
@@ -106,10 +104,6 @@ class radiance(object):
     def objective(self, x):
         """Calculate the objective"""
         
-        x = x.reshape((-1, 1))
-        obj = np.dot(x.T, np.dot(self.A, x)) + np.dot(x.T, self.b) + self.c
-        return obj
-
         print 'objective calculation.'
         
         for i in range(1, mpi_size):
@@ -130,11 +124,12 @@ class radiance(object):
         
         obj = 0
         for ref_img, img in zip(self.Images, images):
-            o = [np.dot(
-                (ref_img[i] - img[i]).T,
-                (ref_img[i] - img[i])
-                ) for i in range(3)]
-            obj += np.sum(o)
+            obj += img
+            #o = [np.dot(
+                #(ref_img[i] - img[i]).T,
+                #(ref_img[i] - img[i])
+                #) for i in range(3)]
+            #obj += np.sum(o)
             
         print 'calculating objective'
         
@@ -143,13 +138,13 @@ class radiance(object):
     def gradient(self, x):
         """The callback for calculating the gradient"""
 
-        x = x.reshape((-1, 1))
-        grad = np.dot(self.A.T, x) + self.b
-        return grad
-
+        print 'Gradient calculation.'
+        
         for i in range(1, mpi_size):
             comm.send([x, self.ATMO_air], dest=i, tag=OBJTAG)
 
+        print 'sent messages.'
+            
         sts = MPI.Status()
         images = range(mpi_size-1)
         
@@ -173,14 +168,14 @@ class radiance(object):
         grad = None
         for ref_img, img, gimg in zip(self.Images, images, grads):
 
-            temp = [-2*(gimg[i]*(ref_img[camera_index][i] - img[i]).reshape((-1, 1))) for i in range(3)]
+            #temp = [-2*(gimg[i]*(ref_img[i] - img[i]).reshape((-1, 1))) for i in range(3)]
             
-            g = np.sum(np.hstack(temp), axis=1)
+            #g = np.sum(np.hstack(temp), axis=1)
 
             if grad == None:
-                grad = g
+                grad = gimg
             else:
-                grad += g
+                grad += gimg
             
         return grad
 
@@ -220,8 +215,11 @@ def master():
     #
     # Define the problem
     #
+    
+    print 'master called'
     sky = radiance()
 
+    print 'created sky'
     x0 = sky.getX0()
 
     lb = np.zeros(x0.shape)
@@ -233,6 +231,8 @@ def master():
     import logging
     logging.basicConfig(filename='run.log',level=logging.DEBUG)
     ipopt.setLoggingLevel(logging.DEBUG)
+    
+    print 'defining problem'
     
     nlp = ipopt.problem(
                 n=len(x0),
@@ -253,6 +253,8 @@ def master():
     nlp.addOption('tol', 1e-7)
     nlp.addOption('max_iter', MAX_ITERATIONS)
 
+    print 'solving problem'
+    
     #
     # Solve the problem
     #
@@ -284,9 +286,14 @@ def slave(particle_params):
         data = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
 
         tag = sts.Get_tag()
+
+        print 'received tag: %d' % tag
+
         if tag == DIETAG:
             break
 
+        print len(data)
+        
         A_air = data[0]
         A_aerosols = data[1]
         
@@ -329,10 +336,13 @@ def main():
         visibility=10
         )
     
+    print 'rank: %d' % mpi_rank
+    
     if mpi_rank == 0:
         #
         # Set up the solver server.
         #
+        print 'calling master'
         master()
     else:
         slave(particle_params)

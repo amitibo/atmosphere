@@ -120,9 +120,18 @@ class Camera(object):
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
 
+        self.A = np.diag((1., -2., 3., -4., 5.))
+        self.b = np.array(((1.), (-2.), (3.), (-4.), (5.)))
+        self.c = 5
+        
     def calcImage(self, A_air, A_aerosols, particle_params):
         """Calculate the image for a given aerosols distribution"""
         
+        x = A_air.reshape((-1, 1))
+        
+        obj = np.dot(x.T, np.dot(self.A, x)) + np.dot(x.T, self.b) + self.c
+        return obj
+
         A_aerosols_ = A_aerosols.reshape((-1, 1))
         A_air_ = A_air.reshape((-1, 1))
         
@@ -177,6 +186,10 @@ class Camera(object):
     def calcImageGradient(self, A_air, A_aerosols, particle_params):
         """Calculate the image gradient for a given aerosols distribution"""
         
+        x = A_air.reshape((-1, 1))
+        grad = np.dot(self.A.T, x) + self.b
+        return grad
+
         A_aerosols_ = A_aerosols.reshape((-1, 1))
         A_air_ = A_air.reshape((-1, 1))
         
