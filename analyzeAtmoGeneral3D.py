@@ -22,7 +22,7 @@ OBJTAG = 1
 GRADTAG = 2
 DIETAG = 3
 
-MAX_ITERATIONS = 1
+MAX_ITERATIONS = 100
 
 #
 # Global settings
@@ -89,7 +89,14 @@ class radiance(object):
 
         self.obj_value = []
 
+        self.A = np.diag((1., -2., 3., -4., 5.))
+        self.b = np.array(((1.), (-2.), (3.), (-4.), (5.)))
+        self.c = 5
+        
     def getX0(self):
+        
+        return np.ones((5, 1))
+    
         #
         # Create the initial aerosols distribution
         #
@@ -98,6 +105,10 @@ class radiance(object):
     
     def objective(self, x):
         """Calculate the objective"""
+        
+        x = x.reshape((-1, 1))
+        obj = np.dot(x.T, np.dot(self.A, x)) + np.dot(x.T, self.b) + self.c
+        return obj
 
         print 'objective calculation.'
         
@@ -131,6 +142,10 @@ class radiance(object):
     
     def gradient(self, x):
         """The callback for calculating the gradient"""
+
+        x = x.reshape((-1, 1))
+        grad = np.dot(self.A.T, x) + self.b
+        return grad
 
         for i in range(1, mpi_size):
             comm.send([x, self.ATMO_air], dest=i, tag=OBJTAG)
@@ -243,6 +258,8 @@ def master():
     #
     x, info = nlp.solve(x0)
 
+    print x
+    
     #
     # Kill all slaves
     #
