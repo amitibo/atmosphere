@@ -120,17 +120,21 @@ class Camera(object):
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
 
-    def calcImage(self, A_air, A_aerosols, particle_params):
+    def setA_air(self, A_air):
+        """Store the air distribution"""
+        
+        self.A_air_ = A_air.reshape((-1, 1))
+        
+    def calcImage(self, A_aerosols, particle_params):
         """Calculate the image for a given aerosols distribution"""
         
         A_aerosols_ = A_aerosols.reshape((-1, 1))
-        A_air_ = A_air.reshape((-1, 1))
         
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * A_air_)
-        exp_air_pre = self.H_distances * A_air_
+        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * self.A_air_)
+        exp_air_pre = self.H_distances * self.A_air_
         scatter_aerosols_pre = self.H_pol * A_aerosols_
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
@@ -174,17 +178,16 @@ class Camera(object):
         
         return img
     
-    def calcImageGradient(self, A_air, A_aerosols, particle_params):
+    def calcImageGradient(self, A_aerosols, particle_params):
         """Calculate the image gradient for a given aerosols distribution"""
         
         A_aerosols_ = A_aerosols.reshape((-1, 1))
-        A_air_ = A_air.reshape((-1, 1))
         
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * A_air_)
-        exp_air_pre = self.H_distances * A_air_
+        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * self.A_air_)
+        exp_air_pre = self.H_distances * self.A_air_
         scatter_aerosols_pre = self.H_pol * A_aerosols_
         exp_aerosols_pre = self.H_distances * A_aerosols_
 

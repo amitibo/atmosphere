@@ -18,20 +18,21 @@ comm = MPI.COMM_WORLD
 mpi_size = MPI.COMM_WORLD.Get_size()
 mpi_rank = MPI.COMM_WORLD.Get_rank()
 
-OBJTAG = 1
-GRADTAG = 2
-DIETAG = 3
+IMGTAG = 1
+OBJTAG = 2
+GRADTAG = 3
+DIETAG = 4
 
-MAX_ITERATIONS = 1
+MAX_ITERATIONS = 10
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 4), # Y
-        slice(0, 400, 4), # X
-        slice(0, 80, 1)   # H
+        slice(0, 400, 8), # Y
+        slice(0, 400, 8), # X
+        slice(0, 80, 8)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -73,19 +74,10 @@ class radiance(object):
         self.ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
 
         #
-        # Create the first images
+        # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
-            comm.send([self.ATMO_aerosols, self.ATMO_air], dest=i, tag=OBJTAG)
-
-        sts = MPI.Status()
-        self.Images = range(mpi_size-1)
-        
-        for i in range(1, mpi_size):
-            img = comm.recv(source=MPI.ANY_SOURCE, status=sts)
-            src = sts.Get_source()
-            
-            self.Images[src-1] = img
+            comm.send([self.ATMO_aerosols, self.ATMO_air], dest=i, tag=IMGTAG)
 
         self.obj_value = []
 
@@ -99,73 +91,34 @@ class radiance(object):
     def objective(self, x):
         """Calculate the objective"""
 
-        print 'objective calculation.'
-        
         for i in range(1, mpi_size):
-            comm.send([x, self.ATMO_air], dest=i, tag=OBJTAG)
+            comm.Send(x, dest=i, tag=OBJTAG)
 
-        print 'sent messages'
-        
         sts = MPI.Status()
         images = range(mpi_size-1)
         
-        for i in range(1, mpi_size):
-            img = comm.recv(source=MPI.ANY_SOURCE, status=sts)
-            src = sts.Get_source()
-            
-            images[src-1] = img
-
-        print 'recived messages'
-        
         obj = 0
-        for ref_img, img in zip(self.Images, images):
-            o = [np.dot(
-                (ref_img[i] - img[i]).T,
-                (ref_img[i] - img[i])
-                ) for i in range(3)]
-            obj += np.sum(o)
+        temp = np.empty(1)
+        for i in range(1, mpi_size):
+            comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
+            obj += temp[0]
             
-        print 'calculating objective'
-        
         return obj
     
     def gradient(self, x):
         """The callback for calculating the gradient"""
 
         for i in range(1, mpi_size):
-            comm.send([x, self.ATMO_air], dest=i, tag=OBJTAG)
+            comm.Send(x, dest=i, tag=GRADTAG)
 
         sts = MPI.Status()
         images = range(mpi_size-1)
-        
+
+        temp = np.empty((x.size, 1))
+        grad = np.zeros_like(temp)
         for i in range(1, mpi_size):
-            img = comm.recv(source=MPI.ANY_SOURCE, status=sts)
-            src = sts.Get_source()
-            
-            images[src-1] = img
-            
-        for i in range(1, mpi_size):
-            comm.send([x, self.ATMO_air], dest=i, tag=GRADTAG)
-
-        grads = range(mpi_size-1)
-        
-        for i in range(1, mpi_size):
-            gimg = comm.recv(source=MPI.ANY_SOURCE, status=sts)
-            src = sts.Get_source()
-            
-            grads[src-1] = gimg
-
-        grad = None
-        for ref_img, img, gimg in zip(self.Images, images, grads):
-
-            temp = [-2*(gimg[i]*(ref_img[camera_index][i] - img[i]).reshape((-1, 1))) for i in range(3)]
-            
-            g = np.sum(np.hstack(temp), axis=1)
-
-            if grad == None:
-                grad = g
-            else:
-                grad += g
+            comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
+            grad += temp
             
         return grad
 
@@ -202,6 +155,8 @@ class radiance(object):
     
 
 def master():
+    #import rpdb2; rpdb2.start_embedded_debugger('pep')
+    
     #
     # Define the problem
     #
@@ -263,34 +218,61 @@ def slave(particle_params):
     
     sts = MPI.Status()
 
+    #
+    # The first data should be for creating the measured images.
+    #
+    data = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+
+    tag = sts.Get_tag()
+    if tag != IMGTAG:
+        raise Exception('The first data transaction should be for calculting the meeasure images')
+
+    A_air = data[0]
+    A_aerosols = data[1]
+
+    cam.setA_air(A_air)
+    
+    ref_img = cam.calcImage(
+        A_aerosols=A_aerosols,
+        particle_params=particle_params
+    )
+
     while 1:
-        data = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+        comm.Recv(A_aerosols, source=0, tag=MPI.ANY_TAG, status=sts)
 
         tag = sts.Get_tag()
         if tag == DIETAG:
             break
 
-        A_air = data[0]
-        A_aerosols = data[1]
-        
         if tag == OBJTAG:
             img = cam.calcImage(
-                A_air=A_air,
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
             )
             
-            comm.send(img, dest=0)
+            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
+            obj = np.dot(temp.T, temp)
+            
+            comm.Send(np.array(obj), dest=0)
+            
         elif tag == GRADTAG:
+            img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
+            
             gimg = cam.calcImageGradient(
-                A_air=A_air,
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
             )
 
-            comm.send(gimg, dest=0)
+            temp = [-2*(gimg[i]*(ref_img[:, :, i] - img[:, :, i]).reshape((-1, 1))) for i in range(3)]
+            
+            grad = np.sum(np.hstack(temp), axis=1)
+
+            comm.Send(grad, dest=0)
         else:
-            raise Exception('Unkown tag')
+            raise Exception('Unexpected tag %d' % tag)
 
 
 def main():
