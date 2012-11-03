@@ -4,11 +4,13 @@ Reconstruct a general distribution of aerosols in the atmosphere.
 from __future__ import division
 import numpy as np
 from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+import scipy.io as sio
 from camera import Camera
 import pickle
 import ipopt
 import logging
 import amitibo
+import itertools
 import os
 
 from mpi4py import MPI
@@ -23,16 +25,16 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 10
+MAX_ITERATIONS = 1000
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 8), # Y
-        slice(0, 400, 8), # X
-        slice(0, 80, 8)   # H
+        slice(0, 400, 4), # Y
+        slice(0, 400, 4), # X
+        slice(0, 80, 4)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -42,7 +44,7 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    radius_res=20,
+    radius_res=40,
     phi_res=40,
     theta_res=40,
     focal_ratio=0.15,
@@ -50,13 +52,13 @@ camera_params = amitibo.attrClass(
     theta_compensation=False
 )
 
-CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
+CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(100, 300, 6), np.linspace(100, 300, 6))]
 SUN_ANGLE = np.pi/4
 
 profile = False
 
 
-class radiance(object):
+class Radiance(object):
     def __init__(self):
 
         #
@@ -154,13 +156,13 @@ class radiance(object):
         return None
     
 
-def master():
+def master(particle_params):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     #
     # Define the problem
     #
-    sky = radiance()
+    sky = Radiance()
 
     x0 = sky.getX0()
 
@@ -202,7 +204,14 @@ def master():
     # Kill all slaves
     #
     for i in range(1, mpi_size):
-        comm.send(0, dest=i, tag=DIETAG)
+        comm.Send(0, dest=i, tag=DIETAG)
+    
+    #
+    # Store the result
+    #
+    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+    sio.savemat(os.path.join(results_path, 'radiance.mat'), {'radiance': x.reshape(X.shape)}, do_compression=True)
     
     
 def slave(particle_params):
@@ -298,7 +307,7 @@ def main():
         #
         # Set up the solver server.
         #
-        master()
+        master(particle_params)
     else:
         slave(particle_params)
 
