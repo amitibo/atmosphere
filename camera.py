@@ -282,9 +282,9 @@ def test_camera():
 
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 400, 4), # Y
-            slice(0, 400, 4), # X
-            slice(0, 80, 1)   # H
+            slice(0, 400, 80), # Y
+            slice(0, 400, 80), # X
+            slice(0, 80, 40)   # H
             ),
         earth_radius=4000,
         L_SUN_RGB=L_SUN_RGB,
@@ -298,7 +298,7 @@ def test_camera():
         phi_res=40,
         theta_res=40,
         focal_ratio=0.15,
-        image_res=128,
+        image_res=16,
         theta_compensation=False
     )
     
@@ -323,13 +323,9 @@ def test_camera():
         visibility=10
         )
     
-    cam = Camera(
-        SUN_ANGLE,
-        atmosphere_params=atmosphere_params,
-        camera_params=camera_params,
-        camera_position=CAMERA_CENTERS
-        )
-    
+    #
+    # Create the atmosphere
+    #
     Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
     width = atmosphere_params.cartesian_grids[0].stop
     height = atmosphere_params.cartesian_grids[2].stop
@@ -337,11 +333,45 @@ def test_camera():
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_air = np.exp(-h/atmosphere_params.air_typical_h)
 
-    gimg = cam.calcImageGradient(
-         A_air,
-         A_aerosols,
-         particle_params
+    #
+    # Create the camera
+    #
+    cam = Camera(
+        SUN_ANGLE,
+        atmosphere_params=atmosphere_params,
+        camera_params=camera_params,
+        camera_position=CAMERA_CENTERS
+        )
+    
+    cam.setA_air(A_air)
+    
+    ref_img = cam.calcImage(
+        A_aerosols=A_aerosols,
+        particle_params=particle_params
     )
+
+    #
+    # Change a bit the aerosols distribution
+    #
+    A_aerosols = 2 * A_aerosols
+    A_aerosols[A_aerosols>1] = 1.0
+    
+    #
+    # Calculate the gradient
+    #
+    img = cam.calcImage(
+        A_aerosols=A_aerosols,
+        particle_params=particle_params
+    )
+    
+    gimg = cam.calcImageGradient(
+        A_aerosols=A_aerosols,
+        particle_params=particle_params
+    )
+
+    temp = [-2*(gimg[i]*(ref_img[:, :, i] - img[:, :, i]).reshape((-1, 1))) for i in range(3)]
+    
+    grad = np.sum(np.hstack(temp), axis=1)
     
     
 

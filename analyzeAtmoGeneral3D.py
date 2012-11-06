@@ -13,8 +13,17 @@ import amitibo
 import itertools
 import os
 
-from mpi4py import MPI
+#
+# Set logging level
+#
+import logging
+logging.basicConfig(filename='run.log',level=logging.DEBUG)
+ipopt.setLoggingLevel(logging.DEBUG)
 
+#
+# Initialize the mpi system
+#
+from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
 mpi_size = MPI.COMM_WORLD.Get_size()
@@ -25,16 +34,16 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 1000
+MAX_ITERATIONS = 10
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 8), # Y
-        slice(0, 400, 8), # X
-        slice(0, 80, 8)   # H
+        slice(0, 400, 40), # Y
+        slice(0, 400, 40), # X
+        slice(0, 80, 20)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -167,10 +176,6 @@ def master(particle_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_air = np.exp(-h/atmosphere_params.air_typical_h)
-
-    import logging
-    logging.basicConfig(filename='run.log',level=logging.DEBUG)
-    ipopt.setLoggingLevel(logging.DEBUG)
     
     #
     # Define the problem
@@ -185,6 +190,7 @@ def master(particle_params):
     # Set solver options
     #
     #problem.addOption('derivative_test', 'first-order')
+    #problem.addOption('derivative_test_print_all', 'yes')
     problem.addOption('hessian_approximation', 'limited-memory')
     problem.addOption('mu_strategy', 'adaptive')
     problem.addOption('tol', 1e-9)
@@ -193,7 +199,8 @@ def master(particle_params):
     #
     # Solve the problem
     #
-    x0 = np.zeros_like(A_aerosols).reshape((-1, 1))
+    #x0 = np.zeros_like(A_aerosols).reshape((-1, 1))
+    x0 = A_aerosols.ravel()
     x, info = problem.solve(x0)
 
     #
@@ -203,12 +210,22 @@ def master(particle_params):
         comm.Send(x, dest=i, tag=DIETAG)
     
     #
-    # Store the result
+    # Store the estimated distribution
     #
-    sio.savemat(os.path.join(results_path, 'radiance.mat'), {'radiance': x.reshape(A_aerosols.shape)}, do_compression=True)
-    
-    
+    sio.savemat(
+        os.path.join(results_path, 'radiance.mat'),
+        {
+            'true': A_aerosols,
+            'estimated': x.reshape(A_aerosols.shape),
+            'objective': np.array(problem.obj_value)
+        },
+        do_compression=True
+    )
+
+
 def slave(particle_params):
+    #import rpdb2; rpdb2.start_embedded_debugger('pep')
+
     #
     # Instatiate the camera slave
     #
@@ -247,6 +264,12 @@ def slave(particle_params):
         do_compression=True
     )
 
+    #sio.savemat(
+        #os.path.join(results_path, 'ref_aerosols%d.mat' % mpi_rank),
+        #{'A_aerosols': A_aerosols, 'img': ref_img},
+        #do_compression=True
+    #)
+
     #
     # Loop the messages of the master
     #
@@ -274,6 +297,12 @@ def slave(particle_params):
                 particle_params=particle_params
             )
             
+            #sio.savemat(
+                #os.path.join(results_path, 'grad_aerosols%d.mat' % mpi_rank),
+                #{'A_aerosols': A_aerosols, 'img': img},
+                #do_compression=True
+            #)
+
             gimg = cam.calcImageGradient(
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
@@ -286,11 +315,6 @@ def slave(particle_params):
             comm.Send(grad, dest=0)
         else:
             raise Exception('Unexpected tag %d' % tag)
-
-        ref_img = cam.calcImage(
-            A_aerosols=A_aerosols,
-            particle_params=particle_params
-        )
 
     #
     # Save the image the relates to the calculated aerosol distribution
