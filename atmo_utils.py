@@ -42,7 +42,7 @@ SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
 
 
-def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z'):
+def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z', title='3D Visualization'):
 
     import mayavi.mlab as mlab
     
@@ -65,6 +65,7 @@ def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z'):
         limits += [grid.min()]
         limits += [grid.max()]
     mlab.axes(ranges=limits)
+    mlab.title(title)
 
 
 def viz2D(V):
@@ -81,7 +82,7 @@ def calcHG(mu, g):
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
 
-    HG = (1 - g**2) * (1+mu**2) / (1 + g**2 - 2*g*mu)**(3/2) * 3 / (8*np.pi)
+    HG = (1 - g**2) / (1 + g**2 - 2*g*mu)**(3/2) / (4*np.pi)
     
     return HG
 
@@ -322,16 +323,7 @@ def rotationTransformMatrix(X, Y, angle, X_dst=None, Y_dst=None):
 
 
 def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=None):
-    """(sparse) matrix representation of rotation transform.
-    params:
-        X, Y - 2D arrays that define the cartesian coordinates
-        angle - Angle of rotation [radians].
-        dst_shape - Shape of the destination matrix (after rotation). Defaults
-             to the shape of the full matrix after rotation (no cropping).
-        X_rot, Y_rot - grid in the rotated coordinates (optional, calculated if not given). 
-
-
-    Calculate a (sparse) matrix representation of rotation transform in 3D.
+    """Calculate a (sparse) matrix representation of rotation transform in 3D.
     
     Parameters
     ----------
@@ -371,7 +363,7 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
     if isinstance(rotation, np.ndarray) and rotation.shape == (4, 4):
         H_rot = rotation
     else:
-        H_rot = _calcRotationMatrix(rotation)
+        H_rot = calcRotationMatrix(rotation)
         
     if X_dst == None:
         Y_dst, X_dst, Z_dst = _calcRotateGrid(Y, X, Z, H_rot)
@@ -391,7 +383,7 @@ def rotation3DTransformMatrix(Y, X, Z, rotation, Y_dst=None, X_dst=None, Z_dst=N
     return H, H_rot, Y_dst, X_dst, Z_dst
 
 
-def _calcRotationMatrix(rotation):
+def calcRotationMatrix(rotation):
     
     import numpy as np
     
@@ -847,7 +839,7 @@ def test2D():
 
 
 def test3D():
-    import numpy as np
+    import mayavi.mlab as mlab
     import time
 
     #
@@ -860,13 +852,13 @@ def test3D():
     V = np.sqrt(Y**2 + X**2 + Z**2)
     V_ = V.reshape((-1, 1))
     
-    # #
-    # # Spherical transform
-    # #
-    # t0 = time.time()
-    # Hsph = sphericalTransformMatrix(Y, X, Z, (0, 0, 0))[0]
-    # Vsph = Hsph * V_
-    # print time.time() - t0
+    #
+    # Spherical transform
+    #
+    t0 = time.time()
+    Hsph, R, PHI, THETA = sphericalTransformMatrix(Y, X, Z, (0, 0, 0))
+    Vsph = Hsph * V_
+    print time.time() - t0
      
     #
     # Rotation transform
@@ -893,22 +885,13 @@ def test3D():
     #
     # 3D visualization
     #
-    import mayavi.mlab as mlab
-    mlab.figure()
-    s = mlab.pipeline.scalar_field(Vrot.reshape(Y_rot.shape))
-    ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
-    ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
-    mlab.title('V Rotated')
-    mlab.colorbar()
-    mlab.outline()
+    viz3D(Y, X, Z, V, title='V Rotated')
     
-    mlab.figure()
-    s = mlab.pipeline.scalar_field(Vrot2.reshape(Y.shape))
-    ipw_x = mlab.pipeline.image_plane_widget(s, plane_orientation='x_axes')
-    ipw_y = mlab.pipeline.image_plane_widget(s, plane_orientation='y_axes')
-    mlab.title('V Rotated Back')
-    mlab.colorbar()
-    mlab.outline()
+    viz3D(Y_rot, X_rot, Z_rot, Vrot.reshape(Y_rot.shape), title='V Rotated')
+    
+    viz3D(Y, X, Z, Vrot2.reshape(Y.shape), title='V Rotated Back')
+
+    viz3D(R, PHI, THETA, Vsph.reshape(R.shape), title='V Spherical')
     
     # mlab.figure()
     # mlab.contour3d(Vcs1.reshape(V.shape), contours=[1, 2, 3], transparent=True)

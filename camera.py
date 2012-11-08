@@ -37,17 +37,22 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     return temp2 + temp1
 
 
-def calcScatterAngle(Y, X, Z, camera_position, sun_angle):
+def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
     """
     Calclculate the scattering angle at each voxel.
     """
 
+    H_rot = atmo_utils.calcRotationMatrix(sun_rotation)
+    sun_vector = np.dot(H_rot, np.array([[0.], [0.], [1.], [1.]]))
+    
+    print sun_vector
+    
     Y_ = Y-camera_position[0]
     X_ = X-camera_position[1]
     Z_ = Z-camera_position[2]
     R = np.sqrt(Y_**2 + X_**2 + Z_**2)
 
-    mu = (np.sin(sun_angle) * Y_ + np.cos(sun_angle) * Z_)/ (R + amitibo.eps(R))
+    mu = (Y_ * sun_vector[0] + X_ * sun_vector[1] + Z_ * sun_vector[2])/ (R + amitibo.eps(R))
     
     return mu
 
@@ -106,7 +111,8 @@ class Camera(object):
         #
         # Calculate the mu
         #
-        mu = calcScatterAngle(Y, X, H, camera_position, sun_angle)
+        warnings.warn('Currently we are using a hack to align the scattering angle with the rotation of the atmosphere')
+        mu = calcScatterAngle(Y, X, H, camera_position, sun_rotation=(sun_angle, 0, 0))
         
         #
         # Store the matrices
@@ -368,12 +374,44 @@ def test_camera():
     grad = np.sum(np.hstack(temp), axis=1)
     
     
+def test_scatter_angle():
+    """Check that the scatter angle calculation works correctly. The rotation should cause
+    the scatter angle to align with the nidar."""
+    
+    import mayavi.mlab as mlab
+    
+    atmosphere_params = amitibo.attrClass(
+        cartesian_grids=(
+            slice(0, 400, 8), # Y
+            slice(0, 400, 8), # X
+            slice(0, 400, 8)  # H
+            ),
+    )
+    
+    camera_position = (200, 200, 40)
+    sun_angle = np.pi/6
+
+    Y, X, Z = np.mgrid[atmosphere_params.cartesian_grids]
+    angles = calcScatterAngle(Y, X, Z, camera_position, sun_rotation=(sun_angle, 0, 0))
+
+    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = \
+        atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
+
+    angles_rot = Hrot_forward * angles.reshape((-1, 1))
+    angles_rot.shape = Y_rot.shape
+    
+    atmo_utils.viz3D(Y, X, Z, angles, 'Y', 'X', 'Z')
+    atmo_utils.viz3D(Y_rot, X_rot, Z_rot, angles_rot, 'Y', 'X', 'Z')
+    
+    mlab.show()
+    
 
 def main():
     """Main doc """
     
-    test_camera()
-
+    #test_camera()
+    test_scatter_angle()
+    
     
 if __name__ == '__main__':
     main()

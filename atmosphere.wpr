@@ -4,10 +4,17 @@
 # Wing IDE project file                                          #
 ##################################################################
 [project attributes]
-proj.directory-list = [{'dirloc': loc('.'),
-                        'excludes': [u'results'],
-                        'filter': '*.py',
-                        'include_hidden': False,
-                        'recursive': True,
-                        'watch_for_changes': True}]
+proj.file-list = [loc('analyzeSky.py'),
+                  loc('atmoGui.py'),
+                  loc('atmo_utils.py'),
+                  loc('openMisr.py'),
+                  loc('resultsGui.py'),
+                  loc('simulateAtmo.py'),
+                  loc('simulateAtmoGeneral3D.py'),
+                  loc('simulateAtmoGeneral.py'),
+                  loc('simulateSky.py'),
+                  loc('test_gradient3D.py'),
+                  loc('test_gradient.py'),
+                  loc('utils.py'),
+                  loc('viz3dmat.py')]
 proj.file-type = 'shared'
