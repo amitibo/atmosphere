@@ -8,7 +8,6 @@ import scipy.io as sio
 from camera import Camera
 import pickle
 import ipopt
-import logging
 import amitibo
 import itertools
 import os
@@ -34,16 +33,16 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 10
+MAX_ITERATIONS = 200
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 40), # Y
-        slice(0, 400, 40), # X
-        slice(0, 80, 20)   # H
+        slice(0, 400, 8), # Y
+        slice(0, 400, 8), # X
+        slice(0, 80, 8)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -99,8 +98,7 @@ class RadianceProblem(ipopt.problem):
             comm.Send(x, dest=i, tag=OBJTAG)
 
         sts = MPI.Status()
-        images = range(mpi_size-1)
-        
+
         obj = 0
         temp = np.empty(1)
         for i in range(1, mpi_size):
@@ -116,7 +114,6 @@ class RadianceProblem(ipopt.problem):
             comm.Send(x, dest=i, tag=GRADTAG)
 
         sts = MPI.Status()
-        images = range(mpi_size-1)
 
         temp = np.empty((x.size, 1))
         grad = np.zeros_like(temp)
@@ -191,6 +188,8 @@ def master(particle_params):
     #
     #problem.addOption('derivative_test', 'first-order')
     #problem.addOption('derivative_test_print_all', 'yes')
+    #problem.addOption('derivative_test_tol', 5e-3)
+    #problem.addOption('derivative_test_perturbation', 1e-8)
     problem.addOption('hessian_approximation', 'limited-memory')
     problem.addOption('mu_strategy', 'adaptive')
     problem.addOption('tol', 1e-9)

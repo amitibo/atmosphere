@@ -81,8 +81,6 @@ def calcHG(mu, g):
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
 
-    import numpy as np
-    
     HG = (1 - g**2) * (1+mu**2) / (1 + g**2 - 2*g*mu)**(3/2) * 3 / (8*np.pi)
     
     return HG

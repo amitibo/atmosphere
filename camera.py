@@ -32,31 +32,24 @@ def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
     temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
     temp2 = Hint2 * H_pol
 
-    scatter_angle = calcScatterAngle(R, PHI, THETA, rotation)
-    
     #vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle)
     
-    return temp2 + temp1, scatter_angle
+    return temp2 + temp1
 
 
-def calcScatterAngle(R, PHI, THETA, rotation):
+def calcScatterAngle(Y, X, Z, camera_position, sun_angle):
     """
     Calclculate the scattering angle at each voxel.
     """
 
-    X_ = R * np.sin(THETA) * np.cos(PHI)
-    Y_ = R * np.sin(THETA) * np.sin(PHI)
-    Z_ = R * np.cos(THETA)
+    Y_ = Y-camera_position[0]
+    X_ = X-camera_position[1]
+    Z_ = Z-camera_position[2]
+    R = np.sqrt(Y_**2 + X_**2 + Z_**2)
 
-    XYZ_dst = np.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), np.ones(R.size)))
-    XYZ_src_ = np.dot(rotation, XYZ_dst)
-
-    Z_rotated = XYZ_src_[2, :]
-    R_rotated = np.sqrt(np.sum(XYZ_src_[:3, :]**2, axis=0))
-
-    angle = np.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
-
-    return angle
+    mu = (np.sin(sun_angle) * Y_ + np.cos(sun_angle) * Z_)/ (R + amitibo.eps(R))
+    
+    return mu
 
 
 class Camera(object):
@@ -89,7 +82,7 @@ class Camera(object):
         #
         # Calculate the distance matrices and scattering angle
         #
-        H_distances, scatter_angle = \
+        H_distances = \
             calcOpticalDistancesMatrix(
                 Y,
                 X,
@@ -111,12 +104,17 @@ class Camera(object):
         )
 
         #
+        # Calculate the mu
         #
+        mu = calcScatterAngle(Y, X, H, camera_position, sun_angle)
+        
+        #
+        # Store the matrices
         #
         self.H_distances = H_distances
         self.H_pol = H_pol
         self.H_sensor = H_camera * H_int
-        self.mu = np.cos(scatter_angle).reshape((-1, 1))
+        self.mu = mu.reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
 
@@ -133,9 +131,8 @@ class Camera(object):
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * self.A_air_)
+        scatter_air_pre = 3 / (16*np.pi) * self.H_pol * ((1 + self.mu**2) * self.A_air_)
         exp_air_pre = self.H_distances * self.A_air_
-        scatter_aerosols_pre = self.H_pol * A_aerosols_
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         img = []
@@ -150,7 +147,7 @@ class Camera(object):
             # Calculate scattering and extiniction for aerosols
             #
             extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols = w * extinction_aerosols * atmo_utils.calcHG(self.mu, g) * scatter_aerosols_pre
+            scatter_aerosols = w * extinction_aerosols * self.H_pol * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
             exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
             
             #
@@ -186,9 +183,8 @@ class Camera(object):
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = (1 + self.mu**2) * 3 / (16*np.pi) * (self.H_pol * self.A_air_)
+        scatter_air_pre = 3 / (16*np.pi) * self.H_pol * ((1 + self.mu**2) * self.A_air_)
         exp_air_pre = self.H_distances * self.A_air_
-        scatter_aerosols_pre = self.H_pol * A_aerosols_
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         gimg = []
@@ -202,26 +198,24 @@ class Camera(object):
             #
             # Calculate scattering and extiniction for aerosols
             #
+            P_mu = atmo_utils.calcHG(self.mu, g)
             extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols_partial = w * extinction_aerosols * atmo_utils.calcHG(self.mu, g)
-            scatter_aerosols =  atmo_utils.spdiag(scatter_aerosols_partial * scatter_aerosols_pre)
-            scatter_aerosols_grad = self.H_pol.T * atmo_utils.spdiag(scatter_aerosols_partial)
+            scatter_aerosols =  w * extinction_aerosols * self.H_pol * (A_aerosols_ * P_mu)
             exp_aerosols = atmo_utils.spdiag(np.exp(-extinction_aerosols * exp_aerosols_pre))
-            exp_aerosols_grad = -extinction_aerosols * self.H_distances.T * exp_aerosols
             
             #
             # Calculate scattering and extiniction for air
             #
             extinction_air = 1.09e-3 * lambda_**-4.05
-            scatter_air = atmo_utils.spdiag(extinction_air * scatter_air_pre)
+            scatter_air = extinction_air * scatter_air_pre
             exp_air = atmo_utils.spdiag(np.exp(-extinction_air * exp_air_pre))
             
             #
             # Calculate the gradient of the radiance
             #
-            temp1 = scatter_aerosols_grad * exp_aerosols + exp_aerosols_grad * scatter_aerosols
-            temp2 = exp_aerosols_grad * scatter_air
-            radiance_gradient = (temp1 + temp2) * exp_air
+            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_mu) * self.H_pol.T
+            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
+            radiance_gradient = (temp1 - temp2) * exp_air * exp_aerosols
     
             #
             # Calculate projection on camera

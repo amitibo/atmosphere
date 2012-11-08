@@ -95,8 +95,9 @@ def serial(particle_params):
     ATMO_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
 
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
 
-    for i, sun_angle in enumerate((0,)):#numpy.linspace(0, numpy.pi/2, 4)):
+    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 4)):
         #
         # Instantiating the camera
         #
@@ -107,12 +108,13 @@ def serial(particle_params):
             camera_position=(width/2, width/2, 0.2)
         )
         
+        cam.setA_air(ATMO_air)
+        
         #
         # Calculating the image
         #
-        img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle_params=particle_params)
+        img = cam.calcImage(A_aerosols=ATMO_aerosols, particle_params=particle_params)
         
-        results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
         sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
         
 
@@ -135,9 +137,11 @@ if __name__ == '__main__':
         visibility=10
         )
 
-    if profile:
-        import cProfile    
-        cmd = "serial(particle_params)"
-        cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
-    else:
-        parallel(particle_params)
+    #if profile:
+        #import cProfile    
+        #cmd = "serial(particle_params)"
+        #cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
+    #else:
+        #parallel(particle_params)
+        
+    serial(particle_params)
