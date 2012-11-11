@@ -45,8 +45,6 @@ def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
     H_rot = atmo_utils.calcRotationMatrix(sun_rotation)
     sun_vector = np.dot(H_rot, np.array([[0.], [0.], [1.], [1.]]))
     
-    print sun_vector
-    
     Y_ = Y-camera_position[0]
     X_ = X-camera_position[1]
     Z_ = Z-camera_position[2]
@@ -384,7 +382,7 @@ def test_scatter_angle():
         cartesian_grids=(
             slice(0, 400, 8), # Y
             slice(0, 400, 8), # X
-            slice(0, 400, 8)  # H
+            slice(0, 10, 0.2)  # H
             ),
     )
     

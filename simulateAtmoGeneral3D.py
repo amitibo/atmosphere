@@ -21,9 +21,9 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 4), # Y
-        slice(0, 400, 4), # X
-        slice(0, 80, 1)   # H
+        slice(0, 400, 1), # Y
+        slice(0, 400, 1), # X
+        slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -33,9 +33,9 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    radius_res=20,
-    phi_res=40,
-    theta_res=40,
+    radius_res=100,
+    phi_res=100,
+    theta_res=100,
     focal_ratio=0.15,
     image_res=128,
     theta_compensation=False
@@ -97,7 +97,7 @@ def serial(particle_params):
 
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
 
-    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 4)):
+    for i, sun_angle in enumerate([0]):#np.linspace(0, np.pi/2, 4)):
         #
         # Instantiating the camera
         #
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=10
+        visibility=100
         )
 
     #if profile:
