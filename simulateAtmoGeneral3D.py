@@ -97,7 +97,7 @@ def serial(particle_params):
 
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
 
-    for i, sun_angle in enumerate([0]):#np.linspace(0, np.pi/2, 4)):
+    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 30)):
         #
         # Instantiating the camera
         #
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=100
+        visibility=50
         )
 
     #if profile:

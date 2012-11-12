@@ -404,11 +404,85 @@ def test_scatter_angle():
     mlab.show()
     
 
+def test_scatter_angle2():
+    """Check that the scatter angle calculation works correctly. The rotation should cause
+    the scatter angle to align with the nidar."""
+    
+    import mayavi.mlab as mlab
+    
+    def calcScatterAngleOld(R, PHI, THETA, sun_rotation):
+        """
+        Calclculate the scattering angle at each voxel.
+        """
+    
+        H_rot = atmo_utils.calcRotationMatrix(sun_rotation)
+
+        X_ = R * np.sin(THETA) * np.cos(PHI)
+        Y_ = R * np.sin(THETA) * np.sin(PHI)
+        Z_ = R * np.cos(THETA)
+    
+        XYZ_dst = np.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), np.ones(R.size)))
+        XYZ_src_ = np.dot(H_rot, XYZ_dst)
+    
+        Z_rotated = XYZ_src_[2, :]
+        R_rotated = np.sqrt(np.sum(XYZ_src_[:3, :]**2, axis=0))
+    
+        angle = np.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
+    
+        return angle
+    
+    
+    atmosphere_params = amitibo.attrClass(
+        cartesian_grids=(
+            slice(0, 400, 2), # Y
+            slice(0, 400, 2), # X
+            slice(0, 20, 0.2)  # H
+            ),
+    )
+    
+    camera_params = amitibo.attrClass(
+        radius_res=100,
+        phi_res=100,
+        theta_res=100,
+        focal_ratio=0.15,
+        image_res=128,
+        theta_compensation=False
+    )
+
+    camera_position = (200, 200, 0.2)
+    sun_angle = 0
+
+    Y, X, Z = np.mgrid[atmosphere_params.cartesian_grids]
+    
+    angles = calcScatterAngle(Y, X, Z, camera_position, sun_rotation=(sun_angle, 0, 0))
+
+    H_pol, R, PHI, THETA = atmo_utils.sphericalTransformMatrix(
+        Y,
+        X,
+        Z,
+        center=camera_position,
+        radius_res=camera_params.radius_res,
+        phi_res=camera_params.phi_res,
+        theta_res=camera_params.theta_res
+        )
+    
+    angles_old = calcScatterAngleOld(R, PHI, THETA, sun_rotation=(sun_angle, 0, 0))
+
+    atmo_utils.viz3D(Y, X, Z, angles, 'Y', 'X', 'Z', title='XYX')
+    angles_pol = H_pol * angles.reshape((-1, 1))
+    angles_pol.shape = R.shape
+    angles_old.shape = R.shape
+    atmo_utils.viz3D(R, PHI, THETA, angles_pol, 'R', 'PHI', 'THETA', title='POL')
+    atmo_utils.viz3D(R, PHI, THETA, angles_old, 'R', 'PHI', 'THETA', title='OLD')
+    
+    mlab.show()
+    
+
 def main():
     """Main doc """
     
     #test_camera()
-    test_scatter_angle()
+    test_scatter_angle2()
     
     
 if __name__ == '__main__':

@@ -79,6 +79,17 @@ def viz2D(V):
 
 def calcHG(mu, g):
     """Calculate the Henyey-Greenstein function for each voxel.
+    I use the modified Henyey-Greenstein function from
+    'Physically reasonable analytic expression for the single-scattering phase function'
+    """
+
+    HG = 3.0/2.0*(1 - g**2)/(2 + g**2)*(1 + mu**2)/(1 + g**2 - 2*g*mu)**(3/2) / (4*np.pi)
+    
+    return HG
+
+
+def calcHG_other(mu, g):
+    """Calculate the Henyey-Greenstein function for each voxel.
     The HG function is taken from: http://www.astro.umd.edu/~jph/HG_note.pdf
     """
 
@@ -929,6 +940,21 @@ def testProjection():
     plt.show()
     
 
+def testHG():
+    
+    g = 0.4
+    angle = np.linspace(0, np.pi, 200)
+    hg1 = calcHG(np.cos(angle), g)
+    hg2 = calcHG_other(np.cos(angle), g)
+    
+    import matplotlib.pyplot as plt
+    
+    plt.figure()
+    plt.plot(angle, hg1)
+    plt.plot(angle, hg2)
+    plt.show()
+
+
 if __name__ == '__main__':
-    test3D()
+    testHG()
     
