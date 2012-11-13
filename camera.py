@@ -135,8 +135,9 @@ class Camera(object):
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = 3 / (16*np.pi) * self.H_pol * ((1 + self.mu**2) * self.A_air_)
+        scatter_air_pre = 3 / (16*np.pi) * ((1 + self.mu**2) * self.A_air_)
         exp_air_pre = self.H_distances * self.A_air_
+        
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         img = []
@@ -151,7 +152,7 @@ class Camera(object):
             # Calculate scattering and extiniction for aerosols
             #
             extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols = w * extinction_aerosols * self.H_pol * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
+            scatter_aerosols = w * extinction_aerosols * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
             exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
             
             #
@@ -164,7 +165,7 @@ class Camera(object):
             #
             # Calculate the radiance
             #
-            radiance = (scatter_air + scatter_aerosols) * exp_air * exp_aerosols
+            radiance = (self.H_pol * (scatter_air + scatter_aerosols)) * (exp_air * exp_aerosols)
     
             #
             # Calculate projection on camera
@@ -187,8 +188,9 @@ class Camera(object):
         #
         # Precalcuate the air scattering and attenuation
         #
-        scatter_air_pre = 3 / (16*np.pi) * self.H_pol * ((1 + self.mu**2) * self.A_air_)
+        scatter_air_pre = 3 / (16*np.pi) * ((1 + self.mu**2) * self.A_air_)
         exp_air_pre = self.H_distances * self.A_air_
+        
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         gimg = []
@@ -202,24 +204,24 @@ class Camera(object):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            P_mu = atmo_utils.calcHG(self.mu, g)
+            P_aerosols = atmo_utils.calcHG(self.mu, g)
             extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols =  w * extinction_aerosols * self.H_pol * (A_aerosols_ * P_mu)
-            exp_aerosols = atmo_utils.spdiag(np.exp(-extinction_aerosols * exp_aerosols_pre))
+            scatter_aerosols =  w * extinction_aerosols * (A_aerosols_ * P_aerosols)
+            exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
             
             #
             # Calculate scattering and extiniction for air
             #
             extinction_air = 1.09e-3 * lambda_**-4.05
             scatter_air = extinction_air * scatter_air_pre
-            exp_air = atmo_utils.spdiag(np.exp(-extinction_air * exp_air_pre))
+            exp_air = np.exp(-extinction_air * exp_air_pre)
             
             #
             # Calculate the gradient of the radiance
             #
-            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_mu) * self.H_pol.T
-            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
-            radiance_gradient = (temp1 - temp2) * exp_air * exp_aerosols
+            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols) * self.H_pol.T
+            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(self.H_pol * (scatter_air + scatter_aerosols))
+            radiance_gradient = (temp1 - temp2) * atmo_utils.spdiag(exp_air * exp_aerosols)
     
             #
             # Calculate projection on camera

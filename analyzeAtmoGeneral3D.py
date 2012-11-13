@@ -33,35 +33,35 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 200
+MAX_ITERATIONS = 1
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 8), # Y
-        slice(0, 400, 8), # X
-        slice(0, 80, 8)   # H
+        slice(0, 400, 20), # Y
+        slice(0, 400, 20), # X
+        slice(0, 10, 1)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8,
-    aerosols_typical_h=1.2
+    aerosols_typical_h=8
 )
 
 camera_params = amitibo.attrClass(
-    radius_res=20,
-    phi_res=40,
-    theta_res=40,
+    radius_res=100,
+    phi_res=100,
+    theta_res=100,
     focal_ratio=0.15,
-    image_res=128,
+    image_res=16,
     theta_compensation=False
 )
 
-#CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
-CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(100, 300, 6), np.linspace(100, 300, 6))]
+CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
+#CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(50, 350, 7), np.linspace(50, 350, 7))]
 SUN_ANGLE = np.pi/4
 
 profile = False
@@ -173,6 +173,14 @@ def master(particle_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_air = np.exp(-h/atmosphere_params.air_typical_h)
+    
+    #
+    # Create the aerosols mask
+    #
+    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
+    mask = np.zeros_like(A_aerosols)
+    mask[f<height/2] = 1
+    A_aerosols *= mask
     
     #
     # Define the problem
