@@ -79,7 +79,8 @@ class Camera(object):
             center=camera_position,
             radius_res=camera_params.radius_res,
             phi_res=camera_params.phi_res,
-            theta_res=camera_params.theta_res
+            theta_res=camera_params.theta_res,
+            THETA_portion=camera_params.THETA_portion
             )
         
         #
@@ -98,13 +99,32 @@ class Camera(object):
                 )
 
         H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA))
-        H_camera = atmo_utils.cameraTransformMatrix(
-            PHI[0, :, :],
-            THETA[0, :, :],
-            focal_ratio=camera_params.focal_ratio,
-            image_res=camera_params.image_res,
-            theta_compensation=camera_params.theta_compensation
-        )
+        
+        #
+        # Create the camera
+        #
+        if camera_params.type == 'linear':
+            H_camera = atmo_utils.linearCameraTransformMatrix(
+                PHI[0, :, :],
+                THETA[0, :, :],
+                image_res=camera_params.image_res,
+                theta_compensation=camera_params.theta_compensation
+            )
+        elif camera_params.type == 'fisheye':
+            H_camera = atmo_utils.fisheyeTransformMatrix(
+                PHI[0, :, :],
+                THETA[0, :, :],
+                image_res=camera_params.image_res,
+                theta_compensation=camera_params.theta_compensation
+            )
+        else:
+            H_camera = atmo_utils.cameraTransformMatrix(
+                PHI[0, :, :],
+                THETA[0, :, :],
+                focal_ratio=camera_params.focal_ratio,
+                image_res=camera_params.image_res,
+                theta_compensation=camera_params.theta_compensation
+            )
 
         #
         # Calculate the mu

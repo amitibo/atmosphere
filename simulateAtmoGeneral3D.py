@@ -38,7 +38,9 @@ camera_params = amitibo.attrClass(
     theta_res=100,
     focal_ratio=0.15,
     image_res=128,
-    theta_compensation=False
+    theta_compensation=False,
+    THETA_portion=1.0,
+    type='linear' # 'default', 'linear', 'fisheye'
 )
 
 profile = False
@@ -123,7 +125,7 @@ def serial(particle_params):
     #
     f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
     mask = np.zeros_like(A_aerosols)
-    #mask[f<height/3] = 1
+    mask[f<height/3] = 1
     A_aerosols *= mask
     
     for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 12)):

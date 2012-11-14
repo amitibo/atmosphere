@@ -38,9 +38,9 @@ MAX_ITERATIONS = 100
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 10), # Y
-        slice(0, 400, 10), # X
-        slice(0, 10, 0.5)  # H
+        slice(0, 400, 2), # Y
+        slice(0, 400, 2), # X
+        slice(0, 10, 0.1)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -55,7 +55,9 @@ camera_params = amitibo.attrClass(
     theta_res=100,
     focal_ratio=0.15,
     image_res=128,
-    theta_compensation=False
+    theta_compensation=False,
+    THETA_portion=1.0,
+    type='linear' # 'default', 'linear', 'fisheye'
 )
 
 #CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]

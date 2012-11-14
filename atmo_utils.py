@@ -239,12 +239,35 @@ def polarTransformMatrix(X, Y, center, radius_res=None, angle_res=None):
     return H, T, R
 
 
-def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, theta_res=None):
-    """(sparse) matrix representation of cartesian to polar transform.
-    params:
-        X, Y - 2D arrays that define the cartesian coordinates
-        center - Center (in cartesian coords) of the polar coordinates.
-        radius_res, angle_res - Resolution of polar coordinates.
+def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, theta_res=None, THETA_portion=0.9):
+    """(sparse) matrix representation of cartesian to spherical transform.
+    
+    Parameters
+    ----------
+    Y, X, Z : array,
+        List of grids. The grids are expected to be of the form created by mgrid
+        and in the same order of creation. This implies that the first member has
+        its changing dimension as the first dimension the second member should
+        have its second dimension changing etc. It also implies that the grid should
+        change only in one dimension each.
+    
+    center : [float, float, float]
+        Center (in cartesian coords) of the spherical coordinates.
+    
+    radius_res, phi_res, theta_res: int, optional (default=None)
+        Resolution of spherical coordinates. If None, will use the maximal
+        resolution of the cartesian coords.
+        
+    THETA_portion : [0.0-1.0], optional (default=0.9)
+        The theta range will be 0-pi/2 * THETA_portion
+        
+    Returns
+    -------
+    H : sparse matrix in CSR format,
+        Transform matrix the implements the spherical transform.
+        
+    R, PHI, THETA : arrays
+        List of grids (created using mgrid) represent the Spherical coords.
  """
 
     import numpy as np
@@ -260,7 +283,7 @@ def sphericalTransformMatrix(Y, X, Z, center, radius_res=None, phi_res=None, the
     # Create the polar grid over which the target matrix (H) will sample.
     #
     max_R = np.max(np.sqrt((Y-center[0])**2 + (X-center[1])**2 + (Z-center[2])**2))
-    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, phi_res), 0:np.pi/2*0.9:complex(0, theta_res)]
+    R, PHI, THETA = np.mgrid[0:max_R:complex(0, radius_res), 0:2*np.pi:complex(0, phi_res), 0:np.pi/2*THETA_portion:complex(0, theta_res)]
 
     #
     # Calculate the indices of the polar grid in the Cartesian grid.
@@ -755,6 +778,49 @@ def fisheyeTransformMatrix(PHI, THETA, image_res=256, theta_compensation=False):
     #
     if theta_compensation:
         H = spdiag(np.cos(THETA_)**2) * H
+    
+    return H
+
+
+def linearCameraTransformMatrix(PHI, THETA, image_res=256, theta_compensation=False):
+    """
+    Calculate a sparse matrix representation of a linear camera projection transform.
+    
+    Parameters
+    ----------
+    PHI, THETA : 3D arrays
+        \phi and \theta angle grids.
+    
+    image_res : int, optional (default=256)
+        Resolution of the camera image (both dimensions)
+        
+    theta_compensation : bool, optional (default=False)
+        Compensate for angle between ray and pixel
+        
+    Returns
+    -------
+    H : sparse matrix
+        Sparse matrix, in csr format, representing the transform.
+"""
+
+    import numpy as np
+    import amitibo
+    
+    Y, X = np.mgrid[-1:1:complex(0, image_res), -1:1:complex(0, image_res)]
+    PHI_ = np.arctan2(Y, X) + np.pi
+    R_ = np.sqrt(X**2 + Y**2)
+    THETA_ = R_ * np.pi / 2
+
+    #
+    # Calculate the transform
+    #
+    H = calcTransformMatrix((PHI, THETA), (PHI_, THETA_))
+
+    #
+    # Account for cos(\theta)
+    #
+    if theta_compensation:
+        H = spdiag(np.cos(THETA_)) * H
     
     return H
 
