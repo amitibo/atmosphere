@@ -21,8 +21,8 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 1), # Y
-        slice(0, 400, 1), # X
+        slice(0, 400, 2), # Y
+        slice(0, 400, 2), # X
         slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
@@ -51,13 +51,28 @@ def parallel(particle_params):
     
     comm = MPI.COMM_WORLD
 
+    #
+    # Create the sky
+    #
     Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
     width = atmosphere_params.cartesian_grids[0].stop
     height = atmosphere_params.cartesian_grids[2].stop
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-    ATMO_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
 
+    #
+    # Create the distributions of air & aerosols
+    #
+    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    A_air = np.exp(-h/atmosphere_params.air_typical_h)
+    
+    #
+    # Create the aerosols mask
+    #
+    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
+    mask = np.zeros_like(A_aerosols)
+    mask[f<height/3] = 1
+    A_aerosols *= mask
+    
     sun_angles = np.linspace(0, np.pi/2, comm.size)
 
     #
@@ -70,10 +85,12 @@ def parallel(particle_params):
         camera_position=(width/2, width/2, 0.2)
     )
     
+    cam.setA_air(A_air)
+    
     #
     # Calculating the image
     #
-    img = cam.calcImage(A_air=ATMO_air, A_aerosols=ATMO_aerosols, particle_params=particle_params)
+    img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params)
         
     result = comm.gather(img, root=0)
     if comm.rank == 0:
@@ -85,19 +102,31 @@ def parallel(particle_params):
     
 def serial(particle_params):
     
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+
     #
-    # Create some aerosols distribution
+    # Create the sky
     #
     Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
     width = atmosphere_params.cartesian_grids[0].stop
     height = atmosphere_params.cartesian_grids[2].stop
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-    ATMO_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    ATMO_air = np.exp(-h/atmosphere_params.air_typical_h)
 
-    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
-
-    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 30)):
+    #
+    # Create the distributions of air & aerosols
+    #
+    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    A_air = np.exp(-h/atmosphere_params.air_typical_h)
+    
+    #
+    # Create the aerosols mask
+    #
+    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
+    mask = np.zeros_like(A_aerosols)
+    #mask[f<height/3] = 1
+    A_aerosols *= mask
+    
+    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 12)):
         #
         # Instantiating the camera
         #
@@ -108,12 +137,12 @@ def serial(particle_params):
             camera_position=(width/2, width/2, 0.2)
         )
         
-        cam.setA_air(ATMO_air)
+        cam.setA_air(A_air)
         
         #
         # Calculating the image
         #
-        img = cam.calcImage(A_aerosols=ATMO_aerosols, particle_params=particle_params)
+        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params)
         
         sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
         
@@ -137,11 +166,11 @@ if __name__ == '__main__':
         visibility=50
         )
 
-    #if profile:
-        #import cProfile    
-        #cmd = "serial(particle_params)"
-        #cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
-    #else:
+    if profile:
+        import cProfile    
+        cmd = "serial(particle_params)"
+        cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
+    else:
         #parallel(particle_params)
         
-    serial(particle_params)
+        serial(particle_params)

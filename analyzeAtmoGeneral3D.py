@@ -16,8 +16,6 @@ import os
 # Set logging level
 #
 import logging
-logging.basicConfig(filename='run.log',level=logging.DEBUG)
-ipopt.setLoggingLevel(logging.DEBUG)
 
 #
 # Initialize the mpi system
@@ -33,22 +31,22 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 1
+MAX_ITERATIONS = 100
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 20), # Y
-        slice(0, 400, 20), # X
-        slice(0, 10, 1)  # H
+        slice(0, 400, 10), # Y
+        slice(0, 400, 10), # X
+        slice(0, 10, 0.5)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8,
-    aerosols_typical_h=8
+    aerosols_typical_h=1.2
 )
 
 camera_params = amitibo.attrClass(
@@ -56,12 +54,16 @@ camera_params = amitibo.attrClass(
     phi_res=100,
     theta_res=100,
     focal_ratio=0.15,
-    image_res=16,
+    image_res=128,
     theta_compensation=False
 )
 
-CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
-#CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(50, 350, 7), np.linspace(50, 350, 7))]
+#CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
+#
+# node*cores = 6*12 = 72 = 8*9 - 1 (cameras) + 1 (master)
+#
+CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(50, 350, 9), np.linspace(50, 350, 8))]
+CAMERA_CENTERS = CAMERA_CENTERS[:-1] # Remove one camera for the master
 SUN_ANGLE = np.pi/4
 
 profile = False
@@ -159,6 +161,9 @@ def master(particle_params):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+
+    logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
+    ipopt.setLoggingLevel(logging.DEBUG)
 
     #
     # Create the sky
@@ -271,12 +276,6 @@ def slave(particle_params):
         do_compression=True
     )
 
-    #sio.savemat(
-        #os.path.join(results_path, 'ref_aerosols%d.mat' % mpi_rank),
-        #{'A_aerosols': A_aerosols, 'img': ref_img},
-        #do_compression=True
-    #)
-
     #
     # Loop the messages of the master
     #
@@ -304,12 +303,6 @@ def slave(particle_params):
                 particle_params=particle_params
             )
             
-            #sio.savemat(
-                #os.path.join(results_path, 'grad_aerosols%d.mat' % mpi_rank),
-                #{'A_aerosols': A_aerosols, 'img': img},
-                #do_compression=True
-            #)
-
             gimg = cam.calcImageGradient(
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
@@ -354,7 +347,7 @@ def main():
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=10
+        visibility=50
         )
     
     if mpi_rank == 0:
