@@ -6,6 +6,7 @@ import numpy as np
 import atmo_utils
 import amitibo
 import warnings
+import grids
 
 
 def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
@@ -72,60 +73,22 @@ class Camera(object):
         
         Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
 
-        H_pol, R, PHI, THETA = atmo_utils.sphericalTransformMatrix(
-            Y,
-            X,
-            H,
-            center=camera_position,
-            radius_res=camera_params.radius_res,
-            phi_res=camera_params.phi_res,
-            theta_res=camera_params.theta_res,
-            THETA_portion=camera_params.THETA_portion
-            )
-        
         #
         # Calculate the distance matrices and scattering angle
         #
-        H_distances = \
-            calcOpticalDistancesMatrix(
-                Y,
-                X,
-                H,
-                sun_angle,
-                H_pol,
-                R,
-                PHI,
-                THETA
-                )
-
-        H_int = atmo_utils.integralTransformMatrix((R, PHI, THETA))
+        print 'Distances1'
+        H_distances1 = grids.point2grids(camera_position, Y, X, H)
+        print 'Distances2'
+        H_distances2 = grids.direction2grids(0, -sun_angle, Y, X, H)
+        print 'Distances'
+        H_distances = H_distances1 + H_distances2
         
-        #
-        # Create the camera
-        #
-        if camera_params.type == 'linear':
-            H_camera = atmo_utils.linearCameraTransformMatrix(
-                PHI[0, :, :],
-                THETA[0, :, :],
-                image_res=camera_params.image_res,
-                theta_compensation=camera_params.theta_compensation
-            )
-        elif camera_params.type == 'fisheye':
-            H_camera = atmo_utils.fisheyeTransformMatrix(
-                PHI[0, :, :],
-                THETA[0, :, :],
-                image_res=camera_params.image_res,
-                theta_compensation=camera_params.theta_compensation
-            )
-        else:
-            H_camera = atmo_utils.cameraTransformMatrix(
-                PHI[0, :, :],
-                THETA[0, :, :],
-                focal_ratio=camera_params.focal_ratio,
-                image_res=camera_params.image_res,
-                theta_compensation=camera_params.theta_compensation
-            )
-
+        print 'sensor'
+        H_sensor = grids.integrateGrids(
+            camera_position, Y, X, H, camera_params.image_res, camera_params.pixel_fov
+        )
+        print 'finished calculation'
+        
         #
         # Calculate the mu
         #
@@ -136,8 +99,7 @@ class Camera(object):
         # Store the matrices
         #
         self.H_distances = H_distances
-        self.H_pol = H_pol
-        self.H_sensor = H_camera * H_int
+        self.H_sensor = H_sensor
         self.mu = mu.reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
@@ -185,7 +147,7 @@ class Camera(object):
             #
             # Calculate the radiance
             #
-            radiance = (self.H_pol * (scatter_air + scatter_aerosols)) * (exp_air * exp_aerosols)
+            radiance = (scatter_air + scatter_aerosols) * (exp_air * exp_aerosols)
     
             #
             # Calculate projection on camera
@@ -402,26 +364,24 @@ def test_scatter_angle():
     
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 400, 8), # Y
-            slice(0, 400, 8), # X
-            slice(0, 10, 0.2)  # H
+            slice(0, 300., 10), # Y
+            slice(0, 300., 10), # X
+            slice(0, 300., 10)  # H
             ),
     )
     
-    camera_position = (200, 200, 40)
+    camera_position = (150.0, 150.0, .2)
     sun_angle = np.pi/6
 
     Y, X, Z = np.mgrid[atmosphere_params.cartesian_grids]
     angles = calcScatterAngle(Y, X, Z, camera_position, sun_rotation=(sun_angle, 0, 0))
 
-    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = \
-        atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
-
-    angles_rot = Hrot_forward * angles.reshape((-1, 1))
-    angles_rot.shape = Y_rot.shape
+    H_dist = grids.direction2grids(0, -sun_angle, Y, X, Z)
+    x = np.ones(Y.shape)
+    y = H_dist * x.reshape((-1, 1))
     
     atmo_utils.viz3D(Y, X, Z, angles, 'Y', 'X', 'Z')
-    atmo_utils.viz3D(Y_rot, X_rot, Z_rot, angles_rot, 'Y', 'X', 'Z')
+    atmo_utils.viz3D(Y, X, Z, y.reshape(Y.shape), 'Y', 'X', 'Z')
     
     mlab.show()
     
@@ -504,7 +464,7 @@ def main():
     """Main doc """
     
     #test_camera()
-    test_scatter_angle2()
+    test_scatter_angle()
     
     
 if __name__ == '__main__':

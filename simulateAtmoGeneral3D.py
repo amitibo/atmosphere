@@ -21,8 +21,8 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 2), # Y
-        slice(0, 400, 2), # X
+        slice(0, 400, 4.0), # Y
+        slice(0, 400, 4.0), # X
         slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
@@ -40,6 +40,7 @@ camera_params = amitibo.attrClass(
     image_res=128,
     theta_compensation=False,
     THETA_portion=1.0,
+    pixel_fov=0.03,
     type='linear' # 'default', 'linear', 'fisheye'
 )
 
@@ -120,15 +121,15 @@ def serial(particle_params):
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_air = np.exp(-h/atmosphere_params.air_typical_h)
     
-    #
-    # Create the aerosols mask
-    #
-    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
-    mask = np.zeros_like(A_aerosols)
-    mask[f<height/3] = 1
-    A_aerosols *= mask
+    ##
+    ## Create the aerosols mask
+    ##
+    #f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
+    #mask = np.zeros_like(A_aerosols)
+    #mask[f<height/3] = 1
+    #A_aerosols *= mask
     
-    for i, sun_angle in enumerate(np.linspace(0, np.pi/2, 12)):
+    for i, sun_angle in enumerate([np.pi/4]):#np.linspace(0, np.pi/2, 12)):
         #
         # Instantiating the camera
         #
