@@ -80,8 +80,6 @@ class Camera(object):
         H_distances1 = grids.point2grids(camera_position, Y, X, H)
         print 'Distances2'
         H_distances2 = grids.direction2grids(0, -sun_angle, Y, X, H)
-        print 'Distances'
-        H_distances = H_distances1 + H_distances2
         
         print 'sensor'
         H_sensor = grids.integrateGrids(
@@ -98,7 +96,7 @@ class Camera(object):
         #
         # Store the matrices
         #
-        self.H_distances = H_distances
+        self.H_distances = H_distances1 + H_distances2
         self.H_sensor = H_sensor
         self.mu = mu.reshape((-1, 1))
         self.camera_params = camera_params
