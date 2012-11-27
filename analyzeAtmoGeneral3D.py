@@ -11,6 +11,7 @@ import ipopt
 import amitibo
 import itertools
 import os
+import sys
 
 #
 # Set logging level
@@ -56,16 +57,26 @@ camera_params = amitibo.attrClass(
     type='linear' # 'default', 'linear', 'fisheye'
 )
 
-#CAMERA_CENTERS = [(i, 200, 0.2) for i in np.linspace(100, 300, mpi_size-1)]
 #
-# node*cores = 6*12 = 72 = 8*9 - 1 (cameras) + 1 (master)
+# node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
 #
 CAMERA_CENTERS = [(i+0.05, j+0.05, 0.05) for i, j in itertools.product(np.linspace(40, 60, 5), np.linspace(40, 60, 5))]
-CAMERA_CENTERS = CAMERA_CENTERS[:-1] # Remove one camera for the master
+CAMERA_CENTERS = CAMERA_CENTERS[:-2]
+
 SUN_ANGLE = np.pi/4
 
 profile = False
 
+
+#
+# override excepthook so that an exception in one of the childs will cause mpi to abort execution.
+#
+def abortrun(type, value, tb):
+    import traceback
+    traceback.print_exception(type, value, tb)
+    MPI.COMM_WORLD.Abort(1)
+    
+sys.excepthook = abortrun
 
 class RadianceProblem(ipopt.problem):
     def __init__(self, A_aerosols, A_air, results_path):
@@ -239,7 +250,8 @@ def slave(particle_params):
     #
     # Instatiate the camera slave
     #
-    cam = Camera(
+    cam = Camera()
+    cam.create(
         SUN_ANGLE,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
