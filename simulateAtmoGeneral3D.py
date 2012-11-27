@@ -33,18 +33,11 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    radius_res=100,
-    phi_res=100,
-    theta_res=100,
-    focal_ratio=0.15,
     image_res=128,
     theta_compensation=False,
-    THETA_portion=1.0,
-    pixel_fov=0.03,
     subgrid_res=(10, 10, 1),
     type='linear' # 'default', 'linear', 'fisheye'
 )
-camera_params.pixel_fov = np.tan(np.arccos((camera_params.image_res**2 - 1)/camera_params.image_res**2))
 
 profile = False
 

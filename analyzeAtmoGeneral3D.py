@@ -38,9 +38,9 @@ MAX_ITERATIONS = 100
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 2), # Y
-        slice(0, 400, 2), # X
-        slice(0, 10, 0.1)  # H
+        slice(0, 100., 1.), # Y
+        slice(0, 100., 1.), # X
+        slice(0, 10., 0.1)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -50,13 +50,9 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    radius_res=100,
-    phi_res=100,
-    theta_res=100,
-    focal_ratio=0.15,
     image_res=128,
     theta_compensation=False,
-    THETA_portion=1.0,
+    subgrid_res=(10, 10, 1),
     type='linear' # 'default', 'linear', 'fisheye'
 )
 
@@ -64,7 +60,7 @@ camera_params = amitibo.attrClass(
 #
 # node*cores = 6*12 = 72 = 8*9 - 1 (cameras) + 1 (master)
 #
-CAMERA_CENTERS = [(i, j, 0.2) for i, j in itertools.product(np.linspace(50, 350, 9), np.linspace(50, 350, 8))]
+CAMERA_CENTERS = [(i+0.05, j+0.05, 0.05) for i, j in itertools.product(np.linspace(40, 60, 5), np.linspace(40, 60, 5))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-1] # Remove one camera for the master
 SUN_ANGLE = np.pi/4
 

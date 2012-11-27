@@ -234,8 +234,8 @@ class Camera(object):
             #
             # Calculate the gradient of the radiance
             #
-            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols) * self.H_pol.T
-            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(self.H_pol * (scatter_air + scatter_aerosols))
+            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols)
+            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
             radiance_gradient = (temp1 - temp2) * atmo_utils.spdiag(exp_air * exp_aerosols)
     
             #
