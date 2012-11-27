@@ -313,15 +313,12 @@ def slave(particle_params):
                 particle_params=particle_params
             )
             
-            gimg = cam.calcImageGradient(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-
-            temp = [-2*(gimg[i]*(ref_img[:, :, i] - img[:, :, i]).reshape((-1, 1))) for i in range(3)]
+            grad = cam.calcImageGradient(
+                        img_error=ref_img-img,
+                        A_aerosols=A_aerosols,
+                        particle_params=particle_params
+                    )
             
-            grad = np.sum(np.hstack(temp), axis=1)
-
             comm.Send(grad, dest=0)
         else:
             raise Exception('Unexpected tag %d' % tag)

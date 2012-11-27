@@ -102,7 +102,7 @@ class Camera(object):
         self.mu = mu.reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
-        self.a_air_ = np.empty(1)
+        self.A_air_ = np.empty(1)
         
     def save(self, path):
         import scipy.io as sio
@@ -113,7 +113,7 @@ class Camera(object):
                 'H_distances': self.H_distances,
                 'H_sensor': self.H_sensor,
                 'mu': self.mu,
-                'A_air_': self.a_air_
+                'A_air_': self.A_air_
             },
             do_compression=True
         )
@@ -195,7 +195,7 @@ class Camera(object):
         
         return img
     
-    def calcImageGradient(self, A_aerosols, particle_params):
+    def calcImageGradient(self, img_err, A_aerosols, particle_params):
         """Calculate the image gradient for a given aerosols distribution"""
         
         A_aerosols_ = A_aerosols.reshape((-1, 1))
@@ -209,13 +209,13 @@ class Camera(object):
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         gimg = []
-        for L_sun, lambda_, k, w, g in zip(
-                self.atmosphere_params.L_SUN_RGB,
-                self.atmosphere_params.RGB_WAVELENGTH,
-                particle_params.k_RGB,
-                particle_params.w_RGB,
-                particle_params.g_RGB
-                ):
+        for i, (L_sun, lambda_, k, w, g) in enumerate(zip(
+            self.atmosphere_params.L_SUN_RGB,
+            self.atmosphere_params.RGB_WAVELENGTH,
+            particle_params.k_RGB,
+            particle_params.w_RGB,
+            particle_params.g_RGB
+            )):
             #
             # Calculate scattering and extiniction for aerosols
             #
@@ -241,8 +241,9 @@ class Camera(object):
             #
             # Calculate projection on camera
             #
-            gimg.append(L_sun * radiance_gradient * self.H_sensor.T)
+            gimg.append(-2 * L_sun * radiance_gradient * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1))))
 
+        gimg = np.sum(np.hstack(gimg), axis=1)
         return gimg
     
 

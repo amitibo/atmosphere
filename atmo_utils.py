@@ -843,7 +843,7 @@ def spdiag(X):
 
     import scipy.sparse as sps
 
-    return sps.dia_matrix((X.ravel(), 0), (X.size, X.size))
+    return sps.dia_matrix((X.ravel(), 0), (X.size, X.size)).tocsr()
 
 
 def test2D():
