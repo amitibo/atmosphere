@@ -7,6 +7,7 @@ import atmo_utils
 import amitibo
 import warnings
 import grids
+import os
 
 
 def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
@@ -59,7 +60,7 @@ def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
 class Camera(object):
     """A class that encapsulates the functions of a camera"""
     
-    def __init__(
+    def create(
         self,
         sun_angle,
         atmosphere_params,
@@ -83,7 +84,7 @@ class Camera(object):
         
         print 'sensor'
         H_sensor = grids.integrateGrids(
-            camera_position, Y, X, H, camera_params.image_res, camera_params.pixel_fov
+            camera_position, Y, X, H, camera_params.image_res, camera_params.subgrid_res, noise=0.05
         )
         print 'finished calculation'
         
@@ -101,7 +102,41 @@ class Camera(object):
         self.mu = mu.reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
-
+        self.a_air_ = np.empty(1)
+        
+    def save(self, path):
+        import scipy.io as sio
+        import pickle
+        sio.savemat(
+            os.path.join(path, 'camera.mat'),
+            {
+                'H_distances': self.H_distances,
+                'H_sensor': self.H_sensor,
+                'mu': self.mu,
+                'A_air_': self.a_air_
+            },
+            do_compression=True
+        )
+        
+        with open(os.path.join(path, 'camera.pkl'), 'w') as f:
+            pickle.dump(
+                (self.camera_params, self.atmosphere_params),
+                f
+            )
+    
+    def load(self, path):
+        import scipy.io as sio
+        import pickle
+        
+        cam = sio.loadmat(os.path.join(path, 'camera.mat'))
+        self.H_distances = cam['H_distances']
+        self.H_sensor = cam['H_sensor']
+        self.mu = cam['mu']
+        self.A_air_ = cam['A_air_']
+        
+        with open(os.path.join(path, 'camera.pkl'), 'r') as f:
+            self.camera_params, self.atmosphere_params = pickle.load(f)
+        
     def setA_air(self, A_air):
         """Store the air distribution"""
         

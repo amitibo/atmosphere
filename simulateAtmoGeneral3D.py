@@ -21,9 +21,9 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 400, 16.0), # Y
-        slice(0, 400, 16.0), # X
-        slice(0, 10, 0.2)   # H
+        slice(0, 100, 1.0), # Y
+        slice(0, 100, 1.0), # X
+        slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -41,6 +41,7 @@ camera_params = amitibo.attrClass(
     theta_compensation=False,
     THETA_portion=1.0,
     pixel_fov=0.03,
+    subgrid_res=(10, 10, 1),
     type='linear' # 'default', 'linear', 'fisheye'
 )
 camera_params.pixel_fov = np.tan(np.arccos((camera_params.image_res**2 - 1)/camera_params.image_res**2))
@@ -82,7 +83,8 @@ def parallel(particle_params):
     #
     # Instantiating the camera
     #
-    cam = Camera(
+    cam = Camera()
+    cam.create(
         sun_angles[comm.rank],
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
@@ -130,18 +132,19 @@ def serial(particle_params):
     #mask[f<height/3] = 1
     #A_aerosols *= mask
     
-    for i, sun_angle in enumerate([np.pi/2*4/5]):#np.linspace(0, np.pi/2, 12)):
+    for i, sun_angle in enumerate([0]):#np.linspace(0, np.pi/2, 12)):
         #
         # Instantiating the camera
         #
-        cam = Camera(
+        cam = Camera()
+        cam.create(
             sun_angle,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=(width/2, width/2, 0.2)
+            camera_position=(width/2+0.05, width/2+0.05, 0.05)
         )
-        
         cam.setA_air(A_air)
+        cam.save('d:/amit/tmp')
         
         #
         # Calculating the image
