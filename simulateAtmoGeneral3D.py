@@ -21,8 +21,8 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 100, 1.0), # Y
-        slice(0, 100, 1.0), # X
+        slice(0, 50, 1.0), # Y
+        slice(0, 50, 1.0), # X
         slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
@@ -33,15 +33,15 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    image_res=128,
-    theta_compensation=False,
-    subgrid_res=(10, 10, 1),
-    type='linear' # 'default', 'linear', 'fisheye'
+    image_res=31,
+    subgrid_res=(15, 15, 15),
+    grid_noise=0.01
 )
 
+camera_position = np.array((25., 25., 0.)) + 0.1*np.random.rand(3)
+
 profile = False
-
-
+    
 
 def parallel(particle_params):
     
@@ -49,6 +49,16 @@ def parallel(particle_params):
     
     comm = MPI.COMM_WORLD
 
+    #
+    # override excepthook so that an exception in one of the childs will cause mpi to abort execution.
+    #
+    def abortrun(type, value, tb):
+        import traceback
+        traceback.print_exception(type, value, tb)
+        MPI.COMM_WORLD.Abort(1)
+        
+    sys.excepthook = abortrun
+        
     #
     # Create the sky
     #
@@ -66,12 +76,12 @@ def parallel(particle_params):
     #
     # Create the aerosols mask
     #
-    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
-    mask = np.zeros_like(A_aerosols)
-    mask[f<height/3] = 1
-    A_aerosols *= mask
+    #f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
+    #mask = np.zeros_like(A_aerosols)
+    #mask[f<height/3] = 1
+    #A_aerosols *= mask
     
-    sun_angles = np.linspace(0, np.pi/2, comm.size)
+    sun_angles = np.linspace(-np.pi/2, np.pi/2, comm.size+1)[1:]
 
     #
     # Instantiating the camera
@@ -81,7 +91,7 @@ def parallel(particle_params):
         sun_angles[comm.rank],
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
-        camera_position=(width/2, width/2, 0.2)
+        camera_position=camera_position
     )
     
     cam.setA_air(A_air)
@@ -134,7 +144,7 @@ def serial(particle_params):
             sun_angle,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=(width/2+0.05, width/2+0.05, 0.05)
+            camera_position=camera_position
         )
         cam.setA_air(A_air)
         cam.save('d:/amit/tmp')
@@ -171,6 +181,6 @@ if __name__ == '__main__':
         cmd = "serial(particle_params)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        #parallel(particle_params)
+        parallel(particle_params)
         
-        serial(particle_params)
+        #serial(particle_params)

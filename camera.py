@@ -84,7 +84,7 @@ class Camera(object):
         
         print 'sensor'
         H_sensor = grids.integrateGrids(
-            camera_position, Y, X, H, camera_params.image_res, camera_params.subgrid_res, noise=0.05
+            camera_position, Y, X, H, camera_params.image_res, camera_params.subgrid_res, noise=camera_params.grid_noise
         )
         print 'finished calculation'
         

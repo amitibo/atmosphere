@@ -39,8 +39,8 @@ MAX_ITERATIONS = 100
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 100., 1.), # Y
-        slice(0, 100., 1.), # X
+        slice(0, 50., 1.), # Y
+        slice(0, 50., 1.), # X
         slice(0, 10., 0.1)  # H
         ),
     earth_radius=4000,
@@ -52,15 +52,14 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    theta_compensation=False,
-    subgrid_res=(10, 10, 1),
-    type='linear' # 'default', 'linear', 'fisheye'
+    subgrid_res=(10, 10, 5),
+    grid_noise=0.01
 )
 
 #
 # node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
 #
-CAMERA_CENTERS = [(i+0.05, j+0.05, 0.05) for i, j in itertools.product(np.linspace(40, 60, 5), np.linspace(40, 60, 5))]
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(20, 30, 5), np.linspace(20, 30, 5))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-2]
 
 SUN_ANGLE = np.pi/4
@@ -78,27 +77,24 @@ def abortrun(type, value, tb):
     
 sys.excepthook = abortrun
 
+
 class RadianceProblem(ipopt.problem):
     def __init__(self, A_aerosols, A_air, results_path):
 
         lb = np.zeros(A_aerosols.size)
-        ub = np.ones(A_aerosols.size)
             
         super(RadianceProblem, self).__init__(
                     n=A_aerosols.size,
                     m=0,
                     problem_obj=self,
-                    lb=lb,
-                    ub=ub,
-                    cl=[],
-                    cu=[]
+                    lb=lb
                     )
         
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
-            comm.send([A_aerosols, A_air, results_path], dest=i, tag=IMGTAG)
+            comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
         self.obj_value = []
 
@@ -150,6 +146,8 @@ class RadianceProblem(ipopt.problem):
             ):
 
         self.obj_value.append(obj_value)
+        logging.log(logging.INFO, 'iteration: %d, objective: %g' % (iter_count, obj_value))
+        
         return True
     
     def constraints(self, x):
@@ -183,18 +181,16 @@ def master(particle_params):
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
 
     #
-    # Create the distributions of air & aerosols
+    # Create the distributions of air
     #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_air = np.exp(-h/atmosphere_params.air_typical_h)
     
     #
-    # Create the aerosols mask
+    # Create the distributions of aerosols
     #
-    f = np.sqrt((X-width/2)**2/16 + (Y-width/2)**2/16 + (H-height/2)**2)
-    mask = np.zeros_like(A_aerosols)
-    mask[f<height/2] = 1
-    A_aerosols *= mask
+    f = (X-width/2)**2 + (Y-width/2)**2 + (H-height/2)**2
+    A_aerosols = np.ones_like(A_air)
+    A_aerosols[f>3**2] = 0
     
     #
     # Define the problem
@@ -314,7 +310,7 @@ def slave(particle_params):
             )
             
             grad = cam.calcImageGradient(
-                        img_error=ref_img-img,
+                        img_err=ref_img-img,
                         A_aerosols=A_aerosols,
                         particle_params=particle_params
                     )
