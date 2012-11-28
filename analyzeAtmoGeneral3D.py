@@ -149,20 +149,7 @@ class RadianceProblem(ipopt.problem):
         logging.log(logging.INFO, 'iteration: %d, objective: %g' % (iter_count, obj_value))
         
         return True
-    
-    def constraints(self, x):
-        #
-        # The callback for calculating the constraints
-        #
-        return None
-    
-    
-    def jacobian(self, x):
-        #
-        # The callback for calculating the Jacobian
-        #
-        return None
-    
+
 
 def master(particle_params):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')

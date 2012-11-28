@@ -10,35 +10,6 @@ import grids
 import os
 
 
-def calcOpticalDistancesMatrix(Y, X, Z, sun_angle, H_pol, R, PHI, THETA):
-    """
-    Calculate the optical distances from the sun through any voxel in the atmosphere and
-    from there to the camera.
-    """
-    
-    #
-    # Prepare transformation matrices
-    #
-    Hrot_forward, rotation, Y_rot, X_rot, Z_rot = atmo_utils.rotation3DTransformMatrix(Y, X, Z, rotation=(0, sun_angle, 0))
-    Hrot_backward = atmo_utils.rotation3DTransformMatrix(Y_rot, X_rot, Z_rot, np.linalg.inv(rotation), Y, X, Z)[0]
-    
-    #
-    # Calculate a mask for Hint2
-    #
-    mask = np.ones_like(X)
-    mask_pol = H_pol * mask.reshape((-1, 1))
-
-    Hint1 = atmo_utils.cumsumTransformMatrix((Y_rot, X_rot, Z_rot), axis=2, direction=-1)
-    Hint2 = atmo_utils.cumsumTransformMatrix((R, PHI, THETA), axis=0, masked_rows=mask_pol)
-
-    temp1 = H_pol * Hrot_backward * Hint1 * Hrot_forward
-    temp2 = Hint2 * H_pol
-
-    #vizTransforms(Y, X, Z, H_pol, Hrot_forward, Hrot_backward, Hint1, Hint2, R, Y_rot, scatter_angle)
-    
-    return temp2 + temp1
-
-
 def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
     """
     Calclculate the scattering angle at each voxel.
@@ -251,6 +222,8 @@ class Camera(object):
         """
         """
         
+        raise Exception('Note addapted to the new camera model')
+    
         img = img**0.45
         img /= np.max(img)
     
