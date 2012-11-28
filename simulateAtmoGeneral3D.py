@@ -33,8 +33,8 @@ atmosphere_params = amitibo.attrClass(
 )
 
 camera_params = amitibo.attrClass(
-    image_res=31,
-    subgrid_res=(15, 15, 15),
+    image_res=128,
+    subgrid_res=(10, 10, 1),
     grid_noise=0.01
 )
 
@@ -147,7 +147,8 @@ def serial(particle_params):
             camera_position=camera_position
         )
         cam.setA_air(A_air)
-        cam.save('d:/amit/tmp')
+        camera_path = amitibo.createResultFolder(base_path='d:/amit/tmp')
+        cam.save(camera_path)
         
         #
         # Calculating the image
@@ -181,6 +182,6 @@ if __name__ == '__main__':
         cmd = "serial(particle_params)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        parallel(particle_params)
+        #parallel(particle_params)
         
-        #serial(particle_params)
+        serial(particle_params)
