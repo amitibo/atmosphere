@@ -7,11 +7,11 @@ from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
 import scipy.io as sio
 from camera import Camera
 import pickle
-import ipopt
 import amitibo
 import itertools
 import os
 import sys
+
 
 #
 # Set logging level
@@ -59,7 +59,7 @@ camera_params = amitibo.attrClass(
 ##
 ## node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
 ##
-CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(1.5, 8.5, 5), np.linspace(1.5, 8.5, 5))]
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(1.5, 9.5, 5), np.linspace(1.5, 9.5, 5))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-2]
 
 #
@@ -84,29 +84,23 @@ def abortrun(type, value, tb):
 sys.excepthook = abortrun
 
 
-class RadianceProblem(ipopt.problem):
+class RadianceProblem(object):
     def __init__(self, A_aerosols, A_air, results_path):
 
-        lb = np.zeros(A_aerosols.size)
-            
-        super(RadianceProblem, self).__init__(
-                    n=A_aerosols.size,
-                    m=0,
-                    problem_obj=self,
-                    lb=lb
-                    )
-        
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
-        self.obj_value = []
-
+        self._objective_values = []
+        self._intermediate_values = []
+        
     def objective(self, x):
         """Calculate the objective"""
 
+        x = x.reshape((-1, 1))
+        
         for i in range(1, mpi_size):
             comm.Send(x, dest=i, tag=OBJTAG)
 
@@ -117,11 +111,15 @@ class RadianceProblem(ipopt.problem):
         for i in range(1, mpi_size):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             obj += temp[0]
-            
+        
+        self._objective_values.append(obj)
+        
         return obj
     
     def gradient(self, x):
         """The callback for calculating the gradient"""
+
+        x = x.reshape((-1, 1))
 
         for i in range(1, mpi_size):
             comm.Send(x, dest=i, tag=GRADTAG)
@@ -134,7 +132,7 @@ class RadianceProblem(ipopt.problem):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             grad += temp
             
-        return grad
+        return grad.flatten()
 
     def intermediate(
             self,
@@ -151,19 +149,25 @@ class RadianceProblem(ipopt.problem):
             ls_trials
             ):
 
-        self.obj_value.append(obj_value)
+        self._intermediate_values.append(obj_value)
         logging.log(logging.INFO, 'iteration: %d, objective: %g' % (iter_count, obj_value))
         
         return True
 
+    @property
+    def obj_values(self):
+        
+        if self._intermediate_values:
+            return self._intermediate_values
+        else:
+            return self._objective_values
+        
 
-def master(particle_params):
+def master(particle_params, solver='ipopt'):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
-
     logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
-    ipopt.setLoggingLevel(logging.DEBUG)
 
     #
     # Create the sky
@@ -185,34 +189,60 @@ def master(particle_params):
     A_aerosols = np.ones_like(A_air)
     A_aerosols[f>2**2] = 0
     
-    #
-    # Define the problem
-    #
-    problem = RadianceProblem(
+    x0 = np.zeros(A_aerosols.size)
+    #x0 = A_aerosols.ravel()
+
+    radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
         A_air=A_air,
         results_path=results_path
     )
 
-    #
-    # Set solver options
-    #
-    #problem.addOption('derivative_test', 'first-order')
-    #problem.addOption('derivative_test_print_all', 'yes')
-    #problem.addOption('derivative_test_tol', 5e-3)
-    #problem.addOption('derivative_test_perturbation', 1e-8)
-    problem.addOption('hessian_approximation', 'limited-memory')
-    problem.addOption('mu_strategy', 'adaptive')
-    problem.addOption('tol', 1e-9)
-    problem.addOption('max_iter', MAX_ITERATIONS)
+    if solver == 'ipopt':
+        import ipopt
+        
+        #
+        # Define the problem
+        #
+        lb = np.zeros(A_aerosols.size)
+        
+        ipopt.setLoggingLevel(logging.DEBUG)
 
-    #
-    # Solve the problem
-    #
-    x0 = np.zeros_like(A_aerosols).reshape((-1, 1))
-    #x0 = A_aerosols.ravel()
-    x, info = problem.solve(x0)
-
+        problem = ipopt.problem(
+            n=A_aerosols.size,
+            m=0,
+            problem_obj=radiance_problem,
+            lb=lb
+        )
+    
+        #
+        # Set solver options
+        #
+        #problem.addOption('derivative_test', 'first-order')
+        #problem.addOption('derivative_test_print_all', 'yes')
+        #problem.addOption('derivative_test_tol', 5e-3)
+        #problem.addOption('derivative_test_perturbation', 1e-8)
+        problem.addOption('hessian_approximation', 'limited-memory')
+        problem.addOption('mu_strategy', 'adaptive')
+        problem.addOption('tol', 1e-9)
+        problem.addOption('max_iter', MAX_ITERATIONS)
+    
+        #
+        # Solve the problem
+        #
+        x, info = problem.solve(x0)
+    else:
+        import scipy.optimize as sop
+        
+        x, obj, d = sop.fmin_l_bfgs_b(
+            func=radiance_problem.objective,
+            x0=x0,
+            fprime=radiance_problem.gradient,
+            bounds=[(0, None)]*x0.size,
+            maxfun=MAX_ITERATIONS
+        )
+        
+    
     #
     # Kill all slaves
     #
@@ -227,7 +257,7 @@ def master(particle_params):
         {
             'true': A_aerosols,
             'estimated': x.reshape(A_aerosols.shape),
-            'objective': np.array(problem.obj_value)
+            'objective': np.array(radiance_problem.obj_values)
         },
         do_compression=True
     )
@@ -350,7 +380,7 @@ def main():
         #
         # Set up the solver server.
         #
-        master(particle_params)
+        master(particle_params, solver='bfgs')
     else:
         slave(particle_params)
 
