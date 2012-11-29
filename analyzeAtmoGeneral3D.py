@@ -32,16 +32,16 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 100
+MAX_ITERATIONS = 1000
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50., 1.), # Y
-        slice(0, 50., 1.), # X
-        slice(0, 10., 0.1)  # H
+        slice(0, 10., 1.), # Y
+        slice(0, 10., 1.), # X
+        slice(0, 5., 0.1)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
@@ -56,11 +56,17 @@ camera_params = amitibo.attrClass(
     grid_noise=0.01
 )
 
-#
-# node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
-#
-CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(20, 30, 5), np.linspace(20, 30, 5))]
+##
+## node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
+##
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(1.5, 8.5, 5), np.linspace(1.5, 8.5, 5))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-2]
+
+#
+# node*cores = 6*12 = 72 = 8*9 - 1 (cameras) + 1 (master)
+#
+#CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5, 45, 8), np.linspace(5, 45, 9))]
+#CAMERA_CENTERS = CAMERA_CENTERS[:-1]
 
 SUN_ANGLE = np.pi/4
 
@@ -177,7 +183,7 @@ def master(particle_params):
     #
     f = (X-width/2)**2 + (Y-width/2)**2 + (H-height/2)**2
     A_aerosols = np.ones_like(A_air)
-    A_aerosols[f>3**2] = 0
+    A_aerosols[f>2**2] = 0
     
     #
     # Define the problem
@@ -203,8 +209,8 @@ def master(particle_params):
     #
     # Solve the problem
     #
-    #x0 = np.zeros_like(A_aerosols).reshape((-1, 1))
-    x0 = A_aerosols.ravel()
+    x0 = np.zeros_like(A_aerosols).reshape((-1, 1))
+    #x0 = A_aerosols.ravel()
     x, info = problem.solve(x0)
 
     #

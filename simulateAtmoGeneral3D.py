@@ -182,6 +182,6 @@ if __name__ == '__main__':
         cmd = "serial(particle_params)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        #parallel(particle_params)
+        parallel(particle_params)
         
-        serial(particle_params)
+        #serial(particle_params)
