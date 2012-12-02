@@ -202,18 +202,27 @@ class Camera(object):
             scatter_air = extinction_air * scatter_air_pre
             exp_air = np.exp(-extinction_air * exp_air_pre)
             
-            #
-            # Calculate the gradient of the radiance
-            #
-            temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols)
-            temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
-            radiance_gradient = (temp1 - temp2) * atmo_utils.spdiag(exp_air * exp_aerosols)
+            ##
+            ## Calculate the gradient of the radiance
+            ##
+            #temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols)
+            #temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
+            #radiance_gradient = (temp1 - temp2) * atmo_utils.spdiag(exp_air * exp_aerosols)
     
-            #
-            # Calculate projection on camera
-            #
-            gimg.append(-2 * L_sun * radiance_gradient * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1))))
+            ##
+            ## Calculate projection on camera
+            ##
+            #gimg.append(-2 * L_sun * radiance_gradient * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1))))
 
+            #
+            # An efficient calculation of the above, just without creating unnecessary huge sparse matrices.
+            # The reason for this implementation is to avoid memory problems.
+            #
+            part1 = w * extinction_aerosols * (P_aerosols * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
+            part2 = extinction_aerosols * self.H_distances.T * ((scatter_air + scatter_aerosols) * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
+
+            gimg.append(-2 * L_sun * (part1 - part2))
+            
         gimg = np.sum(np.hstack(gimg), axis=1)
         return gimg
     

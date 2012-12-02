@@ -32,41 +32,47 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 1000
+MAX_ITERATIONS = 10000
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 10., 1.), # Y
-        slice(0, 10., 1.), # X
-        slice(0, 5., 0.1)  # H
+        slice(0, 50., 1.), # Y
+        slice(0, 50., 1.), # X
+        slice(0, 10., 0.1)  # H
         ),
     earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8,
-    aerosols_typical_h=1.2
+    aerosols_typical_h=4
 )
 
 camera_params = amitibo.attrClass(
     image_res=128,
     subgrid_res=(10, 10, 5),
-    grid_noise=0.01
+    grid_noise=0.05
 )
 
 ##
 ## node*cores = 2*12 = 25 = 5*5 - 2 (cameras) + 1 (master)
 ##
-CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(1.5, 9.5, 5), np.linspace(1.5, 9.5, 5))]
-CAMERA_CENTERS = CAMERA_CENTERS[:-2]
+#CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(1.5, 9.5, 5), np.linspace(1.5, 9.5, 5))]
+#CAMERA_CENTERS = CAMERA_CENTERS[:-2]
 
 #
 # node*cores = 6*12 = 72 = 8*9 - 1 (cameras) + 1 (master)
 #
-#CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5, 45, 8), np.linspace(5, 45, 9))]
+#CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(10, 190, 8), np.linspace(10, 190, 9))]
 #CAMERA_CENTERS = CAMERA_CENTERS[:-1]
+
+#
+# node*cores = 8*12 = 96 = 10*10 - 5 (cameras) + 1 (master)
+#
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 10), np.linspace(5., 45, 10))]
+CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 
 SUN_ANGLE = np.pi/4
 
@@ -185,9 +191,13 @@ def master(particle_params, solver='ipopt'):
     #
     # Create the distributions of aerosols
     #
-    f = (X-width/2)**2 + (Y-width/2)**2 + (H-height/2)**2
-    A_aerosols = np.ones_like(A_air)
-    A_aerosols[f>2**2] = 0
+    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    A_mask = np.zeros_like(A_aerosols)
+    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/3)**2*8
+    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/3)**2*8
+    A_mask[Z1<3**2] = 1
+    A_mask[Z2<4**2] = 1
+    A_aerosols *= A_mask
     
     x0 = np.zeros(A_aerosols.size)
     #x0 = A_aerosols.ravel()
