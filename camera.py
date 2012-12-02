@@ -113,7 +113,7 @@ class Camera(object):
         
         self.A_air_ = A_air.reshape((-1, 1))
         
-    def calcImage(self, A_aerosols, particle_params):
+    def calcImage(self, A_aerosols, particle_params, add_noise=False):
         """Calculate the image for a given aerosols distribution"""
         
         A_aerosols_ = A_aerosols.reshape((-1, 1))
@@ -157,9 +157,17 @@ class Camera(object):
             # Calculate projection on camera
             #
             temp_img = L_sun * self.H_sensor * radiance
-            warnings.warn("Noise not implemented yet")
-            #temp_img = temp_img + added_noise*temp_img.std()*np.random.randn(*temp_img.shape)
-            temp_img[temp_img<0] = 0
+            
+            #
+            # Add noise
+            #
+            if add_noise:
+                max_img = temp_img.max()
+                photon_num = np.round(temp_img * self.camera_params.photons_per_pixel / max_img)
+                noise = np.sqrt(photon_num) / self.camera_params.photons_per_pixel * max_img * np.random.randn(*temp_img.shape)
+                temp_img += noise
+                temp_img[temp_img<0] = 0
+            
             img.append(temp_img.reshape(self.camera_params.image_res, self.camera_params.image_res))
             
         img = np.transpose(np.array(img), (1, 2, 0))

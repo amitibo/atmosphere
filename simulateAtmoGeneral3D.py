@@ -21,8 +21,8 @@ import sys
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50, 1.0), # Y
-        slice(0, 50, 1.0), # X
+        slice(0, 5, 1.0), # Y
+        slice(0, 5, 1.0), # X
         slice(0, 10, 0.1)   # H
         ),
     earth_radius=4000,
@@ -35,10 +35,11 @@ atmosphere_params = amitibo.attrClass(
 camera_params = amitibo.attrClass(
     image_res=128,
     subgrid_res=(10, 10, 1),
-    grid_noise=0.01
+    grid_noise=0.05,
+    photons_per_pixel=40000
 )
 
-camera_position = np.array((25., 25., 0.)) + 0.1*np.random.rand(3)
+camera_position = np.array((2.5, 2.5, 0.)) + 0.1*np.random.rand(3)
 
 profile = False
     
@@ -99,7 +100,7 @@ def parallel(particle_params):
     #
     # Calculating the image
     #
-    img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params)
+    img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=True)
         
     result = comm.gather(img, root=0)
     if comm.rank == 0:
@@ -147,13 +148,13 @@ def serial(particle_params):
             camera_position=camera_position
         )
         cam.setA_air(A_air)
-        camera_path = amitibo.createResultFolder(base_path='d:/amit/tmp')
-        cam.save(camera_path)
+        #camera_path = amitibo.createResultFolder(base_path='d:/amit/tmp')
+        #cam.save(camera_path)
         
         #
         # Calculating the image
         #
-        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params)
+        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=True)
         
         sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
         
@@ -182,6 +183,6 @@ if __name__ == '__main__':
         cmd = "serial(particle_params)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        parallel(particle_params)
+        #parallel(particle_params)
         
-        #serial(particle_params)
+        serial(particle_params)

@@ -53,7 +53,8 @@ atmosphere_params = amitibo.attrClass(
 camera_params = amitibo.attrClass(
     image_res=128,
     subgrid_res=(10, 10, 5),
-    grid_noise=0.05
+    grid_noise=0.05,
+    photons_per_pixel=40000
 )
 
 ##
@@ -306,7 +307,8 @@ def slave(particle_params):
     
     ref_img = cam.calcImage(
         A_aerosols=A_aerosols,
-        particle_params=particle_params
+        particle_params=particle_params,
+        add_noise=True
     )
 
     sio.savemat(
