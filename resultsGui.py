@@ -7,7 +7,7 @@ Enables scaling and applying gamma correction.
 from __future__ import division
 
 from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance
-from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, EnumEditor, DirectoryEditor
+from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, EnumEditor, DirectoryEditor, Action
 from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.enable.component_editor import ComponentEditor
@@ -20,6 +20,26 @@ import glob
 import os
 
 
+class TC_Handler(Handler):
+
+    def do_savefig(self, info):
+
+        results_object = info.object
+        
+        path, file_name =  os.path.split(results_object.tr_img_name)
+        figure_name, dump = os.path.splitext(file_name)
+        
+        img = results_object._img * 10**results_object.tr_scaling
+        if results_object.tr_gamma_correction:
+            img**=0.4
+        
+        img[img<0] = 0
+        img[img>255] = 255
+    
+        plt.imshow(img.astype(np.uint8))
+        amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
+
+
 class resultAnalayzer(HasTraits):
     """Gui Application"""
     
@@ -29,6 +49,7 @@ class resultAnalayzer(HasTraits):
     tr_img_name = Str()
     tr_gamma_correction = Bool()
     tr_DND = List(Instance(File))
+    save_button = Action(name = "Save Fig", action = "do_savefig")
     
     traits_view  = View(
         VGroup(
@@ -39,8 +60,10 @@ class resultAnalayzer(HasTraits):
             Item('tr_img_name', label='Images List', editor=EnumEditor(name="tr_img_list")),
             Item('tr_DND', label='Drag Here', editor=DropEditor())
             ),
-            resizable = True,
-        )
+        handler=TC_Handler(),
+        buttons = [save_button],
+        resizable = True
+    )
 
     def __init__(self):
         super(resultAnalayzer, self).__init__()
