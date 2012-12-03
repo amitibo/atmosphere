@@ -102,15 +102,34 @@ class RadianceProblem(object):
 
         self._objective_values = []
         self._intermediate_values = []
+        self._atmo_shape = A_air.shape
+        self._results_path = results_path
         
     def objective(self, x):
         """Calculate the objective"""
 
         x = x.reshape((-1, 1))
         
+        #
+        # Distribute 
+        #
         for i in range(1, mpi_size):
             comm.Send(x, dest=i, tag=OBJTAG)
 
+        #
+        # Store temporary x in case the simulation is stoped in the middle.
+        #
+        sio.savemat(
+            os.path.join(self._results_path, 'temp_rad.mat'),
+            {
+                'estimated': x.reshape(self._atmo_shape),
+            },
+            do_compression=True
+        )
+        
+        #
+        # Query the slaves for the calculate objective.
+        #
         sts = MPI.Status()
 
         obj = 0
@@ -120,6 +139,18 @@ class RadianceProblem(object):
             obj += temp[0]
         
         self._objective_values.append(obj)
+
+        #
+        # Save temporary objective values in case the simulation is stopped
+        # in the middle.
+        #
+        sio.savemat(
+            os.path.join(self._results_path, 'temp_obj.mat'),
+            {
+                'objective': np.array(self.obj_values)
+            },
+            do_compression=True
+        )
         
         return obj
     
