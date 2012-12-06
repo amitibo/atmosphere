@@ -13,6 +13,7 @@ from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.enable.component_editor import ComponentEditor
 from enthought.io.api import File
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import scipy.io as sio
 import numpy as np
 import amitibo
@@ -26,6 +27,8 @@ class TC_Handler(Handler):
 
         results_object = info.object
         
+        sun_angle = results_object.tr_sun_angle
+        
         path, file_name =  os.path.split(results_object.tr_img_name)
         figure_name, dump = os.path.splitext(file_name)
         
@@ -36,14 +39,59 @@ class TC_Handler(Handler):
         img[img<0] = 0
         img[img>255] = 255
     
+        #
+        # Draw the image
+        #
+        fig = plt.figure()
+        ax = plt.axes([0, 0, 1, 1]) 
         plt.imshow(img.astype(np.uint8))
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+        
+        img_center = img.shape[0]/2
+
+        #
+        # Draw sun
+        #
+        sun_x = img_center * (1 + sun_angle * 2)
+        sun_patch = mpatches.Circle((sun_x, img_center), 2, ec='y', fc='y')
+        ax.add_patch(sun_patch)
+
+        #
+        # Draw angle arcs
+        #
+        for arc_angle in range(0, 90, 30)[1:]:
+            d = img_center * arc_angle / 90
+            arc_patch = mpatches.Arc(
+                (img_center, img_center),
+                2*d,
+                2*d,
+                90,
+                15,
+                345,
+                ec='r',
+                ls = 'dashed'
+            )
+            ax.add_patch(arc_patch)
+            plt.text(
+                img_center,
+                img_center+d,
+                "$%s^{\circ}$" % str(arc_angle),
+                ha="center",
+                va="center",
+                size=16,
+                color='r'
+            )
+    
+         
         amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
 
 
 class resultAnalayzer(HasTraits):
     """Gui Application"""
     
-    tr_scaling = Range(-5.0, 5.0, 0.0, desc='Radiance scaling logarithmic')
+    tr_scaling = Range(-10.0, 10.0, 0.0, desc='Radiance scaling logarithmic')
+    tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
     tr_img_list = List()
     tr_img_name = Str()
@@ -55,6 +103,7 @@ class resultAnalayzer(HasTraits):
         VGroup(
             Item('img_container', editor=ComponentEditor(), show_label=False),
             Item('tr_scaling', label='Radiance Scaling'),
+            Item('tr_sun_angle', label='Sun angle'),
             Item('tr_gamma_correction', label='Apply Gamma Correction'),
             Item('tr_folder', label='Result Folder', editor=DirectoryEditor()),
             Item('tr_img_name', label='Images List', editor=EnumEditor(name="tr_img_list")),

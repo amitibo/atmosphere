@@ -29,7 +29,7 @@ atmosphere_params = amitibo.attrClass(
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8,
-    aerosols_typical_h=1.2
+    aerosols_typical_h=2
 )
 
 camera_params = amitibo.attrClass(
@@ -170,12 +170,12 @@ if __name__ == '__main__':
         misr = pickle.load(f)
     
     particles_list = misr.keys()
-    particle = misr[particles_list[0]]
+    particle = misr['spherical_nonabsorbing_2.80']
     particle_params = amitibo.attrClass(
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=50
+        visibility=5
         )
 
     if profile:

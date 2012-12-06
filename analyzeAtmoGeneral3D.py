@@ -225,14 +225,14 @@ def master(particle_params, solver='ipopt'):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height*2/3)**2*8
-    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/3)**2*8
-    A_mask[Z1<3**2] = 1
-    A_mask[Z2<4**2] = 1
+    Z1 = (X)**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
+    A_mask[Z1<4**2] = 1
     A_aerosols *= A_mask
     
+    #
+    # Initial distribution for optimization
+    #
     x0 = np.zeros(A_aerosols.size)
-    #x0 = A_aerosols.ravel()
 
     radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
@@ -411,9 +411,9 @@ def main():
     # Set aerosol parameters
     #
     particles_list = misr.keys()
-    particle = misr[particles_list[0]]
+    particle = misr['spherical_nonabsorbing_2.80']
     particle_params = amitibo.attrClass(
-        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
+        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
         visibility=5

@@ -235,7 +235,7 @@ class Camera(object):
         return gimg
     
 
-    def draw_image(self, img, focal_ratio, sun_angle):
+    def draw_image(self, img):
         """
         """
         
