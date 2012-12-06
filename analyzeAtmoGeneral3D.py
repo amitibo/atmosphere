@@ -9,6 +9,7 @@ from camera import Camera
 import pickle
 import amitibo
 import itertools
+import densities
 import os
 import sys
 
@@ -208,32 +209,18 @@ def master(particle_params, solver='ipopt'):
     logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
 
     #
-    # Create the sky
+    # Create the distributions
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
-    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-
-    #
-    # Create the distributions of air
-    #
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
-    
-    #
-    # Create the distributions of aerosols
-    #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X)**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
-    A_mask[Z1<4**2] = 1
-    A_aerosols *= A_mask
+    A_air, A_aerosols, Y, X, H, h = densities.density_clouds1(atmosphere_params)
     
     #
     # Initial distribution for optimization
     #
-    x0 = np.zeros(A_aerosols.size)
+    x0 = np.exp(-h/(atmosphere_params.aerosols_typical_h*2))
 
+    #
+    # Create the optimization problem object
+    #
     radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
         A_air=A_air,
