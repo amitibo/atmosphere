@@ -47,7 +47,7 @@ atmosphere_params = amitibo.attrClass(
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8,
-    aerosols_typical_h=4
+    aerosols_typical_h=2
 )
 
 camera_params = amitibo.attrClass(
@@ -225,7 +225,7 @@ def master(particle_params, solver='ipopt'):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/3)**2*8
+    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height*2/3)**2*8
     Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/3)**2*8
     A_mask[Z1<3**2] = 1
     A_mask[Z2<4**2] = 1
@@ -416,7 +416,7 @@ def main():
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=50
+        visibility=5
         )
     
     if mpi_rank == 0:
