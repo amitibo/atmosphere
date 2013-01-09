@@ -31,6 +31,7 @@ class TC_Handler(Handler):
         
         path, file_name =  os.path.split(results_object.tr_img_name)
         figure_name, dump = os.path.splitext(file_name)
+        figure_name += '.svg'
         
         img = results_object._img * 10**results_object.tr_scaling
         if results_object.tr_gamma_correction:
@@ -67,10 +68,11 @@ class TC_Handler(Handler):
                 2*d,
                 2*d,
                 90,
-                15,
-                345,
-                ec='r',
-                ls = 'dashed'
+                25,
+                335,
+                ec='w',
+                ls='dashed',
+                lw=4
             )
             ax.add_patch(arc_patch)
             plt.text(
@@ -79,8 +81,8 @@ class TC_Handler(Handler):
                 "$%s^{\circ}$" % str(arc_angle),
                 ha="center",
                 va="center",
-                size=16,
-                color='r'
+                size=30,
+                color='w'
             )
     
          
