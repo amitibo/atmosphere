@@ -4,9 +4,9 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 
 from __future__ import division
 import numpy as np
-from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
-import atmo_utils
-from camera import Camera
+from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
+from atmotomo import Camera
+import atmotomo
 import amitibo
 import scipy.io as sio
 import os
@@ -104,7 +104,7 @@ def parallel(particle_params):
         
     result = comm.gather(img, root=0)
     if comm.rank == 0:
-        results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+        results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
         
         for i, img in enumerate(result):
             sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
@@ -112,7 +112,7 @@ def parallel(particle_params):
     
 def serial(particle_params):
     
-    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
 
     #
     # Create the sky
@@ -166,7 +166,7 @@ if __name__ == '__main__':
     #
     import pickle
     
-    with open('misr.pkl', 'rb') as f:
+    with open(getResourcePath('misr.pkl'), 'rb') as f:
         misr = pickle.load(f)
     
     particles_list = misr.keys()

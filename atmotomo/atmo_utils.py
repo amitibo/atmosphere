@@ -29,7 +29,9 @@ and from "Retrieval of Aerosol Properties Over Land Using MISR Observations"
 from __future__ import division
 import numpy as np
 import itertools
+import pkg_resources
 
+__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath"]
 
 #
 # Some globals
@@ -41,6 +43,14 @@ RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
 SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
 
+
+def getResourcePath(name):
+    """
+    Return the path to a resource
+    """
+
+    return pkg_resources.resource_filename(__name__, "data/%s" % name)
+    
 
 def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z', title='3D Visualization'):
 

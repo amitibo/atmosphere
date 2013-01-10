@@ -28,19 +28,8 @@ import os
 class resultAnalayzer(HasTraits):
     """Gui Application"""
     
-    tr_scaling = Range(-5.0, 5.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_img_list = List()
-    tr_gamma_correction = Bool()
-    tr_DND = List(Instance(File))
-    
-    scene = Instance(MlabSceneModel, ())
-    x = Range(0, 100., 50, desc='pixel coord x', enter_set=True,
-              auto_set=False)
-    y = Range(0, 100., 50, desc='pixel coord y', enter_set=True,
-              auto_set=False)
-    z = Range(0, 10., 5, desc='pixel coord z', enter_set=True,
-              auto_set=False)
-    r = Range(1, 5., 1, desc='radius of ball', enter_set=True, auto_set=False)
+    scene1 = Instance(MlabSceneModel, ())
+    scene2 = Instance(MlabSceneModel, ())
     
     # Tuple of x, y, z arrays where the field is sampled.
     points = Tuple(Array, Array, Array)
@@ -48,18 +37,15 @@ class resultAnalayzer(HasTraits):
     traits_view  = View(
         HSplit(
             VGroup(
-                Item('scene',
+                Item('scene1',
                      editor=SceneEditor(), height=250,
                      width=300),
-                'x',
-                'y',
-                'z',
-                'r',
+                Item('scene2',
+                     editor=SceneEditor(), height=250,
+                     width=300),
                 ),
             VGroup(
                 Item('img_container', editor=ComponentEditor(), show_label=False),
-                Item('tr_scaling', label='Radiance Scaling'),
-                Item('tr_gamma_correction', label='Apply Gamma Correction'),
                 Item('tr_DND', label='Drag Here', editor=DropEditor())
                 ),
             ),
@@ -69,16 +55,13 @@ class resultAnalayzer(HasTraits):
     def __init__(self):
         super(resultAnalayzer, self).__init__()
 
-        self.cam = camera.Camera()
-        self.loadParticles()
-        
         #
         # Prepare all the plots.
         # ArrayPlotData - A class that holds a list of numpy arrays.
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._img = np.zeros((256, 256, 3), dtype=np.uint8)
+        self._img = np.zeros((128, 12, 3), dtype=np.uint8)
         
         self.plotdata = ArrayPlotData()
         self._updateImg()

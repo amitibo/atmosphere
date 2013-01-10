@@ -4,6 +4,7 @@
 from __future__ import division
 import numpy as np
 
+__all__ = ["density_front", "density_clouds1"]
 
 
 def density_front(atmosphere_params):

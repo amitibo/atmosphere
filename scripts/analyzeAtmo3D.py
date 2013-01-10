@@ -3,13 +3,14 @@ Reconstruct a general distribution of aerosols in the atmosphere.
 """
 from __future__ import division
 import numpy as np
-from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
+from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
+from atmotomo import Camera
+from atmotomo import density_clouds1
+import atmotomo
 import scipy.io as sio
-from camera import Camera
 import pickle
 import amitibo
 import itertools
-import densities
 import os
 import sys
 
@@ -205,13 +206,13 @@ class RadianceProblem(object):
 def master(particle_params, solver='ipopt'):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
-    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params])
+    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
     logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
 
     #
     # Create the distributions
     #
-    A_air, A_aerosols, Y, X, H, h = densities.density_clouds1(atmosphere_params)
+    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     
     #
     # Initial distribution for optimization
@@ -391,7 +392,7 @@ def main():
     #
     # Load the MISR database.
     #
-    with open('misr.pkl', 'rb') as f:
+    with open(getResourcePath('misr.pkl'), 'rb') as f:
         misr = pickle.load(f)
 
     #

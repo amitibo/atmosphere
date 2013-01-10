@@ -3,11 +3,13 @@
 
 from __future__ import division
 import numpy as np
-import atmo_utils
+from . import atmo_utils
 import amitibo
 import warnings
 import grids
 import os
+
+__all__ = ["Camera"]
 
 
 def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
