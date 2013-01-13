@@ -11,6 +11,7 @@ from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, Enu
 from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
 from enthought.chaco.tools.api import PanTool, ZoomTool
 from enthought.enable.component_editor import ComponentEditor
+from enthought.pyface.api import warning
 from enthought.io.api import File
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -85,9 +86,45 @@ class TC_Handler(Handler):
                 color='w'
             )
     
-         
         amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
 
+    def do_makemovie(self, info):
+
+        results_object = info.object
+
+        path, file_name =  os.path.split(results_object.tr_img_name)
+        image_list = glob.glob(os.path.join(path, "ref_img*.mat"))
+        if not image_list:
+            warning(info.ui.control, "No ref_img's found in the folder", "Warning")
+            return
+
+        import matplotlib.animation as manim
+        
+        FFMpegWriter = manim.writers['ffmpeg']
+        metadata = dict(title='Results Movie', artist='Matplotlib', comment='Movie support!')
+        writer = FFMpegWriter(fps=5, bitrate=-1, metadata=metadata)
+
+        fig = plt.figure()
+        with writer.saving(fig, os.path.join(path, "ref_images.mp4"), 100):
+            for i in range(1, len(image_list)+1):
+                img_path = os.path.join(path, "ref_img%d.mat" % i)
+                data = sio.loadmat(img_path)
+                if 'img' in data.keys():
+                    img = data['img']
+                else:
+                    img = data['rgb']
+                img = img * 10**results_object.tr_scaling
+                if results_object.tr_gamma_correction:
+                    img**=0.4
+                
+                img[img<0] = 0
+                img[img>255] = 255
+                
+                plt.imshow(img.astype(np.uint8))
+                plt.title('image %d' % i)
+                writer.grab_frame()            
+                fig.clear()
+                
 
 class resultAnalayzer(HasTraits):
     """Gui Application"""
@@ -100,6 +137,7 @@ class resultAnalayzer(HasTraits):
     tr_gamma_correction = Bool()
     tr_DND = List(Instance(File))
     save_button = Action(name = "Save Fig", action = "do_savefig")
+    movie_button = Action(name = "Make Movie", action = "do_makemovie")
     
     traits_view  = View(
         VGroup(
@@ -112,7 +150,7 @@ class resultAnalayzer(HasTraits):
             Item('tr_DND', label='Drag Here', editor=DropEditor())
             ),
         handler=TC_Handler(),
-        buttons = [save_button],
+        buttons = [save_button, movie_button],
         resizable = True
     )
 
@@ -150,7 +188,10 @@ class resultAnalayzer(HasTraits):
     def _updateImgName(self):
         if os.path.exists(self.tr_img_name):
             data = sio.loadmat(self.tr_img_name)
-            self._img = data['img']
+            if 'img' in data.keys():
+                self._img = data['img']
+            else:
+                self._img = data['rgb']
         else:
             self._img = np.zeros((256, 256, 3), dtype=np.uint8)
             
