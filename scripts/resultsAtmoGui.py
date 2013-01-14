@@ -20,6 +20,7 @@ import numpy as np
 import amitibo
 import glob
 import os
+import re
 
 
 class TC_Handler(Handler):
@@ -93,7 +94,8 @@ class TC_Handler(Handler):
         results_object = info.object
 
         path, file_name =  os.path.split(results_object.tr_img_name)
-        image_list = glob.glob(os.path.join(path, "ref_img*.mat"))
+        file_pattern = re.search(r'(.*?)\d+.mat', file_name).groups()[0]
+        image_list = glob.glob(os.path.join(path, "%s*.mat" % file_pattern))
         if not image_list:
             warning(info.ui.control, "No ref_img's found in the folder", "Warning")
             return
@@ -102,13 +104,17 @@ class TC_Handler(Handler):
         
         FFMpegWriter = manim.writers['ffmpeg']
         metadata = dict(title='Results Movie', artist='Matplotlib', comment='Movie support!')
-        writer = FFMpegWriter(fps=5, bitrate=-1, metadata=metadata)
+        writer = FFMpegWriter(fps=2, bitrate=-1, metadata=metadata)
 
         fig = plt.figure()
-        with writer.saving(fig, os.path.join(path, "ref_images.mp4"), 100):
-            for i in range(1, len(image_list)+1):
-                img_path = os.path.join(path, "ref_img%d.mat" % i)
-                data = sio.loadmat(img_path)
+        with writer.saving(fig, os.path.join(path, "%s.mp4" % file_pattern), 100):
+            for i in range(0, len(image_list)+1):
+                img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
+                try:
+                    data = sio.loadmat(img_path)
+                except:
+                    continue
+                
                 if 'img' in data.keys():
                     img = data['img']
                 else:
