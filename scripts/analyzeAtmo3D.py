@@ -34,7 +34,7 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 10000
+MAX_ITERATIONS = 30000
 
 #
 # Global settings
@@ -217,7 +217,7 @@ def master(particle_params, solver='ipopt'):
     #
     # Initial distribution for optimization
     #
-    x0 = np.exp(-h/(atmosphere_params.aerosols_typical_h*2))
+    x0 = np.zeros_like(A_aerosols)#np.exp(-h/(atmosphere_params.aerosols_typical_h/2))
 
     #
     # Create the optimization problem object
