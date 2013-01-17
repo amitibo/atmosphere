@@ -6,10 +6,11 @@ Enables scaling and applying gamma correction.
 
 from __future__ import division
 
-from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance
+from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum
 from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
 from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
-from enthought.chaco.tools.api import PanTool, ZoomTool
+from enthought.chaco.tools.api import LineInspector, PanTool, ZoomTool
+from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
 from enthought.enable.component_editor import ComponentEditor
 from enthought.pyface.api import warning
 from enthought.io.api import File
@@ -146,6 +147,10 @@ class resultAnalayzer(HasTraits):
     tr_DND2 = List(Instance(File))
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
+    tr_cross_plot1 = Instance(Plot)
+    tr_cross_plot2 = Instance(Plot)
+    tr_cursor1 = Instance(BaseCursorTool)
+    tr_channel = Enum(0, 1, 2)
     
     traits_view  = View(
         VGroup(
@@ -153,12 +158,17 @@ class resultAnalayzer(HasTraits):
                 Item('img_container1', editor=ComponentEditor(), show_label=False),
                 Item('img_container2', editor=ComponentEditor(), show_label=False),
                 ),
+            HGroup(
+                Item('tr_cross_plot1', editor=ComponentEditor(), show_label=False),
+                Item('tr_cross_plot2', editor=ComponentEditor(), show_label=False),
+                ),
             Item('tr_scaling', label='Radiance Scaling'),
             Item('tr_relative_scaling', label='Relative Radiance Scaling'),
             Item('tr_sun_angle', label='Sun angle'),
             Item('tr_gamma_correction', label='Apply Gamma Correction'),
             Item('tr_DND1', label='Drag Here', editor=DropEditor()),
-            Item('tr_DND2', label='Drag Here', editor=DropEditor())
+            Item('tr_DND2', label='Drag Here', editor=DropEditor()),
+            Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
         handler=TC_Handler(),
         buttons = [save_button, movie_button],
@@ -174,36 +184,57 @@ class resultAnalayzer(HasTraits):
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._img = [np.zeros((256, 256, 3), dtype=np.uint8), np.zeros((256, 256, 3), dtype=np.uint8)]
+        self._img = [np.zeros((128, 128, 3), dtype=np.uint8), np.zeros((128, 128, 3), dtype=np.uint8)]
         
-        self.plotdata = ArrayPlotData()
-        self._updateImg()
+        self.plotdata = ArrayPlotData(result_img1=np.zeros((128, 128, 3), dtype=np.uint8), results_img2=np.zeros((128, 128, 3), dtype=np.uint8))
         
         self.img_container1 = Plot(self.plotdata)
-        self.img_container1.img_plot('result_img1')
-        self.img_container1.tools.append(PanTool(self.img_container1))
-        self.img_container1.tools.append(ZoomTool(self.img_container1))
-        
+        img_plot = self.img_container1.img_plot('result_img1')[0]
+        self.tr_cursor1 = CursorTool(
+            component=img_plot,
+            drag_button='left',
+            color='white',
+            line_width=1.0
+        )                
+        img_plot.overlays.append(self.tr_cursor1)
+        self.tr_cursor1.current_position = 64, 64
+
         self.img_container2 = Plot(self.plotdata)
         self.img_container2.img_plot('result_img2')
-        self.img_container2.tools.append(PanTool(self.img_container2))
-        self.img_container2.tools.append(ZoomTool(self.img_container2))
-                
-    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction')
+        
+        self._updateImg()
+
+        self.tr_cross_plot1 = Plot(self.plotdata, resizable="h")
+        self.tr_cross_plot1.height = 30
+        plots = self.tr_cross_plot1.plot(("basex", "img1_x", "img2_x"))
+        plots[1].line_style = 'dot'
+        self.tr_cross_plot2 = Plot(self.plotdata, resizable="h")
+        self.tr_cross_plot2.height = 30
+        plots = self.tr_cross_plot2.plot(("basey", "img1_y", "img2_y"))
+        plots[1].line_style = 'dot'
+        
+        
+    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index')
     def _updateImg(self):
         
         relative_scaling = [0, self.tr_relative_scaling]
         
+        self.plotdata.set_data('basex', np.arange(self._img[0].shape[1]))
+        self.plotdata.set_data('basey', np.arange(self._img[0].shape[0]))
+
         for i in range(2):
             img = self._img[i] * 10**self.tr_scaling * 10**relative_scaling[i]
             if self.tr_gamma_correction:
                 img**=0.4
                 
-            img[img<0] = 0
-            img[img>255] = 255
+            img_croped = img.copy()
+            img_croped[img<0] = 0
+            img_croped[img>255] = 255
             
-            self.plotdata.set_data('result_img%d' % (i+1), img.astype(np.uint8))
-
+            self.plotdata.set_data('result_img%d' % (i+1), img_croped.astype(np.uint8))
+            self.plotdata.set_data('img%d_x' % (i+1), img[self.tr_cursor1.current_index[1], :, self.tr_channel])
+            self.plotdata.set_data('img%d_y' % (i+1), img[:, self.tr_cursor1.current_index[0], self.tr_channel])
+            
     @on_trait_change('tr_img_name1, tr_img_name2')
     def _updateImgName(self):
         
@@ -215,7 +246,7 @@ class resultAnalayzer(HasTraits):
                 else:
                     self._img[i] = data['Detector']
             else:
-                self._img[i] = np.zeros((256, 256, 3), dtype=np.uint8)
+                self._img[i] = np.zeros((128, 128, 3), dtype=np.uint8)
                 
         self._updateImg()
     
@@ -226,7 +257,7 @@ class resultAnalayzer(HasTraits):
     @on_trait_change('tr_DND2')
     def _updateDragNDrop2(self):
         self.tr_img_name2 = self.tr_DND2[0].absolute_path
- 
+         
         
 def main():
     """Main function"""
