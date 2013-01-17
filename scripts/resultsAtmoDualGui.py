@@ -140,11 +140,11 @@ class resultAnalayzer(HasTraits):
     tr_relative_scaling = Range(-10.0, 10.0, 0.0, desc='Relative radiance scaling logarithmic')
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
-    tr_img_name1 = Str()
-    tr_img_name2 = Str()
     tr_gamma_correction = Bool()
-    tr_DND1 = List(Instance(File))
-    tr_DND2 = List(Instance(File))
+    tr_DND_vadim = List(Instance(File))
+    tr_DND_amit = List(Instance(File))
+    tr_vadim_index = Range(0, 1, 0, exclude_high=True, desc='Index of image in vadim list')
+    tr_amit_index = Range(0, 1, 0, exclude_high=True, desc='Index of image in amit list')
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
     tr_cross_plot1 = Instance(Plot)
@@ -166,8 +166,10 @@ class resultAnalayzer(HasTraits):
             Item('tr_relative_scaling', label='Relative Radiance Scaling'),
             Item('tr_sun_angle', label='Sun angle'),
             Item('tr_gamma_correction', label='Apply Gamma Correction'),
-            Item('tr_DND1', label='Drag Here', editor=DropEditor()),
-            Item('tr_DND2', label='Drag Here', editor=DropEditor()),
+            Item('tr_vadim_index', label='Index of Vadim'),
+            Item('tr_amit_index', label='Index of Amit'),
+            Item('tr_DND_vadim', label='Drag Vadim', editor=DropEditor()),
+            Item('tr_DND_amit', label='Drag Amit', editor=DropEditor()),
             Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
         handler=TC_Handler(),
@@ -184,7 +186,8 @@ class resultAnalayzer(HasTraits):
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._img = [np.zeros((128, 128, 3), dtype=np.uint8), np.zeros((128, 128, 3), dtype=np.uint8)]
+        self._images_amit = [np.zeros((128, 128, 3), dtype=np.uint8)]
+        self._images_vadim = [np.zeros((128, 128, 3), dtype=np.uint8)]
         
         self.plotdata = ArrayPlotData(result_img1=np.zeros((128, 128, 3), dtype=np.uint8), results_img2=np.zeros((128, 128, 3), dtype=np.uint8))
         
@@ -214,16 +217,17 @@ class resultAnalayzer(HasTraits):
         plots[1].line_style = 'dot'
         
         
-    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index')
+    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_vadim_index, tr_amit_index')
     def _updateImg(self):
         
         relative_scaling = [0, self.tr_relative_scaling]
+        h, w, d = self._images_amit[self.tr_amit_index].shape
         
-        self.plotdata.set_data('basex', np.arange(self._img[0].shape[1]))
-        self.plotdata.set_data('basey', np.arange(self._img[0].shape[0]))
+        self.plotdata.set_data('basex', np.arange(w))
+        self.plotdata.set_data('basey', np.arange(h))
 
-        for i in range(2):
-            img = self._img[i] * 10**self.tr_scaling * 10**relative_scaling[i]
+        for i, img in enumerate((self._images_vadim[self.tr_vadim_index], self._images_amit[self.tr_amit_index])):
+            img = img * 10**self.tr_scaling * 10**relative_scaling[i]
             if self.tr_gamma_correction:
                 img**=0.4
                 
@@ -235,29 +239,57 @@ class resultAnalayzer(HasTraits):
             self.plotdata.set_data('img%d_x' % (i+1), img[self.tr_cursor1.current_index[1], :, self.tr_channel])
             self.plotdata.set_data('img%d_y' % (i+1), img[:, self.tr_cursor1.current_index[0], self.tr_channel])
             
-    @on_trait_change('tr_img_name1, tr_img_name2')
-    def _updateImgName(self):
-        
-        for i, path in enumerate((self.tr_img_name1, self.tr_img_name2)):
-            if os.path.exists(path):
-                data = sio.loadmat(path)
-                if 'img' in data.keys():
-                    self._img[i] = data['img']
-                else:
-                    self._img[i] = data['Detector']
-            else:
-                self._img[i] = np.zeros((128, 128, 3), dtype=np.uint8)
-                
-        self._updateImg()
-    
-    @on_trait_change('tr_DND1')
+    @on_trait_change('tr_DND_vadim')
     def _updateDragNDrop1(self):
-        self.tr_img_name1 = self.tr_DND1[0].absolute_path
- 
-    @on_trait_change('tr_DND2')
-    def _updateDragNDrop2(self):
-        self.tr_img_name2 = self.tr_DND2[0].absolute_path
+        path = self.tr_DND_vadim[0].absolute_path
          
+        path, folder_name =  os.path.split(path)
+        folder_list = glob.glob(os.path.join(path, "*"))
+        if not folder_list:
+            warning(info.ui.control, "No img found in the folder", "Warning")
+            return
+        
+        self._images_vadim = []
+        for folder in folder_list:
+            img_path = os.path.join(folder, "RGB_MATRIX.mat")
+            try:
+                data = sio.loadmat(img_path)
+            except:
+                continue
+            
+            self._images_vadim.append(data['Detector'])
+
+        self.add_trait('tr_vadim_index',  Range(0, len(self._images_vadim), 0, exclude_high=True, desc='Index of image in vadim\'s list'))
+        self.trait_view('traits_view').updated = True
+        
+        self._updateImg()
+
+    @on_trait_change('tr_DND_amit')
+    def _updateDragNDrop2(self):
+        path = self.tr_DND_amit[0].absolute_path
+         
+        path, file_name =  os.path.split(path)
+        file_pattern = re.search(r'(.*?)\d+.mat', file_name).groups()[0]
+        image_list = glob.glob(os.path.join(path, "%s*.mat" % file_pattern))
+        if not image_list:
+            warning(info.ui.control, "No img found in the folder", "Warning")
+            return
+        
+        self._images_amit = []
+        for i in range(0, len(image_list)+1):
+            img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
+            try:
+                data = sio.loadmat(img_path)
+            except:
+                continue
+            
+            self._images_amit.append(data['img'])
+
+        self.add_trait('tr_amit_index',  Range(0, len(self._images_amit), 0, exclude_high=True, desc='Index of image in amit\'s list'))
+        self.trait_view('traits_view').updated = True
+
+        self._updateImg()
+        
         
 def main():
     """Main function"""

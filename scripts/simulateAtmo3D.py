@@ -6,7 +6,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
-from atmotomo import density_clouds_vadim
+from atmotomo import density_clouds1, density_clouds_vadim
 import atmotomo
 import amitibo
 import scipy.io as sio
@@ -16,6 +16,7 @@ import itertools
 import time
 import socket
 import sys
+import argparse
 
 
 #
@@ -41,12 +42,14 @@ camera_params = amitibo.attrClass(
     photons_per_pixel=40000
 )
 
-camera_position = np.array((2.5, 2.5, 0.)) + 0.1*np.random.rand(3)
+camera_position = np.array((9.507, 22.8159, 0.084431))
+SUN_ANGLE = -np.pi/4
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
 
 profile = False
     
 
-def parallel(particle_params):
+def parallel(particle_params, cameras):
     
     from mpi4py import MPI
     
@@ -65,11 +68,8 @@ def parallel(particle_params):
     #
     # Create the distributions
     #
-    A_air, A_aerosols, Y, X, H, h = density_clouds_vadim(atmosphere_params)
-    
-    SUN_ANGLE = np.pi/4
-    CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
-    
+    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+        
     #
     # Instantiating the camera
     #
@@ -78,7 +78,7 @@ def parallel(particle_params):
         SUN_ANGLE,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
-        camera_position=CAMERA_CENTERS[comm.rank]
+        camera_position=cameras[comm.rank]
     )
     
     cam.setA_air(A_air)
@@ -103,9 +103,9 @@ def serial(particle_params):
     #
     # Create the distributions
     #
-    A_air, A_aerosols, Y, X, H, h = density_clouds_vadim(atmosphere_params)
+    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     
-    for i, sun_angle in enumerate([0]):#np.linspace(0, np.pi/2, 12)):
+    for i, sun_angle in enumerate([-np.pi/4]):#np.linspace(0, np.pi/2, 12)):
         #
         # Instantiating the camera
         #
@@ -131,6 +131,25 @@ def serial(particle_params):
 if __name__ == '__main__':
 
     #
+    # Parse the input
+    #
+    parser = argparse.ArgumentParser(description='Simulate atmosphere')
+    parser.add_argument('--cameras', help='path to cameras file')
+    parser.add_argument('--parallel', action='store_true', help='run the parallel mode')
+    parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
+    args = parser.parse_args()
+    
+    
+    if args.cameras:
+        cameras = []
+        with open(os.path.abspath(args.cameras), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                cameras.append(np.array([float(i) for i in line.strip().split(',')]))
+    else:
+        cameras = CAMERA_CENTERS
+        
+    #
     # Load the MISR database.
     #
     import pickle
@@ -147,11 +166,12 @@ if __name__ == '__main__':
         visibility=5
         )
 
-    if profile:
+    if args.profile:
         import cProfile    
         cmd = "serial(particle_params)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
-        #parallel(particle_params)
-        
-        serial(particle_params)
+        if args.parallel:
+            parallel(particle_params, cameras)
+        else:
+            serial(particle_params)
