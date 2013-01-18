@@ -56,7 +56,8 @@ def main():
         scripts=[
             'scripts/simulateAtmo3D.py',
             'scripts/analyzeAtmo3D.py',
-            'scripts/resultsAtmoGui.py'
+            'scripts/resultsAtmoGui.py',
+            'scripts/resultsAtmoDualGui.py'
         ]
         )
 

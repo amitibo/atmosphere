@@ -13,6 +13,8 @@ import amitibo
 import itertools
 import os
 import sys
+import argparse
+import glob
 
 
 #
@@ -217,7 +219,7 @@ def master(particle_params, solver='ipopt'):
     #
     # Initial distribution for optimization
     #
-    x0 = np.zeros_like(A_aerosols)#np.exp(-h/(atmosphere_params.aerosols_typical_h/2))
+    x0 = np.zeros_like(A_aerosols)
 
     #
     # Create the optimization problem object
@@ -293,7 +295,7 @@ def master(particle_params, solver='ipopt'):
     )
 
 
-def slave(particle_params):
+def slave(particle_params, cameras, ref_images):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
@@ -304,7 +306,7 @@ def slave(particle_params):
         SUN_ANGLE,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
-        camera_position=CAMERA_CENTERS[mpi_rank-1]
+        camera_position=cameras[mpi_rank-1]
     )
     
     sts = MPI.Status()
@@ -323,12 +325,15 @@ def slave(particle_params):
     results_path = data[2]
     
     cam.setA_air(A_air)
-    
-    ref_img = cam.calcImage(
-        A_aerosols=A_aerosols,
-        particle_params=particle_params,
-        add_noise=True
-    )
+
+    if ref_images:
+        ref_img = ref_images[mpi_rank-1]
+    else:
+        ref_img = cam.calcImage(
+            A_aerosols=A_aerosols,
+            particle_params=particle_params,
+            add_noise=True
+        )
 
     sio.savemat(
         os.path.join(results_path, 'ref_img%d.mat' % mpi_rank),
@@ -390,6 +395,43 @@ def slave(particle_params):
 
 def main():
     #
+    # Parse the input
+    #
+    parser = argparse.ArgumentParser(description='Analyze atmosphere')
+    parser.add_argument('--cameras', help='path to cameras file')
+    parser.add_argument('--ref_images', help='path to reference images')
+    args = parser.parse_args()
+    
+    #
+    # Parse cameras center file
+    #
+    if args.cameras:
+        cameras = []
+        with open(os.path.abspath(args.cameras), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                cameras.append(np.array([float(i) for i in line.strip().split()]))
+    else:
+        cameras = CAMERA_CENTERS
+
+    #
+    # Load the reference images
+    #
+    ref_images = []
+    if args.ref_images:
+        path, folder_name =  os.path.split(args.ref_images)
+        folder_list = glob.glob(os.path.join(path, "*"))
+         
+        for folder in folder_list:
+            img_path = os.path.join(folder, "RGB_MATRIX.mat")
+            try:
+                data = sio.loadmat(img_path)
+            except:
+                continue
+            
+            ref_images.append(data['Detector'])
+    
+    #
     # Load the MISR database.
     #
     with open(getResourcePath('misr.pkl'), 'rb') as f:
@@ -413,7 +455,7 @@ def main():
         #
         master(particle_params, solver='bfgs')
     else:
-        slave(particle_params)
+        slave(particle_params, cameras, ref_images)
 
 
 if __name__ == '__main__':
