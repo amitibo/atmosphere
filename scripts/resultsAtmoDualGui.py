@@ -6,10 +6,10 @@ Enables scaling and applying gamma correction.
 
 from __future__ import division
 
-from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum
+from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
 from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
-from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer
-from enthought.chaco.tools.api import LineInspector, PanTool, ZoomTool
+from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
+from enthought.chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
 from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
 from enthought.enable.component_editor import ComponentEditor
 from enthought.pyface.api import warning
@@ -143,8 +143,11 @@ class resultAnalayzer(HasTraits):
     tr_gamma_correction = Bool()
     tr_DND_vadim = List(Instance(File))
     tr_DND_amit = List(Instance(File))
-    tr_vadim_index = Range(0, 1, 0, exclude_high=True, desc='Index of image in vadim list')
-    tr_amit_index = Range(0, 1, 0, exclude_high=True, desc='Index of image in amit list')
+    tr_min = Int(0)
+    tr_vadim_len = Int(0)
+    tr_amit_len = Int(0)
+    tr_vadim_index = Range('tr_min', 'tr_vadim_len', 0, desc='Index of image in vadim list')
+    tr_amit_index = Range('tr_min', 'tr_amit_len', 0, desc='Index of image in amit list')
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
     tr_cross_plot1 = Instance(Plot)
@@ -201,9 +204,18 @@ class resultAnalayzer(HasTraits):
         )                
         img_plot.overlays.append(self.tr_cursor1)
         self.tr_cursor1.current_position = 64, 64
+        self.img_container1.overlays.append(PlotLabel("Multiple-Scattering",
+                                      component=self.img_container1,
+                                      font = "swiss 16",
+                                      overlay_position="top"))        
+        
 
         self.img_container2 = Plot(self.plotdata)
         self.img_container2.img_plot('result_img2')
+        self.img_container2.overlays.append(PlotLabel("Single-Scattering",
+                                      component=self.img_container2,
+                                      font = "swiss 16",
+                                      overlay_position="top"))        
         
         self._updateImg()
 
@@ -211,10 +223,22 @@ class resultAnalayzer(HasTraits):
         self.tr_cross_plot1.height = 30
         plots = self.tr_cross_plot1.plot(("basex", "img1_x", "img2_x"))
         plots[1].line_style = 'dot'
+        legend = Legend(component=self.tr_cross_plot1, padding=5, align="ur")
+        legend.tools.append(LegendTool(legend, drag_button="right"))
+        legend.plots = dict(zip(('Multi', 'Single'), plots))
+        self.tr_cross_plot1.overlays.append(legend)
+        self.tr_cross_plot1.overlays.append(PlotLabel("X section",
+                                      component=self.tr_cross_plot1,
+                                      font = "swiss 16",
+                                      overlay_position="top"))        
         self.tr_cross_plot2 = Plot(self.plotdata, resizable="h")
         self.tr_cross_plot2.height = 30
         plots = self.tr_cross_plot2.plot(("basey", "img1_y", "img2_y"))
         plots[1].line_style = 'dot'
+        self.tr_cross_plot2.overlays.append(PlotLabel("Y section",
+                                      component=self.tr_cross_plot2,
+                                      font = "swiss 16",
+                                      overlay_position="top"))        
         
         
     @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_vadim_index, tr_amit_index')
@@ -259,8 +283,7 @@ class resultAnalayzer(HasTraits):
             
             self._images_vadim.append(data['Detector'])
 
-        self.add_trait('tr_vadim_index',  Range(0, len(self._images_vadim), 0, exclude_high=True, desc='Index of image in vadim\'s list'))
-        self.trait_view('traits_view').updated = True
+        self.tr_vadim_len = len(self._images_vadim) - 1
         
         self._updateImg()
 
@@ -285,8 +308,7 @@ class resultAnalayzer(HasTraits):
             
             self._images_amit.append(data['img'])
 
-        self.add_trait('tr_amit_index',  Range(0, len(self._images_amit), 0, exclude_high=True, desc='Index of image in amit\'s list'))
-        self.trait_view('traits_view').updated = True
+        self.tr_amit_len = len(self._images_amit) - 1
 
         self._updateImg()
         

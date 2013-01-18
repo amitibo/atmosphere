@@ -145,7 +145,7 @@ if __name__ == '__main__':
         with open(os.path.abspath(args.cameras), 'r') as f:
             lines = f.readlines()
             for line in lines:
-                cameras.append(np.array([float(i) for i in line.strip().split(',')]))
+                cameras.append(np.array([float(i) for i in line.strip().split()]))
     else:
         cameras = CAMERA_CENTERS
         
