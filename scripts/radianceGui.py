@@ -20,7 +20,6 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import numpy as np
 import amitibo
-import camera
 import glob
 import os
 

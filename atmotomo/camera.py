@@ -7,6 +7,7 @@ from . import atmo_utils
 import amitibo
 import warnings
 import grids
+import time
 import os
 
 __all__ = ["Camera"]
@@ -50,16 +51,22 @@ class Camera(object):
         #
         # Calculate the distance matrices and scattering angle
         #
+        timer = amitibo.timer()
+        
         print 'Distances1'
         H_distances1 = grids.point2grids(camera_position, Y, X, H)
+        timer.tock()
+        timer.tick()
         print 'Distances2'
         H_distances2 = grids.direction2grids(0, -sun_angle, Y, X, H)
-        
+        timer.tock()
+        timer.tick()        
         print 'sensor'
         H_sensor = grids.integrateGrids(
-            camera_position, Y, X, H, camera_params.image_res, camera_params.subgrid_res, noise=camera_params.grid_noise
+            camera_position, Y, X, H, camera_params.image_res, subgrid_max=camera_params.subgrid_res, subgrid_noise=camera_params.grid_noise
         )
         print 'finished calculation'
+        timer.tock()
         
         #
         # Calculate the mu

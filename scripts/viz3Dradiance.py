@@ -40,8 +40,10 @@ def main():
     
     X, Y, Z = np.mgrid[0:50:1.0, 0:50:1.0, 0:10.0:0.1]
     
-    amitibo.viz3DGrid2(X, Y, Z, radiance_true/1e15, title='Original')
-    #amitibo.viz3DGrid2(X, Y, Z, radiance_estim/1e15, title='Estimated',)
+    radiance_estim[radiance_estim/1e15 > 16] = 16
+    
+    amitibo.viz3D(X, Y, Z, radiance_true/1e15, title='Original')
+    amitibo.viz3D(X, Y, Z, radiance_estim/1e15, title='Estimated',)
     
     error_per_particle = np.sum(np.abs(radiance_estim - radiance_true)) / np.sum(radiance_true)
     print 'Absolute error normalized to num of particles:', error_per_particle
