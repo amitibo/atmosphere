@@ -1,4 +1,5 @@
 """
+Visualize a 3D matlab matrix useful for seeing one of Vadim radiance results
 """
 
 from __future__ import division

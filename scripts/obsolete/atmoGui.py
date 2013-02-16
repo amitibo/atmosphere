@@ -1,3 +1,8 @@
+"""
+2D atmospheric simulation and GUI, calculate the radiances and shows them as two
+separate images 0 - 90 and -90 - 0 zenith angles
+"""
+
 from __future__ import division
 
 from enthought.traits.api import HasTraits, Range, on_trait_change, Float, Enum

@@ -1,4 +1,6 @@
 """
+THIS SEEMS TO BE A MIX OF UNFINISHED WORK !!!
+NOT SURE THE COMMENT BELOW IS RELEVANT
 Analyze a result of the atmospheric simulater.
 Its input is a numpy array.
 Enables scaling and applying gamma correction.

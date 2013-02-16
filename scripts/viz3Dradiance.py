@@ -1,4 +1,5 @@
 """
+Visualize 3D radiance reconstruction results.
 """
 
 from __future__ import division

@@ -1,7 +1,10 @@
 """
-Analyze a result of the atmospheric simulater.
-Its input is a numpy array.
-Enables scaling and applying gamma correction.
+Visualize side by side the results of MC simulations and Single Scattering model.
+This GUI is useful when the MC and SS results are in separate folders.
+In the case of the MC, drag and drop one of the results folder, in the case of the single scattering
+drag and drop one of the images (image matrix).
+The GUI enables browsing and comparing the results of different cameras and scaling separately
+the MC and single scattering results.
 """
 
 from __future__ import division

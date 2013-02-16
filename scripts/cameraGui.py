@@ -1,6 +1,8 @@
 """
-Analyze a result of the atmospheric simulater.
-Its input is a numpy array.
+Analyze tool for the camera projection matrices.
+This script opens a gui where one can drag & drop a camera matrix. Then one can
+synthesize a aerosol blub at different sizes and locations in the atmosphere and
+see the images created by the camera matrix.
 Enables scaling and applying gamma correction.
 """
 
@@ -20,7 +22,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import numpy as np
 import amitibo
-from atmotomo import Camera
+from atmotomo import Camera, getResourcePath
 import glob
 import os
 
@@ -141,7 +143,10 @@ class resultAnalayzer(HasTraits):
     def loadParticles(self):
         import pickle
         
-        with open('misr.pkl', 'rb') as f:
+        #
+        # Load the MISR database.
+        #
+        with open(getResourcePath('misr.pkl'), 'rb') as f:
             misr = pickle.load(f)
         
         particles_list = misr.keys()

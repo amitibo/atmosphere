@@ -1,6 +1,6 @@
 """
 Analyze a result of the atmospheric simulater.
-Its input is a numpy array.
+Drag and drop one of the images into the GUI.
 Enables scaling and applying gamma correction.
 """
 
