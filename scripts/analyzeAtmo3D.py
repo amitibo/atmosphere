@@ -36,7 +36,7 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 30000
+MAX_ITERATIONS = 10000
 
 #
 # Global settings
@@ -56,8 +56,8 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(10, 10, 5),
-    grid_noise=0.05,
+    subgrid_res=(200, 200, 20),
+    grid_noise=1.,
     photons_per_pixel=40000
 )
 
@@ -79,7 +79,8 @@ camera_params = amitibo.attrClass(
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 10), np.linspace(5., 45, 10))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 
-SUN_ANGLE = np.pi/4
+SUN_ANGLE = -np.pi/4
+REF_IMG_SCALE = 10.0**4
 
 profile = False
 
@@ -295,7 +296,7 @@ def master(particle_params, solver='ipopt'):
     )
 
 
-def slave(particle_params, cameras, ref_images):
+def slave(particle_params, camera_position, ref_img):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
@@ -306,7 +307,7 @@ def slave(particle_params, cameras, ref_images):
         SUN_ANGLE,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
-        camera_position=cameras[mpi_rank-1]
+        camera_position=camera_position
     )
     
     sts = MPI.Status()
@@ -326,9 +327,7 @@ def slave(particle_params, cameras, ref_images):
     
     cam.setA_air(A_air)
 
-    if ref_images:
-        ref_img = ref_images[mpi_rank-1]
-    else:
+    if ref_img is None:
         ref_img = cam.calcImage(
             A_aerosols=A_aerosols,
             particle_params=particle_params,
@@ -398,39 +397,16 @@ def main():
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Analyze atmosphere')
-    parser.add_argument('--cameras', help='path to cameras file')
     parser.add_argument('--ref_images', help='path to reference images')
     args = parser.parse_args()
     
     #
-    # Parse cameras center file
-    #
-    if args.cameras:
-        cameras = []
-        with open(os.path.abspath(args.cameras), 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                cameras.append(np.array([float(i) for i in line.strip().split()]))
-    else:
-        cameras = CAMERA_CENTERS
-
-    #
     # Load the reference images
     #
-    ref_images = []
+    folder_list = []
     if args.ref_images:
-        path, folder_name =  os.path.split(args.ref_images)
-        folder_list = glob.glob(os.path.join(path, "*"))
+        folder_list = glob.glob(os.path.join(args.ref_images, "*"))
          
-        for folder in folder_list:
-            img_path = os.path.join(folder, "RGB_MATRIX.mat")
-            try:
-                data = sio.loadmat(img_path)
-            except:
-                continue
-            
-            ref_images.append(data['Detector'])
-    
     #
     # Load the MISR database.
     #
@@ -446,7 +422,7 @@ def main():
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=5
+        visibility=100
         )
     
     if mpi_rank == 0:
@@ -455,7 +431,28 @@ def main():
         #
         master(particle_params, solver='bfgs')
     else:
-        slave(particle_params, cameras, ref_images)
+        if folder_list:
+            path = folder_list[mpi_rank-1]
+            img_path = os.path.join(path, "RGB_MATRIX.mat")
+            data = sio.loadmat(img_path)
+            
+            ref_img = data['Detector'] / REF_IMG_SCALE
+            
+            #
+            # Parse cameras center file
+            #
+            with open(os.path.join(path, 'params.txt'), 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts[0] == 'CameraPosition':
+                        camera_position = np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))/ 1000
+                        break
+        else:
+            camera_position = CAMERA_CENTERS[mpi_rank-1]
+            ref_img = None
+            
+        slave(particle_params, camera_position, ref_img)
 
 
 if __name__ == '__main__':

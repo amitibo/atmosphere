@@ -17,6 +17,7 @@ import time
 import socket
 import sys
 import argparse
+import glob
 
 
 #
@@ -135,17 +136,39 @@ if __name__ == '__main__':
     #
     parser = argparse.ArgumentParser(description='Simulate atmosphere')
     parser.add_argument('--cameras', help='path to cameras file')
+    parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--parallel', action='store_true', help='run the parallel mode')
     parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
     args = parser.parse_args()
     
-    
+    cameras = []
     if args.cameras:
-        cameras = []
+        #
+        # Get the camera positions from the camera positions file
+        #
+        
         with open(os.path.abspath(args.cameras), 'r') as f:
             lines = f.readlines()
             for line in lines:
                 cameras.append(np.array([float(i) for i in line.strip().split()]))
+                
+    elif args.ref_images:
+        #
+        # Get the camera positions from the ref images folders
+        #
+        
+        for path in glob.glob(os.path.join(args.ref_images, "*")):
+            #
+            # Parse cameras center file
+            #
+            with open(os.path.join(path, 'params.txt'), 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts[0] == 'CameraPosition':
+                        cameras.append(np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))/ 1000)
+                        break
+    
     else:
         cameras = CAMERA_CENTERS
         
@@ -163,7 +186,7 @@ if __name__ == '__main__':
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=5
+        visibility=100
         )
 
     if args.profile:
