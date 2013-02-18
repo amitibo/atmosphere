@@ -1,8 +1,7 @@
 """
 Visualize side by side the results of MC simulations and Single Scattering model.
-This GUI is useful when the MC and SS results are in separate folders.
-In the case of the MC, drag and drop one of the results folder, in the case of the single scattering
-drag and drop one of the images (image matrix).
+This GUI is useful when the MC results were used as reference to the SS scattering analysis.
+Just drag and drop one of the images into the GUI.
 The GUI enables browsing and comparing the results of different cameras and scaling separately
 the MC and single scattering results.
 """
@@ -20,7 +19,6 @@ from enthought.io.api import File
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import scipy.io as sio
-import scipy.ndimage as ndimage
 import numpy as np
 import amitibo
 import glob
@@ -145,14 +143,10 @@ class resultAnalayzer(HasTraits):
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
     tr_gamma_correction = Bool()
-    tr_DND_vadim = List(Instance(File))
-    tr_DND_amit = List(Instance(File))
+    tr_DND = List(Instance(File))
     tr_min = Int(0)
-    tr_vadim_len = Int(0)
-    tr_amit_len = Int(0)
-    tr_vadim_index = Range('tr_min', 'tr_vadim_len', 0, desc='Index of image in vadim list')
-    tr_amit_index = Range('tr_min', 'tr_amit_len', 0, desc='Index of image in amit list')
-    tr_sigma = Range(0.0, 3.0, 0.0, desc='Blur sigma of MC image')
+    tr_len = Int(0)
+    tr_index = Range('tr_min', 'tr_len', 0, desc='Index of image in amit list')
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
     tr_cross_plot1 = Instance(Plot)
@@ -174,11 +168,8 @@ class resultAnalayzer(HasTraits):
             Item('tr_relative_scaling', label='Relative Radiance Scaling'),
             Item('tr_sun_angle', label='Sun angle'),
             Item('tr_gamma_correction', label='Apply Gamma Correction'),
-            Item('tr_vadim_index', label='Index of Vadim'),
-            Item('tr_amit_index', label='Index of Amit'),
-            Item('tr_sigma', label='Blur Sigma'),
-            Item('tr_DND_vadim', label='Drag Vadim', editor=DropEditor()),
-            Item('tr_DND_amit', label='Drag Amit', editor=DropEditor()),
+            Item('tr_index', label='Image Index'),
+            Item('tr_DND', label='Drag Image here', editor=DropEditor()),
             Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
         handler=TC_Handler(),
@@ -195,10 +186,10 @@ class resultAnalayzer(HasTraits):
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._images_amit = [np.zeros((128, 128, 3), dtype=np.uint8)]
-        self._images_vadim = [np.zeros((128, 128, 3), dtype=np.uint8)]
+        self._ref_images = [np.zeros((128, 128, 3), dtype=np.uint8)]
+        self._final_images = [np.zeros((128, 128, 3), dtype=np.uint8)]
         
-        self.plotdata = ArrayPlotData(result_img1=np.zeros((128, 128, 3), dtype=np.uint8), results_img2=np.zeros((128, 128, 3), dtype=np.uint8))
+        self.plotdata = ArrayPlotData(result_img1=self._ref_images[0], results_img2=self._final_images[0])
         
         self.img_container1 = Plot(self.plotdata)
         img_plot = self.img_container1.img_plot('result_img1')[0]
@@ -247,23 +238,19 @@ class resultAnalayzer(HasTraits):
                                       overlay_position="top"))        
         
         
-    @on_trait_change('tr_sigma, tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_vadim_index, tr_amit_index')
+    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_index')
     def _updateImg(self):
         
         relative_scaling = [0, self.tr_relative_scaling]
-        h, w, d = self._images_amit[self.tr_amit_index].shape
+        h, w, d = self._ref_images[self.tr_index].shape
         
         self.plotdata.set_data('basex', np.arange(w))
         self.plotdata.set_data('basey', np.arange(h))
 
-        for i, img in enumerate((self._images_vadim[self.tr_vadim_index], self._images_amit[self.tr_amit_index])):
+        for i, img in enumerate((self._ref_images[self.tr_index], self._final_images[self.tr_index])):
             img = img * 10**self.tr_scaling * 10**relative_scaling[i]
             if self.tr_gamma_correction:
                 img**=0.4
-            
-            if i == 0 and self.tr_sigma > 0:
-                for j in range(3):
-                    img[:, :, j] = ndimage.filters.gaussian_filter(img[:, :, j], sigma=self.tr_sigma)
                 
             img_croped = img.copy()
             img_croped[img<0] = 0
@@ -273,52 +260,25 @@ class resultAnalayzer(HasTraits):
             self.plotdata.set_data('img%d_x' % (i+1), img[self.tr_cursor1.current_index[1], :, self.tr_channel])
             self.plotdata.set_data('img%d_y' % (i+1), img[:, self.tr_cursor1.current_index[0], self.tr_channel])
             
-    @on_trait_change('tr_DND_vadim')
-    def _updateDragNDrop1(self):
-        path = self.tr_DND_vadim[0].absolute_path
-         
-        path, folder_name =  os.path.split(path)
-        folder_list = glob.glob(os.path.join(path, "*"))
-        if not folder_list:
-            warning(info.ui.control, "No img found in the folder", "Warning")
-            return
-        
-        self._images_vadim = []
-        for folder in folder_list:
-            img_path = os.path.join(folder, "RGB_MATRIX.mat")
-            try:
-                data = sio.loadmat(img_path)
-            except:
-                continue
-            
-            self._images_vadim.append(data['Detector'])
-
-        self.tr_vadim_len = len(self._images_vadim) - 1
-        
-        self._updateImg()
-
-    @on_trait_change('tr_DND_amit')
-    def _updateDragNDrop2(self):
-        path = self.tr_DND_amit[0].absolute_path
+    @on_trait_change('tr_DND')
+    def _updateDragNDrop(self):
+        path = self.tr_DND[0].absolute_path
          
         path, file_name =  os.path.split(path)
-        file_pattern = re.search(r'(.*?)\d+.mat', file_name).groups()[0]
-        image_list = glob.glob(os.path.join(path, "%s*.mat" % file_pattern))
+        image_list = glob.glob(os.path.join(path, "ref_img*.mat"))
         if not image_list:
             warning(info.ui.control, "No img found in the folder", "Warning")
             return
         
-        self._images_amit = []
-        for i in range(0, len(image_list)+1):
-            img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
-            try:
+        self._ref_images = []
+        self._final_images = []
+        for i in range(0, len(image_list)):
+            for pattern, img_list in zip(('ref_img', 'final_img'), (self._ref_images, self._final_images)):
+                img_path = os.path.join(path, "%s%d.mat" % (pattern, i+1))
                 data = sio.loadmat(img_path)
-            except:
-                continue
-            
-            self._images_amit.append(data['img'])
+                img_list.append(data['img'])
 
-        self.tr_amit_len = len(self._images_amit) - 1
+        self.tr_len = len(self._ref_images) - 1
 
         self._updateImg()
         

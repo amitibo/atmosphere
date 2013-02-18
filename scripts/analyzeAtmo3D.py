@@ -8,6 +8,7 @@ from atmotomo import Camera
 from atmotomo import density_clouds1
 import atmotomo
 import scipy.io as sio
+import scipy.ndimage as ndimage
 import pickle
 import amitibo
 import itertools
@@ -398,6 +399,7 @@ def main():
     #
     parser = argparse.ArgumentParser(description='Analyze atmosphere')
     parser.add_argument('--ref_images', help='path to reference images')
+    parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     args = parser.parse_args()
     
     #
@@ -438,6 +440,11 @@ def main():
             
             ref_img = data['Detector'] / REF_IMG_SCALE
             
+            if args.sigma > 0.0:
+                for channel in range(ref_img.shape[2]):
+                    ref_img[:, :, channel] = \
+                        ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=args.sigma)
+                
             #
             # Parse cameras center file
             #
