@@ -13,7 +13,7 @@
  Sca_npf  = 0 ! AMIT - For some reason mcarats crashes without specifying a value here.
 /
 &mcarAtm_nml_init
- Atm_inpfile = 'base.atm' ! File name of an external file of 3-D atmospheric model
+ Atm_inpfile = {{ atmo_file_name }} ! File name of an external file of 3-D atmospheric model
  Atm_mfmt = 1     ! Flag for format (1=binary)
  Atm_np3d = 1     ! Number of scattering components in the 3-D distribution
  Atm_np1d = 1     ! Number of scattering components in the 1-D distribution

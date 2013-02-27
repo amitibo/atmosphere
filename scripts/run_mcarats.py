@@ -31,13 +31,14 @@ def loadGRADS(file_name):
     pass
 
 
-def createConfFile(file_name, tpl_env):
+def createConfFile(file_name, atmo_file_name, tpl_env):
 
     tpl = tpl_env.get_template(CONF_TEMPLATE_FILE_NAME)
     
     with open(file_name, 'w') as f:
         f.write(
             tpl.render(
+                atmo_file_name=os.path.split(atmo_file_name)[-1]
             )            
         )
         
@@ -50,7 +51,7 @@ def createAtmFile(file_name, shape, tpl_env):
     with open(ctl_file_name, 'w') as f:
         f.write(
             tpl.render(
-            file_name=file_name,
+            file_name=os.path.split(file_name)[-1],
             x_axis=shape[1],
             y_axis=shape[0],
             z_axis=shape[2]
@@ -66,12 +67,7 @@ def createAtmFile(file_name, shape, tpl_env):
     storeGRADS(file_name, tmpa3d, abst3d, extp3d, omgp3d, apfp3d)
     
 
-def calcExposure(file_name):
-    
-    os.system('bin_exposure')
-    
-    
-def main(photon_num=1e4, solver=SOLVER_F3D, ):
+def main(photon_num=1e4, solver=SOLVER_F3D):
     """Main doc"""
     
     #
@@ -98,7 +94,7 @@ def main(photon_num=1e4, solver=SOLVER_F3D, ):
         #
         # Prepare the init files
         #
-        createConfFile(file_name=conf_file_name, tpl_env=tpl_env)
+        createConfFile(file_name=conf_file_name, atmo_file_name=atmo_file_name, tpl_env=tpl_env)
         createAtmFile(file_name=atmo_file_name, shape=(50, 50, 41), tpl_env=tpl_env)
     
         #
