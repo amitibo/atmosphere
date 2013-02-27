@@ -1,0 +1,17 @@
+DSET ^{{ file_name }}
+*OPTIONS LITTLE_ENDIAN
+*OPTIONS BIG_ENDIAN
+OPTIONS template
+TITLE {{ file_name }}
+UNDEF 1.0e+37
+XDEF        {{ x_axis }} LINEAR 1 1
+YDEF        {{ y_axis }} LINEAR 1 1
+ZDEF        {{ z_axis }} LINEAR 1 1
+TDEF         1 LINEAR 00:00Z00JAN0001 1YR
+VARS         5
+tmpa3d {{ z_axis }} 99 Temperature perturbation (K)
+abst3d {{ z_axis }} 99 Absorption coefficient perturbation (/m)
+extp3d {{ z_axis }} 99 Extinction coefficient (/m)
+omgp3d {{ z_axis }} 99 Single scattering albedo
+apfp3d {{ z_axis }} 99 Phase function specification parameter
+ENDVARS

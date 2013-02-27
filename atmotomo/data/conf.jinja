@@ -1,0 +1,88 @@
+!--- Initializations ---
+
+&mcarWld_nml_init
+ Wld_mtarget = 2 ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
+ Wld_mverb  = 1  ! verbose mode (0=quiet, 1=yes, 2=more, 3=most(for bugfix))
+ Wld_mbswap = 0  ! Swap little-big endian (0=no swapping)
+ !Wld_jseed = 374506522
+ Wld_moptim = 2  ! Flag for optimization techniques (2=Standard optimization)
+ Wld_njob   = 1
+/
+&mcarSca_nml_init ! Scattering phase function tables
+ Sca_inpfile = ' '
+ Sca_npf  = 0 ! AMIT - For some reason mcarats crashes without specifying a value here.
+/
+&mcarAtm_nml_init
+ Atm_inpfile = 'base.atm' ! File name of an external file of 3-D atmospheric model
+ Atm_mfmt = 1     ! Flag for format (1=binary)
+ Atm_np3d = 1     ! Number of scattering components in the 3-D distribution
+ Atm_np1d = 1     ! Number of scattering components in the 1-D distribution
+ Atm_nx = 50      ! Grid X dimension
+ Atm_ny = 50      ! Grid Y dimension
+ Atm_nz =  41     ! Grid Z dimension
+ Atm_iz3l =  1    ! Starting Z index of 3-D distribution
+ Atm_nz3 =  41    ! Ending Z index of 3-D distribution
+ Atm_mtprof = 0   ! Flag for temperature profile (0=temp data are given for each layer)
+/
+&mcarSfc_nml_init
+ Sfc_inpfile = ' '
+ Sfc_nxb = 1      ! Number of X-pixels for the surface properties
+ Sfc_nyb = 1      ! Number of Y-pixels for the surface properties
+/
+&mcarSrc_nml_init
+ Src_nsrc = 1     ! Number of radiative sources
+/
+&mcarFlx_nml_init ! Flux density calculations
+/
+&mcarRad_nml_init
+ Rad_mrkind = 1   ! Kind of radiance calculated (1=Angular distribution of local radiances)
+ Rad_mplen = 0    ! Method for calculating pathlength statistics (0=No calculation of pathe length statistics)
+ Rad_mpmap = 1    ! Method of pixel mapping (1=rectangular)
+ Rad_nrad = 1     ! Number of radiance arrays calculated (corresponds to view locations)
+ Rad_nxr  = 640   ! Number of pixels along U coordinages
+ Rad_nyr  = 480   ! Number of pixels along V coordinages
+/
+&mcarVis_nml_init ! Method for volume rendering
+/
+&mcarPho_nml_init
+ Pho_iso_SS  = 1    ! The maximum scattering order at which photons are allowed to move in 3-D (used only when the partially-three-dimensional RT solver is used)
+ Pho_iso_tru = 0    ! Maximum order of collision for non-approximated TR simulation.
+ Pho_iso_max = 1000 ! Maximum order of scattering simulation
+/
+
+!--- A new job ---
+
+&mcarWld_nml_job
+ Wld_rmlcf = 100.0   ! Scale length for local-Collision Forcing
+/
+&mcarAtm_nml_job
+ Atm_idread = 1      ! Dataset #
+ Atm_dx = 1000       ! Cell size in meters
+ Atm_dy = 1000       ! Cell size in meters
+ Atm_zgrd0 =   0.000000E+00,  3.000000E+01,  6.000000E+01,  9.000000E+01,  1.200000E+02,  1.500000E+02,  1.800000E+02,  2.100000E+02,  2.300000E+02,  2.500000E+02,  2.600000E+02,  2.700000E+02,  2.800000E+02,  2.900000E+02,  3.000000E+02,  3.100000E+02,  3.200000E+02,  3.300000E+02,  3.400000E+02,  3.500000E+02,  3.600000E+02,  3.700000E+02,  3.800000E+02,  3.900000E+02,  4.000000E+02,  4.100000E+02,  4.200000E+02,  4.300000E+02,  4.400000E+02,  4.500000E+02,  4.600000E+02,  6.000000E+02,  1.000000E+03,  2.000000E+03,  3.000000E+03,  4.000000E+03,  6.000000E+03,  8.000000E+03,  1.000000E+04,  1.500000E+04,  2.000000E+04,  3.000000E+04,
+ Atm_wkd0 = 1.0      ! Weight coefficients of the correlated k-distribution (1=monochromatic)
+ 
+ Atm_tmp1d = 289.8373, 289.4140, 289.0836, 288.7714, 288.4681, 288.1688, 287.8713, 287.5797, 287.3877, 287.1964, 287.1017, 287.0117, 286.9299, 286.8552, 286.7851, 286.7181, 286.6534, 286.5898, 286.5269, 286.4650, 286.4034, 286.3411, 286.2814, 286.2371, 286.2323, 286.3112, 286.5654, 286.9951, 287.4651, 287.8364, 288.0257, 288.4250, 289.7000, 285.2000, 279.2000, 273.2000, 261.2000, 248.2000, 235.3000, 215.7000, 219.2000
+ Atm_ext1d =  4.98723E-06,  4.97600E-06,  4.96373E-06,  4.95129E-06,  4.93883E-06,  4.92627E-06,  4.91369E-06,  4.90315E-06,  4.89475E-06,  4.88841E-06,  4.88414E-06,  4.87976E-06,  4.87525E-06,  4.87065E-06,  4.86598E-06,  4.86127E-06,  4.85654E-06,  4.85179E-06,  4.84703E-06,  4.84227E-06,  4.83752E-06,  4.83275E-06,  4.82783E-06,  4.82246E-06,  4.81606E-06,  4.80749E-06,  4.79602E-06,  4.78279E-06,  4.77009E-06,  4.75975E-06,  4.71266E-06,  4.55768E-06,  4.22799E-06,  3.82096E-06,  3.45462E-06,  2.96221E-06,  2.39230E-06,  1.91492E-06,  1.23545E-06,  5.93121E-07,  1.95575E-07
+ Atm_omg1d = 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+ Atm_apf1d = 41*-1
+
+ Atm_abs1d = 1.31131E-07,  1.29144E-07,  1.31131E-07,  1.29144E-07,  1.31131E-07,  1.27157E-07,  1.27157E-07,  1.31130E-07,  1.30436E-07,  1.29911E-07,  1.29970E-07,  1.29990E-07,  1.30191E-07,  1.30102E-07,  1.30134E-07,  1.30180E-07,  1.30157E-07,  1.30059E-07,  1.29916E-07,  1.29869E-07,  1.29774E-07,  1.29761E-07,  1.29559E-07,  1.29140E-07,  1.27481E-07,  1.25349E-07,  1.24210E-07,  1.23527E-07,  1.23432E-07,  1.23466E-07,  1.28675E-07,  1.28004E-07,  1.26966E-07,  1.27801E-07,  1.31258E-07,  1.38898E-07,  1.54907E-07,  1.76819E-07,  3.18650E-07,  6.03011E-07,  6.64254E-07
+/
+&mcarSfc_nml_job
+ Sfc_mtype = 0        ! Type index of globally constant surface BRDF (0=black)
+/
+&mcarSrc_nml_job
+ Src_flx = 3.1415926  ! Solar source flux density
+ Src_qmax = 0.0       ! Full cone angle
+ Src_dwlen = 0.0      ! Wavelength band width
+ Src_mtype = 1        ! Flag for source type (1-solar sources)
+ Src_mphi = 0         ! Flag for random azimuth of source emission (0=No)
+ Src_the = 120.0      ! Source theta
+ Src_phi = 0.0        ! Source phi
+/
+&mcarRad_nml_job
+ Rad_the = 180.0   
+ Rad_phi = 0.0
+ Rad_zloc = 1.000000E+05
+/

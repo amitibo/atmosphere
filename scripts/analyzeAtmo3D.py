@@ -37,7 +37,7 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-MAX_ITERATIONS = 10000
+MAX_ITERATIONS = 4000
 
 #
 # Global settings
@@ -57,7 +57,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(200, 200, 20),
+    subgrid_res=(400, 400, 40),
     grid_noise=1.,
     photons_per_pixel=40000
 )
