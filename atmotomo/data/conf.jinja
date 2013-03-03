@@ -1,7 +1,7 @@
 !--- Initializations ---
 
 &mcarWld_nml_init
- Wld_mtarget = 2 ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
+ Wld_mtarget = 3 ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
  Wld_mverb  = 1  ! verbose mode (0=quiet, 1=yes, 2=more, 3=most(for bugfix))
  Wld_mbswap = 0  ! Swap little-big endian (0=no swapping)
  !Wld_jseed = 374506522
@@ -20,9 +20,10 @@
  Atm_nx = {{ x_axis }} ! Grid X dimension
  Atm_ny = {{ y_axis }} ! Grid Y dimension
  Atm_nz = {{ z_axis }} ! Grid Z dimension
- Atm_iz3l =  1    ! Starting Z index of 3-D distribution
- Atm_nz3 = {{ z_axis }} ! Ending Z index of 3-D distribution
+ Atm_iz3l = {{ iz3l }} ! Starting Z index of 3-D distribution
+ Atm_nz3 = {{ nz3 }}   ! Ending Z index of 3-D distribution
  Atm_mtprof = 0   ! Flag for temperature profile (0=temp data are given for each layer)
+ Atm_nkd = 1 ! Number of terms used in the k-distribution modeling of the gaseous absorbption (1=monochromatic)
 /
 &mcarSfc_nml_init
  Sfc_inpfile = ' '
@@ -43,6 +44,11 @@
  Rad_nyr  = {{ img_size }} ! Number of pixels along V coordinages
 /
 &mcarVis_nml_init ! Method for volume rendering
+ Vis_mrend  = 4     ! method for rendering (0/1/2/3/4)
+ Vis_epserr = 0.0001
+ Vis_fpsmth = 0.5
+ Vis_fatten = 1.0   ! attenuation factor (1 for physics-based rendering)
+ Vis_nqhem  = 1
 /
 &mcarPho_nml_init
  Pho_iso_SS  = 1    ! The maximum scattering order at which photons are allowed to move in 3-D (used only when the partially-three-dimensional RT solver is used)
@@ -72,15 +78,28 @@
 /
 &mcarSrc_nml_job
  Src_flx = 3.1415926  ! Solar source flux density
- Src_qmax = 0.0       ! Full cone angle
+ Src_qmax = 0.5       ! Full cone angle
+ Src_wlen = 10.0      ! Wavelength 
  Src_dwlen = 0.0      ! Wavelength band width
  Src_mtype = 1        ! Flag for source type (1-solar sources)
  Src_mphi = 0         ! Flag for random azimuth of source emission (0=No)
  Src_the = {{ sun_theta }} ! Source theta
  Src_phi = {{ sun_phi }} ! Source phi
+ Src_apsize = 0.5 ! aperture size
 /
 &mcarRad_nml_job
- Rad_the = 180.0   
- Rad_phi = 0.0
- Rad_zloc = 1.000000E+05
+ Rad_mrproj = 0
+ Rad_frmod = 0.33
+ Rad_xpos  = 5*0.45
+ Rad_ypos  = 5*0.5
+ Rad_zloc  = 95, 305, 655, 14050, 855
+ Rad_rmin0 = 5*10.0
+ Rad_rmax0 = 5*18000.0
+ Rad_the   = 90, 90, 105, 105, 105
+ Rad_phi   = 0, 0, 0, 0, 180
+ Rad_psi   = 5*270
+ Rad_umax  = 5*140
+ Rad_vmax  = 5*110
+ Rad_qmax  = 5*180.0
+ Rad_apsize = 5*0.1
 /

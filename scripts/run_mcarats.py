@@ -27,8 +27,38 @@ def storeGRADS(file_name, *params):
     stored_array.tofile(file_name)
     
     
-def loadGRADS(file_name):
-    pass
+def loadGRADS(file_name, dtype=np.float32):
+    """Load a grads file with a strict syntax as used by mcarats"""
+    
+    with open(file_name, 'r') as fin:
+        lines = fin.readlines()
+        
+    lines = [line.strip() for line in lines]
+    
+    dset_file = lines[0].split()[1][1:]
+    undef = float(lines[5].split()[1])
+    xdef, ydef, zdef, tdef, vars_num = [int(line.split()[1]) for line in lines[6:11]]
+    
+    vars_names = []
+    vars_z = []
+    for i in range(11, 11+vars_num):
+        parts = lines[i].split()
+        vars_names.append(parts[0])
+        vars_z.append(int(parts[1]))
+
+    dset_path = os.path.join(os.path.split(file_name)[0], dset_file)
+    values = np.fromfile(dset_path, dtype=dtype)
+    values[values==undef] = np.nan
+    
+    vars_dict = {}
+    start_i = 0
+    for name, z in zip(vars_names, vars_z):
+        size = xdef * ydef * z
+        end_i = start_i + size
+        vars_dict[name] = values[start_i:end_i].reshape(xdef, ydef, z).transpose((2, 1, 0))
+        start_i = end_i
+    
+    return vars_dict
 
 
 def arr2str(arr):
@@ -54,31 +84,48 @@ class Mcarats(object):
         self._ext1D = []
         self._omg1D = []
         self._apf1D = []
+        self._abs1D = []
         self._ext3D = []
         self._omg3D = []
         self._apf3D = []
+        self._abs3D = []
 
         self._sun_theta = 0.0
         self._sun_phi = 0.0
         
-    def setAtmosphereDims(self, shape, dx, dy, z_coords):
+    def setAtmosphereDims(self, shape, dx, dy, z_coords, iz3l=None, nz3=None):
         
         self._shape = shape
         self._dx = dx
         self._dy = dy
         self._z_coords = z_coords
+        
+        if iz3l == None:
+            self._iz3l = 1
+            self._nz3 = shape[2]
+        else:
+            self._iz3l = iz3l
+            self._nz3 = nz3
 
-    def add1Ddistribution(self, ext1d, omg1d, apf1d):
+    def add1Ddistribution(self, ext1d, omg1d, apf1d, abs1d=None):
         
         self._ext1D.append(ext1d)
         self._omg1D.append(omg1d)
         self._apf1D.append(apf1d)
-        
-    def add3Ddistribution(self, ext3d, omg3d, apf3d):
+        if abs1d == None:
+            self._abs1D.append(np.zeros_like(ext1d))
+        else:
+            self._abs1D.append(abs1d)
+
+    def add3Ddistribution(self, ext3d, omg3d, apf3d, abs3d=None):
         
         self._ext3D.append(ext3d)
         self._omg3D.append(omg3d)
         self._apf3D.append(apf3d)
+        if abs3d == None:
+            self._abs3D.append(np.zeros_like(ext3d))
+        else:
+            self._abs3D.append(abs3d)
 
     def setSolarSource(self, theta=0.0, phi=0.0):
         
@@ -104,6 +151,8 @@ class Mcarats(object):
                     x_axis=self._shape[0],
                     y_axis=self._shape[1],
                     z_axis=self._shape[2],
+                    iz3l=self._iz3l,
+                    nz3=self._nz3,
                     cameras_num=1,
                     img_size=self._camera_params.image_res,
                     dx=self._dx,
@@ -113,7 +162,7 @@ class Mcarats(object):
                     ext1d=arr2str(self._ext1D[0]),
                     omg1d=arr2str(self._omg1D[0]),
                     apf1d=arr2str(self._apf1D[0]),
-                    abs1d=arr2str(np.zeros_like(self._z_coords)),
+                    abs1d=arr2str(self._abs1D[0]),
                     sun_theta=self._sun_theta,
                     sun_phi=self._sun_phi
                 )            
@@ -143,7 +192,7 @@ class Mcarats(object):
         # apfp3d - Phase function specification parameter
         #
         tmpa3d = SEA_LEVEL_TEMP*np.ones(self._shape)
-        abst3d = np.zeros(self._shape)
+        abst3d = self._abs3D[0]
         extp3d = self._ext3D[0]
         omgp3d = self._omg3D[0]
         apfp3d = self._apf3D[0]
@@ -286,7 +335,7 @@ def main(photon_num=1e6, solver=SOLVER_F3D):
         apf3d=particle['g'][0]*np.ones_like(A_aerosols)
     )
     mc.addCamera(camera_params)
-    mc.setSolarSource(theta=30.0)
+    mc.setSolarSource(theta=120.0, phi=180.0)
     
     #
     # Run the test
@@ -296,6 +345,62 @@ def main(photon_num=1e6, solver=SOLVER_F3D):
     #
     # Show the results
     #
+    plt.imshow(img)
+    plt.gray()
+    plt.show()
+    
+    
+def main_0045(photon_num=1e6, solver=SOLVER_F3D):
+    """Main doc"""
+    
+    camera_params = amitibo.attrClass(
+        image_res=128
+    )
+    
+    dx = 30
+    dy = 30
+    z_coords = np.array((0.000000E+00,  3.000000E+01,  6.000000E+01,  9.000000E+01,  1.200000E+02,  1.500000E+02,  1.800000E+02,  2.100000E+02,  2.300000E+02,  2.500000E+02,  2.600000E+02,  2.700000E+02,  2.800000E+02,  2.900000E+02,  3.000000E+02,  3.100000E+02,  3.200000E+02,  3.300000E+02,  3.400000E+02,  3.500000E+02,  3.600000E+02,  3.700000E+02,  3.800000E+02,  3.900000E+02,  4.000000E+02,  4.100000E+02,  4.200000E+02,  4.300000E+02,  4.400000E+02,  4.500000E+02,  4.600000E+02,  6.000000E+02,  1.000000E+03,  2.000000E+03,  3.000000E+03,  4.000000E+03,  6.000000E+03,  8.000000E+03,  1.000000E+04,  1.500000E+04,  2.000000E+04,  3.000000E+04))
+    Atm_ext1d = np.array((2.45113E-05,  2.44561E-05,  2.43958E-05,  2.43346E-05,  2.42734E-05,  2.42117E-05,  2.41498E-05,  2.40980E-05,  2.40568E-05,  2.40256E-05,  2.40046E-05,  2.39831E-05,  2.39609E-05,  2.39383E-05,  2.39154E-05,  2.38922E-05,  2.38690E-05,  2.38456E-05,  2.38222E-05,  2.37988E-05,  2.37755E-05,  2.37520E-05,  2.37279E-05,  2.37015E-05,  2.36700E-05,  2.36279E-05,  2.35715E-05,  2.35065E-05,  2.34441E-05,  2.33933E-05,  2.31618E-05,  2.24001E-05,  2.07798E-05,  1.87793E-05,  1.69788E-05,  1.45587E-05,  1.17577E-05,  9.41149E-06,  6.07198E-06,  2.91507E-06,  9.61213E-07))
+    Atm_omg1d = np.array((1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, ))
+    Atm_apf1d = -Atm_omg1d
+    Atm_abs1d = np.array((7.94729E-09,  7.94729E-09,  7.94729E-09,  7.94729E-09,  7.94729E-09,  7.94729E-09,  7.94729E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  5.96045E-09,  5.96047E-09,  5.96047E-09,  8.51495E-09,  8.94071E-09,  8.94074E-09,  9.05995E-09,  9.35797E-09,  9.95407E-09,  1.11164E-08,  1.27258E-08,  2.29610E-08,  4.34327E-08,  4.78620E-08))
+    atm_file = getResourcePath('les05_0045.atm.ctl')
+    atm_dict = loadGRADS(atm_file)
+    
+    #
+    # Create the results folder
+    #
+    results_path = amitibo.createResultFolder()
+
+    #
+    # Create the test
+    #
+    mc = Mcarats(results_path)
+    mc.setAtmosphereDims(shape=(60, 60, 41), dx=dx, dy=dy, z_coords=z_coords, iz3l=10, nz3=21)
+    mc.add1Ddistribution(
+        ext1d=Atm_ext1d,
+        omg1d=Atm_omg1d,
+        apf1d=Atm_apf1d,
+        abs1d=Atm_abs1d
+    )
+    mc.add3Ddistribution(
+        ext3d=atm_dict['extp3d'],
+        omg3d=atm_dict['omgp3d'],
+        apf3d=atm_dict['apfp3d'],
+        abs3d=atm_dict['abst3d']
+    )
+    mc.addCamera(camera_params)
+    mc.setSolarSource(theta=120.0, phi=180.0)
+    
+    #
+    # Run the test
+    #
+    img = mc.run()
+    
+    #
+    # Show the results
+    #
+    plt.gray()
     plt.imshow(img)
     plt.show()
     
