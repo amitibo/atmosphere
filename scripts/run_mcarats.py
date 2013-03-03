@@ -142,7 +142,7 @@ class Mcarats(object):
         # omgp3d - Single scattering albedo
         # apfp3d - Phase function specification parameter
         #
-        tmpa3d = np.zeros(self._shape)
+        tmpa3d = SEA_LEVEL_TEMP*np.ones(self._shape)
         abst3d = np.zeros(self._shape)
         extp3d = self._ext3D[0]
         omgp3d = self._omg3D[0]
