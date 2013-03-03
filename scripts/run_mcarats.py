@@ -69,17 +69,16 @@ def arr2str(arr):
 
 class Mcarats(object):
     
-    def __init__(self, base_folder):
+    def __init__(self, base_folder, base_name='base'):
         #
         # Create the template environment
         #
         tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
         self._tpl_env = jinja2.Environment(loader=tpl_loader)
     
-        self._atmo_file_name = os.path.join(base_folder, 'base.atm')
-        self._conf_file_name = os.path.join(base_folder, 'conf_base')
-        self._out_file_name = os.path.join(base_folder, 'out')
-        self._img_file_name = os.path.join(base_folder, 'img')
+        self._atmo_file_name = os.path.join(base_folder, '%s.atm' % base_name)
+        self._conf_file_name = os.path.join(base_folder, '%s_conf' % base_name)
+        self._out_file_name = os.path.join(base_folder, '%s_out' % base_name)
 
         self._ext1D = []
         self._omg1D = []
@@ -211,18 +210,20 @@ class Mcarats(object):
         prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
         print prc_ret.stdout.read()
         prc_ret.wait()
-        
-    def _calcImgChannel(self):
+    
+    @staticmethod
+    def calcImg(out_file_names):
         """"""
         #
-        # Calculate exposure
+        # Calculate average exposure
         #
-        cmd = 'bin_exposure %(time_lag)d %(time_width)d %(fmax)g %(power)g %(ctl_file)s.ctl' % {
+        ctl_files = ' '.join(['%s.ctl' % ctl_file for ctl_file in out_file_names])
+        cmd = 'bin_exposure %(time_lag)d %(time_width)d %(fmax)g %(power)g %(ctl_files)s' % {
             'time_lag': 0,
             'time_width': 1,
             'fmax': 2,
             'power': 0.6,
-            'ctl_file': self._out_file_name
+            'ctl_files': ctl_files
         }
         print cmd
         prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
@@ -230,27 +231,30 @@ class Mcarats(object):
         print ret_txt
         Rmax = float(ret_txt.split('\n')[1].split()[1])
         print Rmax
-        
-        #
-        # Create gray image
-        #
-        cmd = 'bin_gray %(factor)g %(Rmax)g %(power)g %(ctl_file)s.ctl %(img_file)s' % {
-            'factor': COLOR_BALANCE[0],
-            'Rmax': Rmax,
-            'ctl_file': self._out_file_name,
-            'power': 0.6,
-            'img_file': self._img_file_name
-        }
-        print cmd
-        prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
 
-        ret_split = prc_ret.stdout.read().split()
-        img_width = int(ret_split[0])
-        img_height = int(ret_split[1])
-        gray_file_name = ret_split[3]
-        img = np.fromfile(gray_file_name, dtype=np.uint8).reshape((img_height, img_width))
+        imgs = []
+        for out_file_name in out_file_names:
+            #
+            # Create gray image
+            #
+            img_file_name = os.path.join(os.path.split(out_file_name)[0], 'img')
+            cmd = 'bin_gray %(factor)g %(Rmax)g %(power)g %(ctl_file)s.ctl %(img_file)s' % {
+                'factor': COLOR_BALANCE[0],
+                'Rmax': Rmax,
+                'ctl_file': out_file_name,
+                'power': 0.6,
+                'img_file': img_file_name
+            }
+            print cmd
+            prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
+    
+            ret_split = prc_ret.stdout.read().split()
+            img_width = int(ret_split[0])
+            img_height = int(ret_split[1])
+            gray_file_name = ret_split[3]
+            imgs.append(np.fromfile(gray_file_name, dtype=np.uint8).reshape((img_height, img_width)))
         
-        return img
+        return imgs
 
     def run(self, photon_num=1e4, solver=SOLVER_F3D):
         #
@@ -264,15 +268,10 @@ class Mcarats(object):
         #
         self._run_simulation(photon_num, solver)
         
-        #
-        # Create the channel image
-        #
-        img = self._calcImgChannel()
-        
-        return img
+        return self._out_file_name
          
     
-def main(photon_num=1e6, solver=SOLVER_F3D):
+def main(photon_num=1e7, solver=SOLVER_F3D):
     """Main doc"""
     
     #
@@ -303,7 +302,7 @@ def main(photon_num=1e6, solver=SOLVER_F3D):
     )
 
     camera_params = amitibo.attrClass(
-        image_res=128
+        image_res=512
     )
     
     A_air, A_aerosols, Y, X, Z, h = density_clouds1(atmosphere_params)
@@ -312,7 +311,7 @@ def main(photon_num=1e6, solver=SOLVER_F3D):
     dz = abs(Z[0, 0, 1] - Z[0, 0, 0])*1000
     z_coords = Z[0, 0, :]*1000
     z_coords = np.concatenate((z_coords, [z_coords[-1]+dz]))
-    e45, e55, e67 = calcAirMcarats(z_coords)
+    air_ext = calcAirMcarats(z_coords)
 
     #
     # Create the results folder
@@ -322,35 +321,38 @@ def main(photon_num=1e6, solver=SOLVER_F3D):
     #
     # Create the test
     #
-    mc = Mcarats(results_path)
-    mc.setAtmosphereDims(shape=A_aerosols.shape, dx=dx, dy=dy, z_coords=z_coords)
-    mc.add1Ddistribution(
-        ext1d=e45,
-        omg1d=np.ones_like(e45),
-        apf1d=-1*np.ones_like(e45)
-    )
-    mc.add3Ddistribution(
-        ext3d=particle['k'][0]*A_aerosols,
-        omg3d=particle['w'][0]*np.ones_like(A_aerosols),
-        apf3d=particle['g'][0]*np.ones_like(A_aerosols)
-    )
-    mc.addCamera(camera_params)
-    mc.setSolarSource(theta=120.0, phi=180.0)
+    out_files = []
+    for ch in range(3):
+        mc = Mcarats(results_path)
+        mc.setAtmosphereDims(shape=A_aerosols.shape, dx=dx, dy=dy, z_coords=z_coords)
+        mc.add1Ddistribution(
+            ext1d=air_ext[ch],
+            omg1d=np.ones_like(air_ext[ch]),
+            apf1d=-1*np.ones_like(air_ext[ch])
+        )
+        mc.add3Ddistribution(
+            ext3d=particle['k'][ch]*A_aerosols,
+            omg3d=particle['w'][ch]*np.ones_like(A_aerosols),
+            apf3d=particle['g'][ch]*np.ones_like(A_aerosols)
+        )
+        mc.addCamera(camera_params)
+        mc.setSolarSource(theta=120.0, phi=180.0)
+        
+        #
+        # Run the test
+        #
+        out_files.append(mc.run())
     
-    #
-    # Run the test
-    #
-    img = mc.run()
+    img = np.dstack(Mcarats.calcImg(out_files))
     
     #
     # Show the results
     #
     plt.imshow(img)
-    plt.gray()
     plt.show()
     
     
-def main_0045(photon_num=1e6, solver=SOLVER_F3D):
+def main_0045(photon_num=1e7, solver=SOLVER_F3D):
     """Main doc"""
     
     camera_params = amitibo.attrClass(
@@ -400,7 +402,6 @@ def main_0045(photon_num=1e6, solver=SOLVER_F3D):
     #
     # Show the results
     #
-    plt.gray()
     plt.imshow(img)
     plt.show()
     

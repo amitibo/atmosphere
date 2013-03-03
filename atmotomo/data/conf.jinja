@@ -88,18 +88,18 @@
  Src_apsize = 0.5 ! aperture size
 /
 &mcarRad_nml_job
- Rad_mrproj = 0
- Rad_frmod = 0.33
- Rad_xpos  = 5*0.45
- Rad_ypos  = 5*0.5
- Rad_zloc  = 95, 305, 655, 14050, 855
- Rad_rmin0 = 5*10.0
- Rad_rmax0 = 5*18000.0
- Rad_the   = 90, 90, 105, 105, 105
- Rad_phi   = 0, 0, 0, 0, 180
- Rad_psi   = 5*270
- Rad_umax  = 5*140
- Rad_vmax  = 5*110
- Rad_qmax  = 5*180.0
- Rad_apsize = 5*0.1
+ Rad_mrproj = 0     ! Flag for angular weighting, when radiances are averaged over solid angle (0=simply averaged, 1=cosQ where Q is angle from camera center)
+ Rad_frmod = 0.33   ! Factor for mode distance between emission and camera (used only when Rad_mrkind=1)
+ Rad_xpos  = 0.45   ! Relative x position of the camera.
+ Rad_ypos  = 0.5    ! Relative y position of the camera.
+ Rad_zloc  = 95     ! Absolute z position of the camera [m]
+ Rad_rmin0 = 10.0   ! Minimum distance between emission point and detector
+ Rad_rmax0 = 18000.0 ! Maximum distance between emission point and detector
+ Rad_the   = 0       !  Theta
+ Rad_phi   = 0
+ Rad_psi   = 270
+ Rad_umax  = 140
+ Rad_vmax  = 110
+ Rad_qmax  = 180.0
+ Rad_apsize = 0.1
 /
