@@ -31,7 +31,7 @@ import numpy as np
 import itertools
 import pkg_resources
 
-__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath"]
+__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath", "getMisrDB"]
 
 #
 # Some globals
@@ -52,6 +52,19 @@ def getResourcePath(name):
     return pkg_resources.resource_filename(__name__, "data/%s" % name)
     
 
+def getMisrDB():
+    """
+    Return a dict with the records of the MISR particles.
+    """
+    
+    import pickle
+    
+    with open(getResourcePath('misr.pkl'), 'rb') as f:
+        misr = pickle.load(f)
+    
+    return misr
+
+    
 def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z', title='3D Visualization'):
 
     import mayavi.mlab as mlab

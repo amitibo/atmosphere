@@ -4,7 +4,7 @@
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
-from atmotomo import RGB_WAVELENGTH, getResourcePath, density_clouds1, calcAirMcarats, Mcarats, SOLVER_F3D
+from atmotomo import RGB_WAVELENGTH, getResourcePath, getMisrDB, density_clouds1, calcAirMcarats, Mcarats, SOLVER_F3D
 import amitibo
 import os
 
@@ -12,16 +12,7 @@ import os
 def main(photon_num=1e7, solver=SOLVER_F3D):
     """Main doc"""
     
-    #
-    # Load the MISR database.
-    #
-    import pickle
-    
-    with open(getResourcePath('misr.pkl'), 'rb') as f:
-        misr = pickle.load(f)
-    
-    particles_list = misr.keys()
-    particle = misr['spherical_nonabsorbing_2.80']
+    particle = getMisrDB()['spherical_nonabsorbing_2.80']
 
     #
     # Simulation parameters
