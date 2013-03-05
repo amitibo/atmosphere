@@ -12,9 +12,13 @@ __all__ = ["storeGRADS", "loadGRADS", "Mcarats", "SOLVER_F3D"]
 
 GRADS_TEMPLATE_FILE_NAME = 'grads.jinja'
 CONF_TEMPLATE_FILE_NAME = 'conf.jinja'
+CAMERA_TEMPLATE_FILE_NAME = 'camera.jinja'
 SOLVER_F3D = 0
 COLOR_BALANCE = (1.28, 1.0, 0.8)
 SEA_LEVEL_TEMP = 290
+MCARATS_BIN = 'mcarats'
+MCARATS_MPI_BIN = 'mcarats_mpi'
+
 
 def storeGRADS(file_name, *params):
     
@@ -66,9 +70,35 @@ def arr2str(arr):
     return val
 
 
+class BaseData(object):
+    def __init__(self, template_path, tpl_env):
+        self._tpl = tpl_env.get_template(template_path)
+        self._data = {}
+    
+    def _appendDataField(self, field_name, value):
+        if not field_name in self._data.keys():
+            self._data[field_name] = []
+        self._data[field_name].append(value)
+    
+    def addData(self, **kwrds):
+        for k, v in kwrds.items():
+            self._appendDataField(k ,v)
+            
+    def render(self):
+        
+        data = {}
+        for k, v in self._data.items():
+            if isinstance(v, list) or isinstance(v, tuple) or isinstance(v, np.ndarray):
+                data[k] = arr2str(v)
+            else:
+                data[k] = v
+                
+        return self._tpl.render(data)
+       
+
 class Mcarats(object):
     
-    def __init__(self, base_folder, base_name='base'):
+    def __init__(self, base_folder, base_name='base', use_mpi=True):
         #
         # Create the template environment
         #
@@ -79,20 +109,42 @@ class Mcarats(object):
         self._conf_file_name = os.path.join(base_folder, '%s_conf' % base_name)
         self._out_file_name = os.path.join(base_folder, '%s_out' % base_name)
 
+        self._tmp1D = []
         self._ext1D = []
         self._omg1D = []
         self._apf1D = []
         self._abs1D = []
+        
         self._tmp3D = []
         self._ext3D = []
         self._omg3D = []
         self._apf3D = []
         self._abs3D = []
 
+        self._camera_data = BaseData(CAMERA_TEMPLATE_FILE_NAME, self._tpl_env)
+        self._camera_num = 0
+        
         self._sun_theta = 0.0
         self._sun_phi = 0.0
         
-    def setAtmosphereDims(self, shape, dx, dy, z_coords, tmp_prof=0, iz3l=None, nz3=None):
+        if use_mpi:
+            self._mcarats_bin = MCARATS_MPI_BIN
+        else:
+            self._mcarats_bin = MCARATS_BIN
+            
+    def configure(
+        self,
+        shape,
+        dx,
+        dy,
+        z_coords,
+        tmp_prof=0,
+        iz3l=None,
+        nz3=None,
+        img_width=512,
+        img_height=512
+        ):
+        """Configure the simulation"""
         
         self._shape = shape
         self._dx = dx
@@ -107,17 +159,26 @@ class Mcarats(object):
             self._iz3l = iz3l
             self._nz3 = nz3
 
-    def add1Ddistribution(self, ext1d, omg1d, apf1d, abs1d=None):
+        self._img_width = img_width
+        self._img_height = img_height
+        
+    def add1Ddistribution(self, ext1d, omg1d, apf1d, tmp1d=None, abs1d=None):
+        """Add a 1D distribution"""
         
         self._ext1D.append(ext1d)
         self._omg1D.append(omg1d)
         self._apf1D.append(apf1d)
+        if tmp1d == None:
+            self._tmp1D.append(SEA_LEVEL_TEMP*np.ones_like(self._z_coords))
+        else:
+            self._tmp1D.append(tmp1d)
         if abs1d == None:
             self._abs1D.append(np.zeros_like(ext1d))
         else:
             self._abs1D.append(abs1d)
 
     def add3Ddistribution(self, ext3d, omg3d, apf3d, tmp3d=None, abs3d=None):
+        """Add a 3D distribution"""
         
         self._ext3D.append(ext3d)
         self._omg3D.append(omg3d)
@@ -132,13 +193,71 @@ class Mcarats(object):
             self._abs3D.append(abs3d)
 
     def setSolarSource(self, theta=0.0, phi=0.0):
+        """Set the sun source"""
         
         self._sun_theta = theta
         self._sun_phi = phi
         
-    def addCamera(self, camera_params):
+    def addCamera(
+        self,
+        xpos,
+        ypos,
+        zloc,
+        rmin0=10.0,
+        rmax0=18000.0,
+        theta=0.0,
+        phi=0.0,
+        psi=0.0,
+        umax=180,
+        vmax=180,
+        qmax=180,
+        apsize=0.1
+        ):
+        """
+        Add a camera to the simulation
+
+        Parameters
+        ----------
+        xpos, ypos : float 
+            Relative position of the camera in the x, y axes (in the range 0.0-1.0)
         
-        self._camera_params = camera_params
+        zloc : float
+            Location of the camera in the z axis (in meters)
+
+        rmin0, rmax0 : float
+            Minimum and maximum distance between emission and camera (in meters)
+        
+         theta, phi, psi : float
+            Rotation angles of the camera (in degrees)
+        
+        umax, vmax : float
+            Maximum angles of projection image coordinates (in degress)
+        
+        qmax : float
+            Maximum FOV cone angle (in degress)
+        
+        apsize : float
+            Diameter of the camera lens (in meters)
+            
+        Returns
+        -------
+        """
+        
+        self._camera_data.addData(
+            xpos=xpos,
+            ypos=ypos,
+            zloc=zloc,
+            rmin0=rmin0,
+            rmax0=rmax0,
+            theta=theta,
+            phi=phi,
+            psi=psi,
+            umax=umax,
+            vmax=vmax,
+            qmax=qmax,
+            apsize=apsize
+        )
+        self._camera_num += 1
         
     def _createConfFile(self):
         """Create the configuration file for the simulation"""
@@ -157,16 +276,15 @@ class Mcarats(object):
                     z_axis=self._shape[2],
                     iz3l=self._iz3l,
                     nz3=self._nz3,
-                    cameras_num=1,
-                    img_x=self._camera_params.img_x,
-                    img_y=self._camera_params.img_y,
-                    camera_theta=self._camera_params.theta,
-                    camera_phi=self._camera_params.phi,
+                    cameras_num=self._camera_num,
+                    img_x=self._img_width,
+                    img_y=self._img_height,
+                    Rad_job=self._camera_data.render(),
                     dx=self._dx,
                     dy=self._dy,
                     z_coords=arr2str(self._z_coords),
                     tmp_prof=self._tmp_prof,
-                    tmp1d=arr2str(SEA_LEVEL_TEMP*np.ones_like(self._z_coords)),
+                    tmp1d=arr2str(self._tmp1D[0]),
                     ext1d=arr2str(self._ext1D[0]),
                     omg1d=arr2str(self._omg1D[0]),
                     apf1d=arr2str(self._apf1D[0]),
@@ -216,7 +334,8 @@ class Mcarats(object):
     def _run_simulation(self, photon_num, solver):
         """Run the simulation"""
         
-        cmd = 'mcarats %(photon_num)d %(solver)d %(conf_file)s %(output_file)s' % {
+        cmd = '%(mcarats_bin)s %(photon_num)d %(solver)d %(conf_file)s %(output_file)s' % {
+            'mcarats_bin': self._mcarats_bin,
             'photon_num': photon_num,
             'solver': solver,
             'conf_file': self._conf_file_name,
@@ -228,12 +347,12 @@ class Mcarats(object):
         prc_ret.wait()
     
     @staticmethod
-    def calcImg(out_file_names, time_lag=0, time_width=1, fmax=2, power=0.6):
+    def calcRGBImg(Rout_path, Gout_path, Bout_path, time_lag=0, time_width=1, fmax=2, power=0.6):
         """"""
         #
         # Calculate average exposure
         #
-        ctl_files = ' '.join(['%s.ctl' % ctl_file for ctl_file in out_file_names])
+        ctl_files = ' '.join(['%s.ctl' % ctl_file for ctl_file in (Rout_path, Gout_path, Bout_path)])
         cmd = 'bin_exposure %(time_lag)d %(time_width)d %(fmax)g %(power)g %(ctl_files)s' % {
             'time_lag': time_lag,
             'time_width': time_width,
@@ -248,8 +367,8 @@ class Mcarats(object):
         Rmax = float(ret_txt.split('\n')[1].split()[1])
         print Rmax
 
-        imgs = []
-        for out_file_name in out_file_names:
+        imgs_matrix = []
+        for out_file_name in (Rout_path, Gout_path, Bout_path):
             #
             # Create gray image
             #
@@ -264,15 +383,37 @@ class Mcarats(object):
             print cmd
             prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
     
+            imgs = []
             ret_split = prc_ret.stdout.read().split()
-            img_width = int(ret_split[0])
-            img_height = int(ret_split[1])
-            gray_file_name = ret_split[3]
-            imgs.append(np.fromfile(gray_file_name, dtype=np.uint8).reshape((img_height, img_width)))
+            for w, h, file_name in zip(ret_split[::4], ret_split[1::4], ret_split[3::4]):
+                imgs.append(np.fromfile(file_name, dtype=np.uint8).reshape((int(h), int(w))))
         
-        return imgs
+            imgs_matrix.append(imgs)
+        
+        RGB_imgs = []
+        for r, g, b in zip(*imgs_matrix):
+            RGB_imgs.append(np.dstack((r, g, b)))
+            
+        return RGB_imgs
 
     def run(self, photon_num, solver=SOLVER_F3D):
+        """
+        Run the mcarats model.
+        
+        Parameters
+        ----------
+        photon_num : int
+            Number of photons to use
+            
+        solver : int, optional(default=SOLVER_F3D)
+            Type of solver to use for the monte carlo simulation
+
+        Returns:
+        --------
+        out_file_name : str
+            Path to the output of the simulation
+        """
+        
         #
         # Prepare the init files
         #

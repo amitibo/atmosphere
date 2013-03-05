@@ -9,15 +9,8 @@ import amitibo
 import os
 
 
-def main(photon_num=1e10, solver=SOLVER_F3D):
+def main(photon_num=1e4, solver=SOLVER_F3D):
     """Main doc"""
-    
-    camera_params = amitibo.attrClass(
-        img_x=400,
-        img_y=300,
-        theta=0,
-        phi=0
-    )
     
     Atm_ext1d = []
     Atm_abs1d = []
@@ -50,7 +43,15 @@ def main(photon_num=1e10, solver=SOLVER_F3D):
     out_files = []
     for ch in range(3):
         mc = Mcarats(results_path, base_name='base%d'%ch)
-        mc.setAtmosphereDims(shape=(60, 60, 41), dx=dx, dy=dy, z_coords=z_coords, iz3l=10, nz3=21, tmp_prof=0)
+        mc.configure(
+            shape=(60, 60, 41),
+            dx=dx,
+            dy=dy,
+            z_coords=z_coords,
+            iz3l=10,
+            nz3=21,
+            tmp_prof=0
+        )
         mc.add1Ddistribution(
             ext1d=Atm_ext1d[ch],
             omg1d=Atm_omg1d,
@@ -64,7 +65,14 @@ def main(photon_num=1e10, solver=SOLVER_F3D):
             apf3d=atm_dict['apfp3d'],
             abs3d=atm_dict['abst3d']
         )
-        mc.addCamera(camera_params)
+        mc.addCamera(
+            xpos=0.5,
+            ypos=0.5,
+            zloc=95,
+            theta=90,
+            phi=0,
+            psi=270,
+        )
         mc.setSolarSource(theta=120.0, phi=180.0)
         
         #

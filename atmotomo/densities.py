@@ -111,7 +111,7 @@ def calcAirMcarats(Z):
     e55 = fitExp(Z, z_mid, ext_0055)
     e67 = fitExp(Z, z_mid, ext_0067)
     
-    return (e45, e55, e67)
+    return (e67, e55, e45)
 
 
 def main():

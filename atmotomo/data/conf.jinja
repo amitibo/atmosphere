@@ -1,8 +1,8 @@
 !--- Initializations ---
 
 &mcarWld_nml_init
- Wld_mtarget = 3 ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
- Wld_mverb  = 1  ! verbose mode (0=quiet, 1=yes, 2=more, 3=most(for bugfix))
+ Wld_mtarget = 2 ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
+ Wld_mverb  = 3  ! verbose mode (0=quiet, 1=yes, 2=more, 3=most(for bugfix))
  Wld_mbswap = 0  ! Swap little-big endian (0=no swapping)
  !Wld_jseed = 374506522
  Wld_moptim = 2  ! Flag for optimization techniques (2=Standard optimization)
@@ -52,7 +52,7 @@
 /
 &mcarPho_nml_init
  Pho_iso_SS  = 1    ! The maximum scattering order at which photons are allowed to move in 3-D (used only when the partially-three-dimensional RT solver is used)
- Pho_iso_tru = 0    ! Maximum order of collision for non-approximated TR simulation.
+ Pho_iso_tru = 1000 ! Maximum order of collision for non-approximated TR simulation.
  Pho_iso_max = 1000 ! Maximum order of scattering simulation
 /
 
@@ -87,19 +87,4 @@
  Src_phi = {{ sun_phi }} ! Source phi
  Src_apsize = 0.5 ! aperture size
 /
-&mcarRad_nml_job
- Rad_mrproj = 0     ! Flag for angular weighting, when radiances are averaged over solid angle (0=simply averaged, 1=cosQ where Q is angle from camera center)
- Rad_frmod = 0.33   ! Factor for mode distance between emission and camera (used only when Rad_mrkind=1)
- Rad_xpos  = 0.45   ! Relative x position of the camera.
- Rad_ypos  = 0.5    ! Relative y position of the camera.
- Rad_zloc  = 95     ! Absolute z position of the camera [m]
- Rad_rmin0 = 10.0   ! Minimum distance between emission point and detector
- Rad_rmax0 = 18000.0 ! Maximum distance between emission point and detector
- Rad_the   = {{ camera_theta }} !  Theta
- Rad_phi   = {{ camera_phi }} 
- Rad_psi   = 270
- Rad_umax  = 140
- Rad_vmax  = 110
- Rad_qmax  = 180.0
- Rad_apsize = 0.1
-/
+{{ Rad_job }}

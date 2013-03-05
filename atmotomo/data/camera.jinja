@@ -1,0 +1,16 @@
+&mcarRad_nml_job
+ Rad_mrproj = 0     ! Flag for angular weighting, when radiances are averaged over solid angle (0=simply averaged, 1=cosQ where Q is angle from camera center)
+ Rad_frmod = 0.33   ! Factor for mode distance between emission and camera (used only when Rad_mrkind=1)
+ Rad_xpos  = {{ xpos }}   ! Relative x position of the camera.
+ Rad_ypos  = {{ ypos }}    ! Relative y position of the camera.
+ Rad_zloc  = {{ zloc }}     ! Absolute z position of the camera [m]
+ Rad_rmin0 = {{ rmin0 }}   ! Minimum distance between emission point and detector
+ Rad_rmax0 = {{ rmax0 }} ! Maximum distance between emission point and detector
+ Rad_the   = {{ theta }} !  Theta
+ Rad_phi   = {{ phi }} 
+ Rad_psi   = {{ psi }}
+ Rad_umax  = {{ umax }}
+ Rad_vmax  = {{ vmax }}
+ Rad_qmax  = {{ qmax }}
+ Rad_apsize = {{ apsize }}
+/
