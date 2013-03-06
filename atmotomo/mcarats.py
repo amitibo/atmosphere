@@ -293,7 +293,9 @@ class Mcarats(object):
                     sun_phi=self._sun_phi
                 )            
             )
-            
+        
+        return self._conf_file_name
+    
     def _createAtmFile(self):
         """Create the atmosphere file"""
         
@@ -331,20 +333,42 @@ class Mcarats(object):
         
         storeGRADS(self._atmo_file_name, tmpa3d, abst3d, extp3d, omgp3d, apfp3d)
 
-    def _run_simulation(self, photon_num, solver):
-        """Run the simulation"""
+    def runSimulation(self, photon_num, solver=SOLVER_F3D, conf_file_name=None, out_file_name=None):
+        """
+        Run the mcarats model.
         
+        Parameters
+        ----------
+        photon_num : int
+            Number of photons to use
+            
+        solver : int, optional(default=SOLVER_F3D)
+            Type of solver to use for the monte carlo simulation
+
+        Returns:
+        --------
+        out_file_name : str
+            Path to the output of the simulation
+        """
+        
+        if conf_file_name == None:
+            conf_file_name = self._conf_file_name
+        if out_file_name == None:
+            out_file_name = self._out_file_name
+            
         cmd = '%(mcarats_bin)s %(photon_num)d %(solver)d %(conf_file)s %(output_file)s' % {
             'mcarats_bin': self._mcarats_bin,
             'photon_num': photon_num,
             'solver': solver,
-            'conf_file': self._conf_file_name,
-            'output_file': self._out_file_name
+            'conf_file': conf_file_name,
+            'output_file': out_file_name
         }
         print cmd
         prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
         print prc_ret.stdout.read()
         prc_ret.wait()
+    
+        return out_file_name
     
     @staticmethod
     def calcRGBImg(Rout_path, Gout_path, Bout_path, time_lag=0, time_width=1, fmax=2, power=0.6):
@@ -384,7 +408,14 @@ class Mcarats(object):
             prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
     
             imgs = []
-            ret_split = prc_ret.stdout.read().split()
+            out = prc_ret.stdout.read()
+            
+            #
+            # Ugly hack in case the command breaks line in the middle of an image path
+            #
+            out = ''.join([s[1:] if s[0] == ' ' else s for s in out.strip().split('\n')])
+            
+            ret_split = out.split()
             for w, h, file_name in zip(ret_split[::4], ret_split[1::4], ret_split[3::4]):
                 imgs.append(np.fromfile(file_name, dtype=np.uint8).reshape((int(h), int(w))))
         
@@ -396,37 +427,19 @@ class Mcarats(object):
             
         return RGB_imgs
 
-    def run(self, photon_num, solver=SOLVER_F3D):
+    def prepareSimulation(self):
         """
-        Run the mcarats model.
-        
-        Parameters
-        ----------
-        photon_num : int
-            Number of photons to use
-            
-        solver : int, optional(default=SOLVER_F3D)
-            Type of solver to use for the monte carlo simulation
-
-        Returns:
-        --------
-        out_file_name : str
-            Path to the output of the simulation
+        Create the configuration files needed for the simulation run.
         """
         
         #
         # Prepare the init files
         #
-        self._createConfFile()
+        conf_file = self._createConfFile()
         self._createAtmFile()
 
-        #
-        # Run the simulation
-        #
-        self._run_simulation(photon_num, solver)
-        
-        return self._out_file_name
-         
+        return conf_file
+    
     
 if __name__ == '__main__':
     pass
