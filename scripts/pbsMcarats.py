@@ -68,12 +68,12 @@ def prepareSimulationFiles(results_path):
             apf1d=-1*np.ones_like(air_ext[ch])
         )
         mc.add3Ddistribution(
-            ext3d=particle['k'][2-ch]*A_aerosols * 10**-12*1000*1000*100,
+            ext3d=particle['k'][2-ch]*A_aerosols * 10**-12*1000*1000*100/100,
             omg3d=particle['w'][2-ch]*np.ones_like(A_aerosols),
             apf3d=particle['g'][2-ch]*np.ones_like(A_aerosols)
         )
         
-        for xpos, ypos in itertools.product(np.arange(0.0, 1.0, 0.3), np.arange(0.0, 1.0, 0.3)):
+        for xpos, ypos in itertools.product(np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10)):
             mc.addCamera(
                 xpos=xpos,
                 ypos=ypos,
@@ -99,7 +99,7 @@ def qsub(pbs_tpl, results_path, conf_file, out_file):
     prc_ret = sub.Popen('qsub', shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
     pbs_script = pbs_tpl.render(
         queue_name='minerva_h_p',
-        M=3,
+        M=4,
         N=12,
         work_directory='$HOME/code/atmosphere',
         cmd='$HOME/.local/bin/mcarats_mpi',
