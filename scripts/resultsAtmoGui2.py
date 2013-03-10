@@ -201,7 +201,7 @@ class resultAnalayzer(HasTraits):
         )                
         img_plot.overlays.append(self.tr_cursor1)
         self.tr_cursor1.current_position = 64, 64
-        self.img_container1.overlays.append(PlotLabel("Multiple-Scattering",
+        self.img_container1.overlays.append(PlotLabel("Monte-Carlo Simulations",
                                       component=self.img_container1,
                                       font = "swiss 16",
                                       overlay_position="top"))        
@@ -222,7 +222,7 @@ class resultAnalayzer(HasTraits):
         plots[1].line_style = 'dot'
         legend = Legend(component=self.tr_cross_plot1, padding=5, align="ur")
         legend.tools.append(LegendTool(legend, drag_button="right"))
-        legend.plots = dict(zip(('Multi', 'Single'), plots))
+        legend.plots = dict(zip(('MC', 'Single'), plots))
         self.tr_cross_plot1.overlays.append(legend)
         self.tr_cross_plot1.overlays.append(PlotLabel("X section",
                                       component=self.tr_cross_plot1,

@@ -7,9 +7,21 @@ import numpy as np
 import scipy.io as sio
 import mayavi.mlab as mlab
 import matplotlib.pyplot as plt
+from atmotomo import single_cloud_vadim
 import argparse
 import amitibo
 
+
+atmosphere_params = amitibo.attrClass(
+    cartesian_grids=(
+        slice(0, 50, 1.0), # Y
+        slice(0, 50, 1.0), # X
+        slice(0, 10, 0.1)   # H
+        ),
+    earth_radius=4000,
+    air_typical_h=8,
+    aerosols_typical_h=2
+)
 
 def main():
     """Main doc """
@@ -30,35 +42,37 @@ def main():
     # This comes from out use of A:
     # exp(-A / visibility * length) = exp(-k * N * length)
     #
-    ratio = 1e15 / 50 / 0.00072
-    radiance_true = data['true'] * ratio
+    ratio = 1 / 50 / 0.00072
     radiance_estim = data['estimated'] * ratio
     
     #
     # Remove negative values from the estimation
     #
-    radiance_estim[radiance_estim<0] = 0
+    radiance_estim[:3, :, :] = 0
+    radiance_estim[:, :3, :] = 0    
     
-    X, Y, Z = np.mgrid[0:50:1.0, 0:50:1.0, 0:10.0:0.1]
+    #
+    # Create the distributions
+    #
+    A_air, radiance_true, Y, X, H, h = single_cloud_vadim(atmosphere_params)
+    radiance_true = radiance_true[::-1, :, :] * ratio
     
-    radiance_estim[radiance_estim/1e15 > 16] = 16
-    
-    amitibo.viz3D(X, Y, Z, radiance_true/1e15, title='Original')
-    amitibo.viz3D(X, Y, Z, radiance_estim/1e15, title='Estimated',)
+    amitibo.viz3D(Y, X, H, radiance_true, title='Monte Carlo')
+    amitibo.viz3D(Y, X, H, radiance_estim, title='Estimated',)
     
     error_per_particle = np.sum(np.abs(radiance_estim - radiance_true)) / np.sum(radiance_true)
     print 'Absolute error normalized to num of particles:', error_per_particle
     error_per_voxel = np.sum(np.abs(radiance_estim - radiance_true)) / radiance_true.size
     print 'Absolute error normalized to num of particles:', error_per_voxel
     
-    #mlab.show()
+    mlab.show()
     
-    plt.figure(figsize=(8, 2))
-    plt.plot(np.log(data['objective']))
-    plt.title('Objective vs Iteration')
-    plt.ylabel('log of objective')
-    plt.xlabel('iteration')
-    plt.show()
+    #plt.figure(figsize=(8, 2))
+    #plt.plot(np.log(data['objective']))
+    #plt.title('Objective vs Iteration')
+    #plt.ylabel('log of objective')
+    #plt.xlabel('iteration')
+    #plt.show()
 
 if __name__ == '__main__':
     main()

@@ -60,7 +60,9 @@ def main():
             'scripts/pbsMcarats.py',
             'scripts/analyzeAtmo3D.py',
             'scripts/resultsAtmoGui.py',
-            'scripts/resultsAtmoDualGui.py'
+            'scripts/resultsAtmoGui2.py',
+            'scripts/resultsAtmoDualGui.py',
+            'scripts/radianceAtmoGui.py'
         ]
         )
 
