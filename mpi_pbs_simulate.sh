@@ -45,6 +45,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 96  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_images $HOME/data/Low_Density
+mpirun -np 96  python $HOME/.local/bin/simulateAtmo3D.py --parallel --cameras
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

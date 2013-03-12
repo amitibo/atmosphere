@@ -18,7 +18,7 @@ SENDMAIL = "/usr/sbin/sendmail" # sendmail location
 PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 
 
-def prepareSimulationFiles(results_path):
+def prepareSimulationFiles(results_path, cameras_position, img_size, target):
     """Main doc"""
     
     particle = getMisrDB()['spherical_nonabsorbing_2.80']
@@ -58,9 +58,10 @@ def prepareSimulationFiles(results_path):
             dx=dx,
             dy=dy,
             z_coords=z_coords,
+            target=target,
             tmp_prof=0,
-            img_width=512,
-            img_height=512
+            img_width=img_size,
+            img_height=img_size
         )
         mc.add1Ddistribution(
             ext1d=air_ext[ch],
@@ -73,7 +74,7 @@ def prepareSimulationFiles(results_path):
             apf3d=particle['g'][2-ch]*np.ones_like(A_aerosols)
         )
         
-        for xpos, ypos in itertools.product(np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10)):
+        for xpos, ypos, zloc in cameras_position:
             mc.addCamera(
                 xpos=xpos,
                 ypos=ypos,
@@ -83,7 +84,7 @@ def prepareSimulationFiles(results_path):
                 psi=270,
             )
             
-        mc.setSolarSource(theta=120.0, phi=180.0)
+        mc.setSolarSource(theta=120.0, phi=90.0)
         
         #
         # Store the configuration files
@@ -93,7 +94,7 @@ def prepareSimulationFiles(results_path):
     return conf_files
 
 
-def qsub(pbs_tpl, results_path, conf_file, out_file):
+def qsub(pbs_tpl, results_path, conf_file, out_file, photons_num):
     """Submit a job"""
     
     prc_ret = sub.Popen('qsub', shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
@@ -103,7 +104,7 @@ def qsub(pbs_tpl, results_path, conf_file, out_file):
         N=12,
         work_directory='$HOME/code/atmosphere',
         cmd='$HOME/.local/bin/mcarats_mpi',
-        params='1e9 0 %s %s' % (conf_file, out_file)
+        params='%d 0 %s %s' % (photons_num, conf_file, out_file)
     )
     prc_ret.stdin.write(pbs_script)
     prc_ret.stdin.close()
@@ -130,6 +131,25 @@ def qstat(id):
 def main():
     """Main doc """
     
+    parser = argparse.ArgumentParser(description='Simulate atmosphere using MCARaTS on the tamnun cluster')
+    parser.add_argument('--cameras', action='store_true', help='load the cameras from the cameras file')
+    parser.add_argument('--photons', type=int, default=1e9, help='Number of photos to simulate (default=1e9).')
+    parser.add_argument('--img_size', type=int, default=128, help='Image size, used for width and height (default=128).')
+    parser.add_argument('--target', type=int, choices=range(2,4), default=2, help='Target mode 2=radiance, 3=volume rendering. (default=2).')
+    args = parser.parse_args()
+    
+    cameras_position = []
+    if args.cameras:
+        #
+        # Get the camera positions from the camera positions file
+        #
+        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                cameras_position.append(np.array([float(i) for i in line.strip().split()]))
+    else:
+        cameras_position = itertools.product(np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10), [0])
+        
     #
     # Create template loader
     #
@@ -145,7 +165,12 @@ def main():
     #
     # Create the different atmosphere data for the different channels.
     #
-    conf_files = prepareSimulationFiles(results_path)
+    conf_files = prepareSimulationFiles(
+        results_path,
+        cameras_position=cameras_position,
+        img_size=args.img_size,
+        target=args.target
+    )
     out_files = ['%s_out' % name for name in conf_files]
     
     #
@@ -153,7 +178,15 @@ def main():
     #
     jobs_id = []
     for conf_file, out_file in zip(conf_files, out_files):
-        jobs_id.append(qsub(pbs_tpl, results_path, conf_file, out_file))
+        jobs_id.append(
+            qsub(
+                pbs_tpl,
+                results_path,
+                conf_file, 
+                out_file,
+                photons_num=args.photons
+            )
+        )
         
     #
     # Sleep-Wait checking the status of the jobs

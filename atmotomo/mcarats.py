@@ -138,14 +138,50 @@ class Mcarats(object):
         dx,
         dy,
         z_coords,
+        target=2,
         tmp_prof=0,
         iz3l=None,
         nz3=None,
-        img_width=512,
-        img_height=512
+        img_width=128,
+        img_height=128
         ):
-        """Configure the simulation"""
+        """
+        Configure the MCARaTS simulation
+
+        Parameters
+        ----------
+        shape : (int, int, int)
+            Atmosphere grid shape.
         
+        dx, dy : float
+            Voxel size in the X, Y axes (in meters)
+            
+        z_coords : array
+            z layers locations (in meters)
+
+        target : {2, 3} optional (default=2)
+            Target mode (2=radiance, 3=volume rendering)
+        
+        tmp_prof : {0, 1} optional (default=0)
+             Flag for temperature profile (0=temp data are given for each layer)
+        
+        iz3l : int, optional (default=None)
+            Starting Z index of 3-D distribution (None=first index)
+        
+        nz3 : int, optional (default=None)
+            Ending Z index of 3-D distribution (None=Last index)
+        
+        img_width : int, optional (default=128)
+            Width of image.
+            
+        img_height : int, optional (default=128)
+            Width of image.
+            
+        Returns
+        -------
+        """
+
+        self._target = target
         self._shape = shape
         self._dx = dx
         self._dy = dy
@@ -270,6 +306,7 @@ class Mcarats(object):
         with open(self._conf_file_name, 'w') as f:
             f.write(
                 tpl.render(
+                    target=self._target,
                     atmo_file_name=os.path.split(self._atmo_file_name)[-1],
                     x_axis=self._shape[0],
                     y_axis=self._shape[1],

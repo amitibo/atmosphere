@@ -38,7 +38,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(200, 200, 20),
+    subgrid_res=(400, 400, 40),
     grid_noise=1.,
     photons_per_pixel=40000
 )
@@ -46,6 +46,8 @@ camera_params = amitibo.attrClass(
 camera_position = np.array((9.507, 22.8159, 0.084431))
 SUN_ANGLE = -np.pi/4
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
+
+VISIBILITY = 100
 
 profile = False
     
@@ -135,7 +137,7 @@ if __name__ == '__main__':
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Simulate atmosphere')
-    parser.add_argument('--cameras', help='path to cameras file')
+    parser.add_argument('--cameras', action='store_true', help='load the cameras from the cameras file')
     parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--parallel', action='store_true', help='run the parallel mode')
     parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
@@ -146,8 +148,7 @@ if __name__ == '__main__':
         #
         # Get the camera positions from the camera positions file
         #
-        
-        with open(os.path.abspath(args.cameras), 'r') as f:
+        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
             lines = f.readlines()
             for line in lines:
                 cameras.append(np.array([float(i) for i in line.strip().split()]))
@@ -186,7 +187,7 @@ if __name__ == '__main__':
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
         g_RGB=(particle['g']),
-        visibility=100
+        visibility=VISIBILITY
         )
 
     if args.profile:
