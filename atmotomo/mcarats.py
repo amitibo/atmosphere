@@ -371,12 +371,41 @@ class Mcarats(object):
         return out_file_name
     
     @staticmethod
-    def calcRGBImg(Rout_path, Gout_path, Bout_path, time_lag=0, time_width=1, fmax=2, power=0.6):
-        """"""
-        #
-        # Calculate average exposure
-        #
-        ctl_files = ' '.join(['%s.ctl' % ctl_file for ctl_file in (Rout_path, Gout_path, Bout_path)])
+    def calcExposure(out_paths, time_lag=0, time_width=1, fmax=1.2, power=0.6):
+        """
+        Calculate the average exposure for a set of output radiance files (of the MCARaTS bin).
+
+        Parameters
+        ----------
+        out_paths : list of str 
+            Paths to the radiance output files.
+        
+        time_lag : integer, optional (default=0)
+            The time lag is useful to realistically simulate that real optical instrument
+            and human eyes adjust their aperture size with a time delay.
+
+        time_width : integer, optional (default=1)
+            Temporal filter width (integer, 1 means no filtering).
+        
+        fmax : float, optional (default=1.2)
+            Factor for automatic determination of Rmax (usually around 1.2), used for
+            eliminating the sun hot spots from the calculation of the exposure
+        
+        power : float, optional (default=0.6)
+            Scaling exponent for nonliner conversion
+        
+        Returns
+        -------
+        
+        Rmax_txt : str
+            Recommended exposure data, in the text form returned by the bin_exposure utility..
+            
+        Rmaxs : array
+            Recommended exposure data, which can be used as Rmax values input for bin_gray utility.
+        
+        """
+        
+        ctl_files = ' '.join(['%s.ctl' % ctl_file for ctl_file in out_paths])
         cmd = 'bin_exposure %(time_lag)d %(time_width)d %(fmax)g %(power)g %(ctl_files)s' % {
             'time_lag': time_lag,
             'time_width': time_width,
@@ -387,10 +416,52 @@ class Mcarats(object):
         print cmd
         prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
         ret_txt = prc_ret.stdout.read()
-        print ret_txt
-        Rmax = float(ret_txt.split('\n')[1].split()[1])
-        print Rmax
+        Rmaxs = []
+        for line in ret_txt.split('\n')[1::2]:
+            Rmaxs.append(float(line.split()[1]))
 
+        return ret_txt, np.array(Rmaxs)
+    
+    @staticmethod
+    def calcRGBImg(Rout_path, Gout_path, Bout_path, time_lag=0, time_width=1, fmax=2, power=0.6):
+        """
+        Calculate the average exposure for a set of output radiance files (of the MCARaTS bin).
+
+        Parameters
+        ----------
+        Rout_path, Gout_path, Bout_path : list of str 
+            Paths to the radiance output files relating to the Red, Green and Blue channels
+            respectively.
+        
+        time_lag : integer, optional (default=0)
+            The time lag is useful to realistically simulate that real optical instrument
+            and human eyes adjust their aperture size with a time delay.
+
+        time_width : integer, optional (default=1)
+            Temporal filter width (integer, 1 means no filtering).
+        
+        fmax : float, optional (default=1.2)
+            Factor for automatic determination of Rmax (usually around 1.2), used for
+            eliminating the sun hot spots from the calculation of the exposure
+        
+        power : float, optional (default=0.6)
+            Scaling exponent for nonliner conversion.
+        
+        Returns
+        -------
+        
+        Images : List of arrays.
+             List of RGB images.
+        
+        """
+        
+        Rmax_txt, Rmaxs = Mcarats.calcExposure(
+            (Rout_path, Gout_path, Bout_path),
+            time_lag=time_lag,
+            time_width=time_width,
+            fmax=fmax, power=power
+        )
+        
         imgs_matrix = []
         for out_file_name in (Rout_path, Gout_path, Bout_path):
             #
@@ -399,7 +470,7 @@ class Mcarats(object):
             img_file_name = os.path.join(os.path.split(out_file_name)[0], 'img')
             cmd = 'bin_gray %(factor)g %(Rmax)g %(power)g %(ctl_file)s.ctl %(img_file)s' % {
                 'factor': COLOR_BALANCE[0],
-                'Rmax': Rmax,
+                'Rmax': 0,
                 'ctl_file': out_file_name,
                 'power': power,
                 'img_file': img_file_name
@@ -408,6 +479,7 @@ class Mcarats(object):
             prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
     
             imgs = []
+            prc_ret.stdin.write(Rmax_txt)
             out = prc_ret.stdout.read()
             
             #
