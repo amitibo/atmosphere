@@ -17,8 +17,10 @@ SLEEP_PERIOD = 10
 SENDMAIL = "/usr/sbin/sendmail" # sendmail location
 PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 
+ATMOSPHERE_WIDTH = 50
+ATMOSPHERE_HEIGHT = 10
 
-def prepareSimulationFiles(results_path, cameras_position, img_size, target):
+def prepareSimulationFiles(results_path, cameras_file, img_size, target):
     """Main doc"""
     
     particle = getMisrDB()['spherical_nonabsorbing_2.80']
@@ -28,9 +30,9 @@ def prepareSimulationFiles(results_path, cameras_position, img_size, target):
     #
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 50, 1.0), # Y
-            slice(0, 50, 1.0), # X
-            slice(0, 10, 0.1)   # H
+            slice(0, ATMOSPHERE_WIDTH, 1.0), # Y
+            slice(0, ATMOSPHERE_WIDTH, 1.0), # X
+            slice(0, ATMOSPHERE_HEIGHT, 0.1)   # H
             ),
         earth_radius=4000,
         RGB_WAVELENGTH=RGB_WAVELENGTH,
@@ -47,6 +49,28 @@ def prepareSimulationFiles(results_path, cameras_position, img_size, target):
     z_coords = np.concatenate((z_coords, [z_coords[-1]+dz]))
     air_ext = calcAirMcarats(z_coords)
 
+    #
+    # Calculate the cameras position
+    #
+    cameras_position = []
+    if cameras_file:
+        #
+        # Get the camera positions from the camera positions file
+        # Note:
+        # -----
+        # The pos_ratio is used for converting the position [km] to ratio (in x, y)
+        # and height [in meters]
+        #
+        pos_ratio = np.array((1/ATMOSPHERE_WIDTH, 1/ATMOSPHERE_WIDTH, 1000))
+        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                cameras_position.append(
+                    np.array([float(i) for i in line.strip().split()])*pos_ratio
+                    )
+    else:
+        cameras_position = itertools.product(np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10), [0])
+        
     #
     # Create the test
     #
@@ -132,24 +156,12 @@ def main():
     """Main doc """
     
     parser = argparse.ArgumentParser(description='Simulate atmosphere using MCARaTS on the tamnun cluster')
-    parser.add_argument('--cameras', action='store_true', help='load the cameras from the cameras file')
+    parser.add_argument('--cameras_file', action='store_true', help='load the cameras from the cameras file')
     parser.add_argument('--photons', type=int, default=1e9, help='Number of photos to simulate (default=1e9).')
     parser.add_argument('--img_size', type=int, default=128, help='Image size, used for width and height (default=128).')
     parser.add_argument('--target', type=int, choices=range(2,4), default=2, help='Target mode 2=radiance, 3=volume rendering. (default=2).')
     args = parser.parse_args()
     
-    cameras_position = []
-    if args.cameras:
-        #
-        # Get the camera positions from the camera positions file
-        #
-        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                cameras_position.append(np.array([float(i) for i in line.strip().split()]))
-    else:
-        cameras_position = itertools.product(np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10), [0])
-        
     #
     # Create template loader
     #
@@ -167,7 +179,7 @@ def main():
     #
     conf_files = prepareSimulationFiles(
         results_path,
-        cameras_position=cameras_position,
+        cameras_file=args.cameras_file,
         img_size=args.img_size,
         target=args.target
     )

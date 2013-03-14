@@ -6,7 +6,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
-from atmotomo import density_clouds1, density_clouds_vadim
+from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats
 import atmotomo
 import amitibo
 import scipy.io as sio
@@ -38,7 +38,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(400, 400, 40),
+    subgrid_res=(800, 800, 80),
     grid_noise=1.,
     photons_per_pixel=40000
 )
@@ -47,7 +47,7 @@ camera_position = np.array((9.507, 22.8159, 0.084431))
 SUN_ANGLE = -np.pi/4
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
 
-VISIBILITY = 100
+VISIBILITY = 200
 
 profile = False
     
@@ -84,7 +84,9 @@ def parallel(particle_params, cameras):
         camera_position=cameras[comm.rank]
     )
     
-    cam.setA_air(A_air)
+    z_coords = H[0, 0, :]*1000
+    air_exts = calcAirMcarats(z_coords)
+    cam.set_air_extinction(air_exts)
     
     #
     # Calculating the image

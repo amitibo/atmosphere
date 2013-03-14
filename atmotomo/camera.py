@@ -47,7 +47,8 @@ class Camera(object):
         assert camera_orientation==None, "orientation not implemented yet"
         
         Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-
+        self._shape = H.shape
+        
         #
         # Calculate the distance matrices and scattering angle
         #
@@ -83,6 +84,7 @@ class Camera(object):
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
         self.A_air_ = np.empty(1)
+        self._air_exts = ()
         
     def save(self, path):
         import scipy.io as sio
@@ -121,6 +123,20 @@ class Camera(object):
         """Store the air distribution"""
         
         self.A_air_ = A_air.reshape((-1, 1))
+        air_ext_coef = [1.09e-3 * lambda_**-4.05 * self.A_air_ for lambda_ in self.atmosphere_params.RGB_WAVELENGTH]
+        self.preCalcAir(air_ext_coef)
+        
+    def set_air_extinction(self, air_exts):
+        """Set the air extinction of the three color channels"""
+        
+        air_ext_coef = [np.tile(air_ext.reshape((1, 1, -1)), (self._shape[0], self._shape[1], 1)).reshape((-1, 1)) for air_ext in air_exts]
+        self.preCalcAir(air_ext_coef)
+        
+    def preCalcAir(self, air_ext_coefs):
+        """Precalculate the air extinction and scattering"""
+        
+        self._air_exts = [np.exp(-self.H_distances * air_ext_coef) for air_ext_coef in air_ext_coefs]
+        self._air_scat = [(3 / (16*np.pi) * ((1 + self.mu**2) * air_ext_coef)) for air_ext_coef in air_ext_coefs]
         
     def calcImage(self, A_aerosols, particle_params, add_noise=False):
         """Calculate the image for a given aerosols distribution"""
@@ -128,17 +144,15 @@ class Camera(object):
         A_aerosols_ = A_aerosols.reshape((-1, 1))
         
         #
-        # Precalcuate the air scattering and attenuation
+        # Precalcuate the aerosols
         #
-        scatter_air_pre = 3 / (16*np.pi) * ((1 + self.mu**2) * self.A_air_)
-        exp_air_pre = self.H_distances * self.A_air_
-        
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         img = []
-        for L_sun, lambda_, k, w, g in zip(
+        for L_sun, scatter_air, exp_air, k, w, g in zip(
                 self.atmosphere_params.L_SUN_RGB,
-                self.atmosphere_params.RGB_WAVELENGTH,
+                self._air_scat,
+                self._air_exts,
                 particle_params.k_RGB,
                 particle_params.w_RGB,
                 particle_params.g_RGB
@@ -149,13 +163,6 @@ class Camera(object):
             extinction_aerosols = k / particle_params.visibility
             scatter_aerosols = w * extinction_aerosols * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
             exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
-            
-            #
-            # Calculate scattering and extiniction for air
-            #
-            extinction_air = 1.09e-3 * lambda_**-4.05
-            scatter_air = extinction_air * scatter_air_pre
-            exp_air = np.exp(-extinction_air * exp_air_pre)
             
             #
             # Calculate the radiance
@@ -189,17 +196,15 @@ class Camera(object):
         A_aerosols_ = A_aerosols.reshape((-1, 1))
         
         #
-        # Precalcuate the air scattering and attenuation
+        # Precalcuate the aerosols
         #
-        scatter_air_pre = 3 / (16*np.pi) * ((1 + self.mu**2) * self.A_air_)
-        exp_air_pre = self.H_distances * self.A_air_
-        
         exp_aerosols_pre = self.H_distances * A_aerosols_
 
         gimg = []
-        for i, (L_sun, lambda_, k, w, g) in enumerate(zip(
+        for i, (L_sun, scatter_air, exp_air, k, w, g) in enumerate(zip(
             self.atmosphere_params.L_SUN_RGB,
-            self.atmosphere_params.RGB_WAVELENGTH,
+            self._air_scat,
+            self._air_exts,
             particle_params.k_RGB,
             particle_params.w_RGB,
             particle_params.g_RGB
@@ -211,13 +216,6 @@ class Camera(object):
             extinction_aerosols = k / particle_params.visibility
             scatter_aerosols =  w * extinction_aerosols * (A_aerosols_ * P_aerosols)
             exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
-            
-            #
-            # Calculate scattering and extiniction for air
-            #
-            extinction_air = 1.09e-3 * lambda_**-4.05
-            scatter_air = extinction_air * scatter_air_pre
-            exp_air = np.exp(-extinction_air * exp_air_pre)
             
             ##
             ## Calculate the gradient of the radiance
