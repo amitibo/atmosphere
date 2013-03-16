@@ -20,6 +20,10 @@ PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 ATMOSPHERE_WIDTH = 50
 ATMOSPHERE_HEIGHT = 10
 
+KM_TO_METERS = 1000
+VISIBILITY = 100 * KM_TO_METERS
+
+
 def prepareSimulationFiles(results_path, cameras_file, img_size, target):
     """Main doc"""
     
@@ -74,6 +78,8 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
     #
     # Create the test
     #
+    k_RGB=np.array(particle['k']) / np.max(np.array(particle['k']))
+    
     conf_files = []
     for ch in range(3):
         mc = Mcarats(results_path, base_name='base%d'%ch, use_mpi=True)
@@ -93,9 +99,9 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
             apf1d=-1*np.ones_like(air_ext[ch])
         )
         mc.add3Ddistribution(
-            ext3d=particle['k'][2-ch]*A_aerosols * 10**-12*1000*1000*100/100,
-            omg3d=particle['w'][2-ch]*np.ones_like(A_aerosols),
-            apf3d=particle['g'][2-ch]*np.ones_like(A_aerosols)
+            ext3d=k_RGB[ch]*A_aerosols / VISIBILITY,
+            omg3d=particle['w'][ch]*np.ones_like(A_aerosols),
+            apf3d=particle['g'][ch]*np.ones_like(A_aerosols)
         )
         
         for xpos, ypos, zloc in cameras_position:

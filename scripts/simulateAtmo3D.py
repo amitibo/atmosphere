@@ -47,7 +47,7 @@ camera_position = np.array((9.507, 22.8159, 0.084431))
 SUN_ANGLE = -np.pi/4
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
 
-VISIBILITY = 200
+VISIBILITY = 100
 
 profile = False
     
