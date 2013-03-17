@@ -65,7 +65,7 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
         # The pos_ratio is used for converting the position [km] to ratio (in x, y)
         # and height [in meters]
         #
-        pos_ratio = np.array((1/ATMOSPHERE_WIDTH, 1/ATMOSPHERE_WIDTH, 1000))
+        pos_ratio = np.array((KM_TO_METERS/ATMOSPHERE_WIDTH, KM_TO_METERS/ATMOSPHERE_WIDTH, KM_TO_METERS))
         with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
             lines = f.readlines()
             for line in lines:
