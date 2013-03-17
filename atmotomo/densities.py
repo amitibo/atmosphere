@@ -26,8 +26,8 @@ def density_front(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X)**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
-    A_mask[Z1<4**2] = 1
+    Z1 = (X/8000)**2 + ((Y-width/2)/30000)**2 + (H-height/2)**2
+    A_mask[Z1<4000**2] = 1
     A_aerosols *= A_mask
     
     return A_air, A_aerosols, Y, X, H, h
@@ -52,10 +52,10 @@ def density_clouds1(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
-    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z1<3**2] = 1
-    A_mask[Z2<4**2] = 1
+    Z1 = ((X-width/3)/4000)**2 + ((Y-width/3)/4000)**2 + ((H-height/2)/2828)**2
+    Z2 = ((X-width*2/3)/4000)**2 + ((Y-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    A_mask[Z1<3000**2] = 1
+    A_mask[Z2<4000**2] = 1
     A_aerosols *= A_mask
 
     return A_air, A_aerosols, Y, X, H, h
@@ -80,10 +80,10 @@ def density_clouds_vadim(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (-Y+width*2/3)**2/16 + (X-width/3)**2/16 + (H-height/2)**2*8
-    Z2 = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z1<3**2] = 1
-    A_mask[Z2<4**2] = 1
+    Z1 = ((-Y+width*2/3)/4000)**2 + ((X-width/3)/4000)**2 + ((H-height/2)/2828)**2
+    Z2 = ((-Y+width/3)/4000)**2 + ((X-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    A_mask[Z1<3000**2] = 1
+    A_mask[Z2<4000**2] = 1
     A_aerosols *= A_mask
 
     return A_air, A_aerosols, Y, X, H, h
@@ -108,8 +108,8 @@ def single_cloud_vadim(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z<4**2] = 1
+    Z = ((-Y+width/3)/4000)**2 + ((X-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    A_mask[Z<4000**2] = 1
     A_aerosols *= A_mask
 
     return A_air, A_aerosols, Y, X, H, h
@@ -148,13 +148,13 @@ def main():
     
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, 50, 1.0), # Y
-            slice(0, 50, 1.0), # X
-            slice(0, 10, 0.1)   # H
+            slice(0, 50000, 1000.0), # Y
+            slice(0, 50000, 1000.0), # X
+            slice(0, 10000, 100.0)   # H
             ),
-        earth_radius=4000,
-        air_typical_h=8,
-        aerosols_typical_h=2
+        earth_radius=4000000,
+        air_typical_h=8000,
+        aerosols_typical_h=2000
     )
 
     A_air, A_aerosols1, Y, X, H, h = density_clouds1(atmosphere_params)

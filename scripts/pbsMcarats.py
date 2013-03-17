@@ -17,8 +17,8 @@ SLEEP_PERIOD = 10
 SENDMAIL = "/usr/sbin/sendmail" # sendmail location
 PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 
-ATMOSPHERE_WIDTH = 50
-ATMOSPHERE_HEIGHT = 10
+ATMOSPHERE_WIDTH = 50000
+ATMOSPHERE_HEIGHT = 10000
 
 KM_TO_METERS = 1000
 VISIBILITY = 100 * KM_TO_METERS
@@ -34,22 +34,22 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
     #
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=(
-            slice(0, ATMOSPHERE_WIDTH, 1.0), # Y
-            slice(0, ATMOSPHERE_WIDTH, 1.0), # X
-            slice(0, ATMOSPHERE_HEIGHT, 0.1)   # H
+            slice(0, ATMOSPHERE_WIDTH, 1000.0), # Y
+            slice(0, ATMOSPHERE_WIDTH, 1000.0), # X
+            slice(0, ATMOSPHERE_HEIGHT, 100.)   # H
             ),
-        earth_radius=4000,
+        earth_radius=4000000,
         RGB_WAVELENGTH=RGB_WAVELENGTH,
-        air_typical_h=8,
-        aerosols_typical_h=2,
+        air_typical_h=8000,
+        aerosols_typical_h=2000,
         sun_angle=30
     )
 
     A_air, A_aerosols, Y, X, Z, h = density_clouds1(atmosphere_params)
-    dx = abs(X[0, 1, 0] - X[0, 0, 0])*1000
-    dy = abs(Y[1, 0, 0] - Y[0, 0, 0])*1000
-    dz = abs(Z[0, 0, 1] - Z[0, 0, 0])*1000
-    z_coords = Z[0, 0, :]*1000
+    dx = abs(X[0, 1, 0] - X[0, 0, 0])
+    dy = abs(Y[1, 0, 0] - Y[0, 0, 0])
+    dz = abs(Z[0, 0, 1] - Z[0, 0, 0])
+    z_coords = Z[0, 0, :]
     z_coords = np.concatenate((z_coords, [z_coords[-1]+dz]))
     air_ext = calcAirMcarats(z_coords)
 

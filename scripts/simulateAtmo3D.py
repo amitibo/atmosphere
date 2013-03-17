@@ -25,15 +25,15 @@ import glob
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50, 1.0), # Y
-        slice(0, 50, 1.0), # X
-        slice(0, 10, 0.1)   # H
+        slice(0, 50000, 1000.0), # Y
+        slice(0, 50000, 1000.0), # X
+        slice(0, 10000, 100.0)   # H
         ),
-    earth_radius=4000,
+    earth_radius=4000000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
-    air_typical_h=8,
-    aerosols_typical_h=2
+    air_typical_h=8000,
+    aerosols_typical_h=2000
 )
 
 camera_params = amitibo.attrClass(
@@ -43,12 +43,12 @@ camera_params = amitibo.attrClass(
     photons_per_pixel=40000
 )
 
-camera_position = np.array((9.507, 22.8159, 0.084431))
+camera_position = np.array((9507, 22815.9, 84.431))
 SUN_ANGLE = -np.pi/4
-CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 5), np.linspace(5., 45, 5))]
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5000., 45000, 5), np.linspace(5000., 45000, 5))]
 
-VISIBILITY = 100
-
+VISIBILITY = 100000
+KM_TO_METER = 1000
 profile = False
     
 
@@ -84,7 +84,7 @@ def parallel(particle_params, cameras):
         camera_position=cameras[comm.rank]
     )
     
-    z_coords = H[0, 0, :]*1000
+    z_coords = H[0, 0, :]
     air_exts = calcAirMcarats(z_coords)
     cam.set_air_extinction(air_exts)
     
@@ -153,7 +153,7 @@ if __name__ == '__main__':
         with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
             lines = f.readlines()
             for line in lines:
-                cameras.append(np.array([float(i) for i in line.strip().split()]))
+                cameras.append(np.array([float(i) for i in line.strip().split()])*KM_TO_METER)
                 
     elif args.ref_images:
         #
@@ -169,7 +169,7 @@ if __name__ == '__main__':
                 for line in lines:
                     parts = line.strip().split()
                     if parts[0] == 'CameraPosition':
-                        cameras.append(np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))/ 1000)
+                        cameras.append(np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3]))))
                         break
     
     else:
