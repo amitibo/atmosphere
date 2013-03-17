@@ -309,7 +309,7 @@ class resultAnalayzer(HasTraits):
         path = self.tr_DND_mcarats[0].absolute_path
 
         R_ch, G_ch, B_ch = [np.fromfile(os.path.join(path, 'base%d_conf_out' % i), dtype=np.float32) for i in range(3)]
-        IMG_SHAPE = (512, 512)
+        IMG_SHAPE = (128, 128)
         IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
         
         self._images_mcarats = []

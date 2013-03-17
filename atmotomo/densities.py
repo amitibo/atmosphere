@@ -26,7 +26,7 @@ def density_front(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = (X/8000)**2 + ((Y-width/2)/30000)**2 + (H-height/2)**2
+    Z1 = X**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
     A_mask[Z1<4000**2] = 1
     A_aerosols *= A_mask
     
@@ -52,8 +52,8 @@ def density_clouds1(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = ((X-width/3)/4000)**2 + ((Y-width/3)/4000)**2 + ((H-height/2)/2828)**2
-    Z2 = ((X-width*2/3)/4000)**2 + ((Y-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
+    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
     A_mask[Z1<3000**2] = 1
     A_mask[Z2<4000**2] = 1
     A_aerosols *= A_mask
@@ -80,8 +80,8 @@ def density_clouds_vadim(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z1 = ((-Y+width*2/3)/4000)**2 + ((X-width/3)/4000)**2 + ((H-height/2)/2828)**2
-    Z2 = ((-Y+width/3)/4000)**2 + ((X-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    Z1 = (-Y+width*2/3)**2/16 + (X-width/3)**2/16 + (H-height/2)**2*8
+    Z2 = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
     A_mask[Z1<3000**2] = 1
     A_mask[Z2<4000**2] = 1
     A_aerosols *= A_mask
@@ -108,7 +108,7 @@ def single_cloud_vadim(atmosphere_params):
     #
     A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
     A_mask = np.zeros_like(A_aerosols)
-    Z = ((-Y+width/3)/4000)**2 + ((X-width*2/3)/4000)**2 + ((H-height/4)/2828)**2
+    Z = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
     A_mask[Z<4000**2] = 1
     A_aerosols *= A_mask
 
