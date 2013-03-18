@@ -160,9 +160,8 @@ class Camera(object):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols = w * extinction_aerosols * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
-            exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
+            scatter_aerosols = w * k * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
+            exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             #
             # Calculate the radiance
@@ -213,15 +212,14 @@ class Camera(object):
             # Calculate scattering and extiniction for aerosols
             #
             P_aerosols = atmo_utils.calcHG(self.mu, g)
-            extinction_aerosols = k / particle_params.visibility
-            scatter_aerosols =  w * extinction_aerosols * (A_aerosols_ * P_aerosols)
-            exp_aerosols = np.exp(-extinction_aerosols * exp_aerosols_pre)
+            scatter_aerosols =  w * k * (A_aerosols_ * P_aerosols)
+            exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             ##
             ## Calculate the gradient of the radiance
             ##
-            #temp1 =  w * extinction_aerosols * atmo_utils.spdiag(P_aerosols)
-            #temp2 = extinction_aerosols * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
+            #temp1 =  w * k * atmo_utils.spdiag(P_aerosols)
+            #temp2 = k * self.H_distances.T * atmo_utils.spdiag(scatter_air + scatter_aerosols)
             #radiance_gradient = (temp1 - temp2) * atmo_utils.spdiag(exp_air * exp_aerosols)
     
             ##
@@ -233,8 +231,8 @@ class Camera(object):
             # An efficient calculation of the above, just without creating unnecessary huge sparse matrices.
             # The reason for this implementation is to avoid memory problems.
             #
-            part1 = w * extinction_aerosols * (P_aerosols * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
-            part2 = extinction_aerosols * self.H_distances.T * ((scatter_air + scatter_aerosols) * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
+            part1 = w * k * (P_aerosols * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
+            part2 = k * self.H_distances.T * ((scatter_air + scatter_aerosols) * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
 
             gimg.append(-2 * L_sun * (part1 - part2))
             

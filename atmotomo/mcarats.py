@@ -4,6 +4,7 @@
 from __future__ import division
 import numpy as np
 from atmotomo import getResourcePath
+import scipy.stats as stats
 import jinja2
 import os
 import subprocess as sub
@@ -536,6 +537,39 @@ class Mcarats(object):
             
         return RGB_imgs
 
+    @staticmethod
+    def calcRmax(x, fmax=1.2, FACMIN=1.3):
+        xmn = x.mean()
+        xst = x.std()
+        
+        return max(xmn*FACMIN, xmn + xst*fmax)
+    
+    @staticmethod
+    def removeSunSpot(ch, ys, xs, MARGIN=2):
+        ymin = ys.min()-MARGIN
+        ymax = ys.max()+MARGIN
+        xmin = xs.min()-MARGIN
+        xmax = xs.max()+MARGIN
+        
+        ch_part = ch[ymin:ymax, xmin:xmax].copy()
+        ch_part[ys-ymin, xs-xmin] = np.nan
+
+        ch[ymin:ymax, xmin:xmax] = np.mean(stats.nanmean(ch_part))
+        
+        return ch
+    
+    @staticmethod
+    def calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE):
+        R, G, B = [ch[slc].reshape(IMG_SHAPE) for ch in (R_ch, G_ch, B_ch)]
+        Rmax = Mcarats.calcRmax(R)
+        ys, xs = np.nonzero(R>Rmax)
+        
+        R, G, B = [Mcarats.removeSunSpot(ch, ys, xs) for ch in (R, G, B)]
+                   
+        img = np.dstack((R, G, B))
+        
+        return img
+    
     def prepareSimulation(self):
         """
         Create the configuration files needed for the simulation run.

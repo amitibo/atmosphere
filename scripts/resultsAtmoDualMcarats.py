@@ -17,11 +17,11 @@ from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
 from enthought.enable.component_editor import ComponentEditor
 from enthought.pyface.api import warning
 from enthought.io.api import File
+from atmotomo import Mcarats
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import scipy.io as sio
 import scipy.ndimage as ndimage
-import scipy.stats as stats
 import numpy as np
 import amitibo
 import glob
@@ -274,36 +274,6 @@ class resultAnalayzer(HasTraits):
             self.plotdata.set_data('img%d_x' % (i+1), img[self.tr_cursor1.current_index[1], :, self.tr_channel])
             self.plotdata.set_data('img%d_y' % (i+1), img[:, self.tr_cursor1.current_index[0], self.tr_channel])
     
-    def calcRmax(self, x, fmax=1.2, FACMIN=1.3):
-        xmn = x.mean()
-        xst = x.std()
-        
-        return max(xmn*FACMIN, xmn + xst*fmax)
-    
-    def removeSunSpot(self, ch, ys, xs, MARGIN=2):
-        ymin = ys.min()-MARGIN
-        ymax = ys.max()+MARGIN
-        xmin = xs.min()-MARGIN
-        xmax = xs.max()+MARGIN
-        
-        ch_part = ch[ymin:ymax, xmin:xmax].copy()
-        ch_part[ys-ymin, xs-xmin] = np.nan
-
-        ch[ymin:ymax, xmin:xmax] = np.mean(stats.nanmean(ch_part))
-        
-        return ch
-    
-    def calcMcaratsImg(self, R_ch, G_ch, B_ch, slc, IMG_SHAPE):
-        R, G, B = [ch[slc].reshape(IMG_SHAPE) for ch in (R_ch, G_ch, B_ch)]
-        Rmax = self.calcRmax(R)
-        ys, xs = np.nonzero(R>Rmax)
-        
-        R, G, B = [self.removeSunSpot(ch, ys, xs) for ch in (R, G, B)]
-                   
-        img = np.dstack((R, G, B))
-        
-        return img
-    
     @on_trait_change('tr_DND_mcarats')
     def _updateDragNDrop1(self):
         path = self.tr_DND_mcarats[0].absolute_path
@@ -315,7 +285,7 @@ class resultAnalayzer(HasTraits):
         self._images_mcarats = []
         for i in range(int(R_ch.size / IMG_SIZE)):
             slc = slice(i*IMG_SIZE, (i+1)*IMG_SIZE)
-            self._images_mcarats.append(self.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE))
+            self._images_mcarats.append(Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE))
 
         self.tr_mcarats_len = len(self._images_mcarats) - 1
         

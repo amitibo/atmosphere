@@ -4,7 +4,7 @@ Simulate the scattering of the sky where the aerosols have a general distributio
 
 from __future__ import division
 import numpy as np
-from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
+from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath, getMisrDB
 from atmotomo import Camera
 from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats
 import atmotomo
@@ -72,7 +72,8 @@ def parallel(particle_params, cameras):
     # Create the distributions
     #
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
-        
+    A_aerosols = A_aerosols / VISIBILITY
+    
     #
     # Instantiating the camera
     #
@@ -109,6 +110,7 @@ def serial(particle_params):
     # Create the distributions
     #
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    A_aerosols = A_aerosols / VISIBILITY
     
     for i, sun_angle in enumerate([-np.pi/4]):#np.linspace(0, np.pi/2, 12)):
         #
@@ -178,18 +180,12 @@ if __name__ == '__main__':
     #
     # Load the MISR database.
     #
-    import pickle
-    
-    with open(getResourcePath('misr.pkl'), 'rb') as f:
-        misr = pickle.load(f)
-    
-    particles_list = misr.keys()
-    particle = misr['spherical_nonabsorbing_2.80']
+    particle = getMisrDB()['spherical_nonabsorbing_2.80']
+
     particle_params = amitibo.attrClass(
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
         w_RGB=particle['w'],
-        g_RGB=(particle['g']),
-        visibility=VISIBILITY
+        g_RGB=(particle['g'])
         )
 
     if args.profile:

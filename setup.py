@@ -55,8 +55,6 @@ def main():
         package_data={PACKAGE_NAME: ['data/*.*']},
         scripts=[
             'scripts/simulateAtmo3D.py',
-            'scripts/simulateMcarats.py',
-            'scripts/simulateMcarats45.py',
             'scripts/pbsMcarats.py',
             'scripts/analyzeAtmo3D.py',
             'scripts/resultsAtmoGui.py',

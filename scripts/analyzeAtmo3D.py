@@ -5,11 +5,10 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
-from atmotomo import density_clouds1
+from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats
 import atmotomo
 import scipy.io as sio
 import scipy.ndimage as ndimage
-import pickle
 import amitibo
 import itertools
 import os
@@ -38,26 +37,27 @@ GRADTAG = 3
 DIETAG = 4
 
 MAX_ITERATIONS = 4000
+KM_TO_METER = 1000
 
 #
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50., 1.), # Y
-        slice(0, 50., 1.), # X
-        slice(0, 10., 0.1)  # H
+        slice(0, 50000., 1000.), # Y
+        slice(0, 50000., 1000.), # X
+        slice(0, 10000., 100.)  # H
         ),
-    earth_radius=4000,
+    earth_radius=4000000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
-    air_typical_h=8,
-    aerosols_typical_h=2
+    air_typical_h=8000,
+    aerosols_typical_h=2000
 )
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(400, 400, 40),
+    subgrid_res=(800, 800, 80),
     grid_noise=1.,
     photons_per_pixel=40000
 )
@@ -82,6 +82,7 @@ CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 
 SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
+MCARATS_IMG_SCALE = 10.0**9.7
 
 profile = False
 
@@ -98,17 +99,17 @@ sys.excepthook = abortrun
 
 
 class RadianceProblem(object):
-    def __init__(self, A_aerosols, A_air, results_path):
+    def __init__(self, A_aerosols, air_exts, results_path):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
-            comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
+            comm.send([air_exts, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
         self._objective_values = []
         self._intermediate_values = []
-        self._atmo_shape = A_air.shape
+        self._atmo_shape = A_aerosols.shape
         self._results_path = results_path
         
     def objective(self, x):
@@ -218,6 +219,9 @@ def master(particle_params, solver='ipopt'):
     #
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     
+    z_coords = H[0, 0, :]
+    air_exts = calcAirMcarats(z_coords)
+    
     #
     # Initial distribution for optimization
     #
@@ -228,7 +232,7 @@ def master(particle_params, solver='ipopt'):
     #
     radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
-        A_air=A_air,
+        air_exts=air_exts,
         results_path=results_path
     )
 
@@ -322,11 +326,11 @@ def slave(particle_params, camera_position, ref_img):
     if tag != IMGTAG:
         raise Exception('The first data transaction should be for calculting the meeasure images')
 
-    A_air = data[0]
+    air_exts = data[0]
     A_aerosols = data[1]
     results_path = data[2]
     
-    cam.setA_air(A_air)
+    cam.set_air_extinction(air_exts)
 
     if ref_img is None:
         ref_img = cam.calcImage(
@@ -398,6 +402,7 @@ def main():
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Analyze atmosphere')
+    parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     args = parser.parse_args()
@@ -412,19 +417,15 @@ def main():
     #
     # Load the MISR database.
     #
-    with open(getResourcePath('misr.pkl'), 'rb') as f:
-        misr = pickle.load(f)
+    particle = getMisrDB()['spherical_nonabsorbing_2.80']
 
     #
     # Set aerosol parameters
     #
-    particles_list = misr.keys()
-    particle = misr['spherical_nonabsorbing_2.80']
     particle_params = amitibo.attrClass(
         k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),
         w_RGB=particle['w'],
-        g_RGB=(particle['g']),
-        visibility=100
+        g_RGB=(particle['g'])
         )
     
     if mpi_rank == 0:
@@ -433,7 +434,22 @@ def main():
         #
         master(particle_params, solver='bfgs')
     else:
-        if folder_list:
+        if args.mcarats:
+            path = os.path.abspath(args.mcarats)
+    
+            R_ch, G_ch, B_ch = [np.fromfile(os.path.join(path, 'base%d_conf_out' % i), dtype=np.float32) for i in range(3)]
+            IMG_SHAPE = (128, 128)
+            IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
+            
+            slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
+            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE) / MCARATS_IMG_SCALE
+            ref_img = ref_img.astype(np.float)
+            
+            with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
+                lines = f.readlines()
+                camera_position = np.array([float(i) for i in lines[mpi_rank-1].strip().split()])*KM_TO_METER
+
+        elif folder_list:
             path = folder_list[mpi_rank-1]
             img_path = os.path.join(path, "RGB_MATRIX.mat")
             data = sio.loadmat(img_path)
