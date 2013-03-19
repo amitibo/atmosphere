@@ -21,7 +21,7 @@ ATMOSPHERE_WIDTH = 50000
 ATMOSPHERE_HEIGHT = 10000
 
 KM_TO_METERS = 1000
-VISIBILITY = 100 * KM_TO_METERS
+VISIBILITY = 20 * KM_TO_METERS
 
 
 def prepareSimulationFiles(results_path, cameras_file, img_size, target):
@@ -104,14 +104,14 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
             apf3d=particle['g'][ch]*np.ones_like(A_aerosols)
         )
         
-        for xpos, ypos, zloc in cameras_position:
+        for ypos, xpos, zloc in cameras_position:
             mc.addCamera(
                 xpos=xpos,
                 ypos=ypos,
-                zloc=0,
+                zloc=zloc,
                 theta=0,
                 phi=0,
-                psi=270,
+                psi=180,
             )
             
         mc.setSolarSource(theta=120.0, phi=90.0)

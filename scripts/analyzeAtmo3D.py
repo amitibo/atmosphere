@@ -301,7 +301,7 @@ def master(particle_params, solver='ipopt'):
     )
 
 
-def slave(particle_params, camera_position, ref_img):
+def slave(particle_params, camera_position, ref_img, scaling=1):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
@@ -361,7 +361,7 @@ def slave(particle_params, camera_position, ref_img):
                 particle_params=particle_params
             )
             
-            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
+            temp = ref_img.reshape((-1, 1)) - scaling * img.reshape((-1, 1))
             obj = np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)
@@ -373,10 +373,10 @@ def slave(particle_params, camera_position, ref_img):
             )
             
             grad = cam.calcImageGradient(
-                        img_err=ref_img-img,
+                        img_err=ref_img-scaling*img,
                         A_aerosols=A_aerosols,
                         particle_params=particle_params
-                    )
+                    ) * scaling
             
             comm.Send(grad, dest=0)
         else:
@@ -442,13 +442,15 @@ def main():
             IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
             
             slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
-            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE) / MCARATS_IMG_SCALE
+            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE)
             ref_img = ref_img.astype(np.float)
             
             with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
                 lines = f.readlines()
                 camera_position = np.array([float(i) for i in lines[mpi_rank-1].strip().split()])*KM_TO_METER
 
+            scaling = MCARATS_IMG_SCALE
+            
         elif folder_list:
             path = folder_list[mpi_rank-1]
             img_path = os.path.join(path, "RGB_MATRIX.mat")
@@ -471,11 +473,15 @@ def main():
                     if parts[0] == 'CameraPosition':
                         camera_position = np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))/ 1000
                         break
+                    
+            scaling=1
+            
         else:
             camera_position = CAMERA_CENTERS[mpi_rank-1]
             ref_img = None
+            scaling=1
             
-        slave(particle_params, camera_position, ref_img)
+        slave(particle_params, camera_position, ref_img, scaling=scaling)
 
 
 if __name__ == '__main__':
