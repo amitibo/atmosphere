@@ -559,12 +559,13 @@ class Mcarats(object):
         return ch
     
     @staticmethod
-    def calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE):
+    def calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE, remove_sun=True):
         R, G, B = [ch[slc].reshape(IMG_SHAPE) for ch in (R_ch, G_ch, B_ch)]
         Rmax = Mcarats.calcRmax(R)
         ys, xs = np.nonzero(R>Rmax)
         
-        R, G, B = [Mcarats.removeSunSpot(ch, ys, xs) for ch in (R, G, B)]
+        if remove_sun:
+            R, G, B = [Mcarats.removeSunSpot(ch, ys, xs) for ch in (R, G, B)]
                    
         img = np.dstack((R, G, B))
         

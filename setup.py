@@ -61,6 +61,7 @@ def main():
             'scripts/resultsAtmoGui2.py',
             'scripts/resultsAtmoDualGui.py',
             'scripts/resultsAtmoDualMcarats.py',
+            'scripts/createMcaratsImgs.py',
             'scripts/radianceAtmoGui.py'
         ]
         )

@@ -111,10 +111,10 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
                 zloc=zloc,
                 theta=0,
                 phi=0,
-                psi=180,
+                psi=0,
             )
             
-        mc.setSolarSource(theta=120.0, phi=90.0)
+        mc.setSolarSource(theta=120.0, phi=180.0)
         
         #
         # Store the configuration files
