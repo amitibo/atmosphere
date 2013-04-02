@@ -1,4 +1,5 @@
 &mcarRad_nml_job
+{% if xpos %}
  Rad_mrproj = 0     ! Flag for angular weighting, when radiances are averaged over solid angle (0=simply averaged, 1=cosQ where Q is angle from camera center)
  Rad_frmod = 0.33   ! Factor for mode distance between emission and camera (used only when Rad_mrkind=1)
  Rad_xpos  = {{ xpos }}   ! Relative x position of the camera.
@@ -13,4 +14,5 @@
  Rad_vmax  = {{ vmax }}
  Rad_qmax  = {{ qmax }}
  Rad_apsize = {{ apsize }}
+{% endif %}
 /

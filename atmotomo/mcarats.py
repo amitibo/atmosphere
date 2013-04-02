@@ -9,11 +9,12 @@ import jinja2
 import os
 import subprocess as sub
 
-__all__ = ["storeGRADS", "loadGRADS", "Mcarats", "SOLVER_F3D"]
+__all__ = ["storeGRADS", "loadGRADS", "Mcarats", "SOLVER_F3D", "Job"]
 
 GRADS_TEMPLATE_FILE_NAME = 'grads.jinja'
 CONF_TEMPLATE_FILE_NAME = 'conf.jinja'
 CAMERA_TEMPLATE_FILE_NAME = 'camera.jinja'
+JOB_TEMPLATE_FILE_NAME = 'job.jinja'
 SOLVER_F3D = 0
 COLOR_BALANCE = (1.28, 1.0, 0.8)
 SEA_LEVEL_TEMP = 290
@@ -21,10 +22,10 @@ MCARATS_BIN = 'mcarats'
 MCARATS_MPI_BIN = 'mcarats_mpi'
 
 
-def storeGRADS(file_name, *params):
+def storeGRADS(file_name, *arrays):
     
     array_tuple = []
-    for arr in params:
+    for arr in arrays:
         array_tuple.append(arr.astype(np.float32).transpose(range(arr.ndim-1, -1, -1)).ravel())
     
     stored_array = np.hstack(array_tuple)
@@ -72,9 +73,16 @@ def arr2str(arr):
 
 
 class BaseData(object):
-    def __init__(self, template_path, tpl_env):
-        self._tpl = tpl_env.get_template(template_path)
+    _tpl_env  = None
+    
+    def __init__(self, template_path):
+
+        self._tpl = self._tpl_env.get_template(template_path)
         self._data = {}
+    
+    @property
+    def data(self):
+        return self._data
     
     def _appendDataField(self, field_name, value):
         if not field_name in self._data.keys():
@@ -86,9 +94,11 @@ class BaseData(object):
             self._appendDataField(k ,v)
             
     def render(self):
-        
+
         data = {}
         for k, v in self._data.items():
+            if len(v) == 1:
+                v = v[0]
             if isinstance(v, list) or isinstance(v, tuple) or isinstance(v, np.ndarray):
                 data[k] = arr2str(v)
             else:
@@ -97,143 +107,69 @@ class BaseData(object):
         return self._tpl.render(data)
        
 
-class Mcarats(object):
+class Job(BaseData):
     
-    def __init__(self, base_folder, base_name='base', use_mpi=True):
-        #
-        # Create the template environment
-        #
-        tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
-        self._tpl_env = jinja2.Environment(loader=tpl_loader)
+    #
+    # count3D is used for counting the jobs defining the 3D atmospheres
+    # it used for setting the dataset id that the data is read from
+    # during the simulation.
+    #
+    count3D = 0
     
-        self._atmo_file_name = os.path.join(base_folder, '%s.atm' % base_name)
-        self._conf_file_name = os.path.join(base_folder, '%s_conf' % base_name)
-        self._out_file_name = os.path.join(base_folder, '%s_out' % base_name)
+    def __init__(self):
+        
+        super(Job, self).__init__(template_path=JOB_TEMPLATE_FILE_NAME)        
+        self._camera_data = BaseData(template_path=CAMERA_TEMPLATE_FILE_NAME)
+        self._atmosphere3D = {}
 
-        self._tmp1D = []
-        self._ext1D = []
-        self._omg1D = []
-        self._apf1D = []
-        self._abs1D = []
-        
-        self._tmp3D = []
-        self._ext3D = []
-        self._omg3D = []
-        self._apf3D = []
-        self._abs3D = []
-
-        self._camera_data = BaseData(CAMERA_TEMPLATE_FILE_NAME, self._tpl_env)
-        self._camera_num = 0
-        
-        self._sun_theta = 0.0
-        self._sun_phi = 0.0
-        
-        if use_mpi:
-            self._mcarats_bin = MCARATS_MPI_BIN
-        else:
-            self._mcarats_bin = MCARATS_BIN
-            
-    def configure(
-        self,
-        shape,
-        dx,
-        dy,
-        z_coords,
-        target=2,
-        tmp_prof=0,
-        iz3l=None,
-        nz3=None,
-        img_width=128,
-        img_height=128
-        ):
-        """
-        Configure the MCARaTS simulation
-
-        Parameters
-        ----------
-        shape : (int, int, int)
-            Atmosphere grid shape.
-        
-        dx, dy : float
-            Voxel size in the X, Y axes (in meters)
-            
-        z_coords : array
-            z layers locations (in meters)
-
-        target : {2, 3} optional (default=2)
-            Target mode (2=radiance, 3=volume rendering)
-        
-        tmp_prof : {0, 1} optional (default=0)
-             Flag for temperature profile (0=temp data are given for each layer)
-        
-        iz3l : int, optional (default=None)
-            Starting Z index of 3-D distribution (None=first index)
-        
-        nz3 : int, optional (default=None)
-            Ending Z index of 3-D distribution (None=Last index)
-        
-        img_width : int, optional (default=128)
-            Width of image.
-            
-        img_height : int, optional (default=128)
-            Width of image.
-            
-        Returns
-        -------
-        """
-
-        self._target = target
-        self._shape = shape
-        self._dx = dx
-        self._dy = dy
-        self._z_coords = z_coords
-        self._tmp_prof = tmp_prof
-        
-        if iz3l == None:
-            self._iz3l = 1
-            self._nz3 = shape[2]
-        else:
-            self._iz3l = iz3l
-            self._nz3 = nz3
-
-        self._img_width = img_width
-        self._img_height = img_height
-        
-    def add1Ddistribution(self, ext1d, omg1d, apf1d, tmp1d=None, abs1d=None):
+    def set1Ddistribution(self, ext, omg, apf, tmp=None, abst=None):
         """Add a 1D distribution"""
         
-        self._ext1D.append(ext1d)
-        self._omg1D.append(omg1d)
-        self._apf1D.append(apf1d)
-        if tmp1d == None:
-            self._tmp1D.append(SEA_LEVEL_TEMP*np.ones_like(self._z_coords))
-        else:
-            self._tmp1D.append(tmp1d)
-        if abs1d == None:
-            self._abs1D.append(np.zeros_like(ext1d))
-        else:
-            self._abs1D.append(abs1d)
+        if ext.ndim != 1:
+            raise NotImplementedError("Multiple 1D particle distributions not yet supported")
+        
+        if tmp == None:
+            tmp = SEA_LEVEL_TEMP*np.ones_like(ext)
 
-    def add3Ddistribution(self, ext3d, omg3d, apf3d, tmp3d=None, abs3d=None):
+        if abst == None:
+            abst = np.zeros_like(ext)
+
+        self.addData(
+            tmp1d=tmp,
+            abs1d=abst,
+            ext1d=ext,
+            omg1d=omg,
+            apf1d=apf
+            )
+        
+    def set3Ddistribution(self, ext, omg, apf, tmp=None, abst=None):
         """Add a 3D distribution"""
         
-        self._ext3D.append(ext3d)
-        self._omg3D.append(omg3d)
-        self._apf3D.append(apf3d)
-        if tmp3d == None:
-            self._tmp3D.append(SEA_LEVEL_TEMP*np.ones_like(ext3d))
+        if ext.ndim != 3:
+            raise NotImplementedError("Multiple 3D particle distributions not yet supported")
+        
+        self.__class__.count3D += 1
+        self.addData(idread=self.count3D)
+        
+        self._atmosphere3D['ext'] = ext
+        self._atmosphere3D['omg'] = omg
+        self._atmosphere3D['apf'] = apf
+        if tmp == None:
+            self._atmosphere3D['tmp'] = SEA_LEVEL_TEMP*np.ones_like(ext)
         else:
-            self._tmp3D.append(tmp3d)
-        if abs3d == None:
-            self._abs3D.append(np.zeros_like(ext3d))
+            self._atmosphere3D['tmp'] = tmp
+        if abst == None:
+            self._atmosphere3D['abst'] = np.zeros_like(ext)
         else:
-            self._abs3D.append(abs3d)
+            self._atmosphere3D['abst'] = abst
 
     def setSolarSource(self, theta=0.0, phi=0.0):
         """Set the sun source"""
         
-        self._sun_theta = theta
-        self._sun_phi = phi
+        self.addData(
+            sun_theta=theta,
+            sun_phi=phi
+        )
         
     def addCamera(
         self,
@@ -294,13 +230,141 @@ class Mcarats(object):
             qmax=qmax,
             apsize=apsize
         )
-        self._camera_num += 1
         
-    def _createConfFile(self):
+    @property
+    def details(self):
+        
+        self.addData(
+            rad_job=self._camera_data.render()
+            )
+            
+        return self.render()
+    
+    @property
+    def atmosphere3D(self):
+        
+        return self._atmosphere3D
+    
+    
+class Mcarats(object):
+    
+    def __init__(self, base_folder, base_name='base', use_mpi=True):
+        #
+        # Create the template environment
+        #
+        tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
+        self._tpl_env = jinja2.Environment(loader=tpl_loader)
+        
+        BaseData._tpl_env = self._tpl_env
+        Job.count3D = 0
+        
+        self._atmo_file_name = os.path.join(base_folder, '%s.atm' % base_name)
+        self._conf_file_name = os.path.join(base_folder, '%s_conf' % base_name)
+        self._out_file_name = os.path.join(base_folder, '%s_out' % base_name)
+        
+        if use_mpi:
+            self._mcarats_bin = MCARATS_MPI_BIN
+        else:
+            self._mcarats_bin = MCARATS_BIN
+            
+    def configure(
+        self,
+        shape,
+        dx,
+        dy,
+        z_coords,
+        target=2,
+        tmp_prof=0,
+        iz3l=None,
+        nz3=None,
+        np1d=1,
+        np3d=1,
+        camera_num=1,
+        img_width=128,
+        img_height=128
+        ):
+        """
+        Configure the MCARaTS simulation
+
+        Parameters
+        ----------
+        shape : (int, int, int)
+            Atmosphere grid shape.
+        
+        dx, dy : float
+            Voxel size in the X, Y axes (in meters)
+            
+        z_coords : array
+            z layers locations (in meters)
+
+        target : {2, 3} optional (default=2)
+            Target mode (2=radiance, 3=volume rendering)
+        
+        tmp_prof : {0, 1} optional (default=0)
+             Flag for temperature profile (0=temp data are given for each layer)
+        
+        iz3l : int, optional (default=None)
+            Starting Z index of 3-D distribution (None=first index)
+        
+        nz3 : int, optional (default=None)
+            Ending Z index of 3-D distribution (None=Last index)
+        
+        np1d : int, optional (default=1)
+            Number of 1D particle distributions.
+        
+        np3d : int, optional (default=1)
+            Number of 3D particle distributions.
+        
+        camera_num : int, optional (default=1)
+            Number of sensors.
+        
+        img_width : int, optional (default=128)
+            Width of image.
+            
+        img_height : int, optional (default=128)
+            Width of image.
+            
+        Returns
+        -------
+        """
+
+        self._target = target
+        self._shape = shape
+        self._dx = dx
+        self._dy = dy
+        self._z_coords = z_coords
+        
+        if tmp_prof != 0:
+            raise NotImplementedError("Temperature profile at layer boundry is not supported (at the job class).")
+        self._tmp_prof = tmp_prof
+        
+        if iz3l == None:
+            self._iz3l = 1
+            self._nz3 = shape[2]
+        else:
+            self._iz3l = iz3l
+            self._nz3 = nz3
+
+        self._np1d = np1d
+        self._np3d = np3d
+        
+        self._camera_num = camera_num
+        self._img_width = img_width
+        self._img_width = img_width
+        self._img_height = img_height
+        
+    def _createConfFile(self, jobs):
         """Create the configuration file for the simulation"""
         
         tpl = self._tpl_env.get_template(CONF_TEMPLATE_FILE_NAME)
         
+        for job in jobs:
+            job.addData(
+                dx=self._dx,
+                dy=self._dy,
+                z_coords=arr2str(self._z_coords),
+            )
+            
         #
         # The 1-D data relates to Air distribution
         #
@@ -317,29 +381,28 @@ class Mcarats(object):
                     cameras_num=self._camera_num,
                     img_x=self._img_width,
                     img_y=self._img_height,
-                    Rad_job=self._camera_data.render(),
-                    dx=self._dx,
-                    dy=self._dy,
-                    z_coords=arr2str(self._z_coords),
                     tmp_prof=self._tmp_prof,
-                    tmp1d=arr2str(self._tmp1D[0]),
-                    ext1d=arr2str(self._ext1D[0]),
-                    omg1d=arr2str(self._omg1D[0]),
-                    apf1d=arr2str(self._apf1D[0]),
-                    abs1d=arr2str(self._abs1D[0]),
-                    sun_theta=self._sun_theta,
-                    sun_phi=self._sun_phi
+                    np1d=self._np1d,
+                    np3d=self._np3d,
+                    jobs=jobs,
+                    njob=len(jobs)
                 )            
             )
         
         return self._conf_file_name
     
-    def _createAtmFile(self):
+    def _createAtmFile(self, jobs):
         """Create the atmosphere file"""
+
+        atmo3D = [job.atmosphere3D for job in jobs if job.atmosphere3D != {}]
+        
+        if atmo3D == []:
+            return
         
         tpl = self._tpl_env.get_template(GRADS_TEMPLATE_FILE_NAME)
-        shape = self._tmp3D[0].shape
-        z_axis = np.max([arr[0].shape[2] for arr in (self._tmp3D, self._abs3D, self._ext3D, self._omg3D, self._apf3D)])
+        
+        shape = atmo3D[0]['tmp'].shape
+        
         ctl_file_name = '%s.ctl' % self._atmo_file_name
         with open(ctl_file_name, 'w') as f:
             f.write(
@@ -347,12 +410,12 @@ class Mcarats(object):
                 file_name=os.path.split(self._atmo_file_name)[-1],
                 x_axis=shape[1],
                 y_axis=shape[0],
-                z_axis=z_axis,
-                tmp_z_axis=self._tmp3D[0].shape[2],
-                abs_z_axis=self._abs3D[0].shape[2],
-                ext_z_axis=self._ext3D[0].shape[2],
-                omg_z_axis=self._omg3D[0].shape[2],
-                apf_z_axis=self._apf3D[0].shape[2]
+                z_axis=shape[2],
+                tmp_z_axis=shape[2],
+                abs_z_axis=shape[2],
+                ext_z_axis=shape[2],
+                omg_z_axis=shape[2],
+                apf_z_axis=shape[2]
                 )            
             )
         
@@ -363,13 +426,11 @@ class Mcarats(object):
         # omgp3d - Single scattering albedo
         # apfp3d - Phase function specification parameter
         #
-        tmpa3d = self._tmp3D[0]
-        abst3d = self._abs3D[0]
-        extp3d = self._ext3D[0]
-        omgp3d = self._omg3D[0]
-        apfp3d = self._apf3D[0]
+        array = []
+        for atm in atmo3D:
+            array += [atm['tmp'], atm['abst'], atm['ext'], atm['omg'], atm['apf']]
         
-        storeGRADS(self._atmo_file_name, tmpa3d, abst3d, extp3d, omgp3d, apfp3d)
+        storeGRADS(self._atmo_file_name, *array)
 
     def runSimulation(self, photon_num, solver=SOLVER_F3D, conf_file_name=None, out_file_name=None):
         """
@@ -463,7 +524,7 @@ class Mcarats(object):
     @staticmethod
     def calcRGBImg(Rout_path, Gout_path, Bout_path, time_lag=0, time_width=1, fmax=2, power=0.6):
         """
-        Calculate the average exposure for a set of output radiance files (of the MCARaTS bin).
+        Calculate the RGB images (of the MCARaTS bin files).
 
         Parameters
         ----------
@@ -571,7 +632,7 @@ class Mcarats(object):
         
         return img
     
-    def prepareSimulation(self):
+    def prepareSimulation(self, jobs):
         """
         Create the configuration files needed for the simulation run.
         """
@@ -579,8 +640,8 @@ class Mcarats(object):
         #
         # Prepare the init files
         #
-        conf_file = self._createConfFile()
-        self._createAtmFile()
+        conf_file = self._createConfFile(jobs)
+        self._createAtmFile(jobs)
 
         return conf_file
     

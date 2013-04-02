@@ -1,0 +1,31 @@
+!--- A new job ---
+&mcarWld_nml_job
+ Wld_rmlcf = 100.0   ! Scale length for local-Collision Forcing
+/
+&mcarAtm_nml_job
+{% if idread %} Atm_idread = {{ idread }} ! Dataset{% endif %}
+{% if dx %} Atm_dx = {{ dx }}   ! Cell size in meters
+ Atm_dy = {{ dy }}   ! Cell size in meters{% endif %}
+{% if z_coords %} Atm_zgrd0 =  {{ z_coords }}{% endif %}
+ Atm_wkd0 = 1.0      ! Weight coefficients of the correlated k-distribution (1=monochromatic){% if tmp1d %}
+ Atm_tmp1d = {{ tmp1d }}
+ Atm_ext1d = {{ ext1d }}
+ Atm_omg1d = {{ omg1d }}
+ Atm_apf1d = {{ apf1d }}
+ Atm_abs1d = {{ abs1d }}{% endif %}
+/
+&mcarSfc_nml_job
+ Sfc_mtype = 0        ! Type index of globally constant surface BRDF (0=black)
+/
+&mcarSrc_nml_job
+ Src_flx = 6.2831853  ! Solar source flux density
+ Src_qmax = 0.5       ! Full cone angle
+ Src_wlen = 10.0      ! Wavelength 
+ Src_dwlen = 0.0      ! Wavelength band width
+ Src_mtype = 1        ! Flag for source type (1-solar sources)
+ Src_mphi = 0         ! Flag for random azimuth of source emission (0=No)
+{% if sun_theta %} Src_the = {{ sun_theta }} ! Source theta
+ Src_phi = {{ sun_phi }} ! Source phi{% endif %}
+ Src_apsize = 0.5 ! aperture size
+/
+{% if rad_job %}{{ rad_job }}{% endif %}

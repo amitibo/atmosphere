@@ -1,12 +1,12 @@
 !--- Initializations ---
 
 &mcarWld_nml_init
- Wld_mtarget = {{ target }} ! target mode (1=flux&HR, 2=radiance, 3=volume rendering)
+ Wld_mtarget = {{ target }} ! target mode (1=flux, 2=radiance, 3=volume rendering)
  Wld_mverb  = 1  ! verbose mode (0=quiet, 1=yes, 2=more, 3=most(for bugfix))
  Wld_mbswap = 0  ! Swap little-big endian (0=no swapping)
  !Wld_jseed = 374506522
  Wld_moptim = 2  ! Flag for optimization techniques (2=Standard optimization)
- Wld_njob   = 1
+ Wld_njob   = {{ njob }}
 /
 &mcarSca_nml_init ! Scattering phase function tables
  Sca_inpfile = ' '
@@ -15,8 +15,8 @@
 &mcarAtm_nml_init
  Atm_inpfile = '{{ atmo_file_name }}' ! File name of an external file of 3-D atmospheric model
  Atm_mfmt = 1     ! Flag for format (1=binary)
- Atm_np3d = 1     ! Number of scattering components in the 3-D distribution
- Atm_np1d = 1     ! Number of scattering components in the 1-D distribution
+ Atm_np3d = {{ np3d }} ! Number of scattering components in the 3-D distribution
+ Atm_np1d = {{ np1d }}     ! Number of scattering components in the 1-D distribution
  Atm_nx = {{ x_axis }} ! Grid X dimension
  Atm_ny = {{ y_axis }} ! Grid Y dimension
  Atm_nz = {{ z_axis }} ! Grid Z dimension
@@ -56,36 +56,7 @@
  Pho_iso_max = 1000 ! Maximum order of scattering simulation
 /
 
-!--- A new job ---
-
-&mcarWld_nml_job
- Wld_rmlcf = 100.0   ! Scale length for local-Collision Forcing
-/
-&mcarAtm_nml_job
- Atm_idread = 1      ! Dataset #
- Atm_dx = {{ dx }}   ! Cell size in meters
- Atm_dy = {{ dy }}   ! Cell size in meters
- Atm_zgrd0 =  {{ z_coords }}
- Atm_wkd0 = 1.0      ! Weight coefficients of the correlated k-distribution (1=monochromatic)
- Atm_tmp1d = {{ tmp1d }}
- Atm_ext1d = {{ ext1d }}
- Atm_omg1d = {{ omg1d }}
- Atm_apf1d = {{ apf1d }}
- Atm_abs1d = {{ abs1d }}
-/
-&mcarSfc_nml_job
- Sfc_mtype = 0        ! Type index of globally constant surface BRDF (0=black)
-/
-&mcarSrc_nml_job
- Src_flx = 6.2831853  ! Solar source flux density
- Src_qmax = 0.5       ! Full cone angle
- Src_wlen = 10.0      ! Wavelength 
- Src_dwlen = 0.0      ! Wavelength band width
- Src_mtype = 1        ! Flag for source type (1-solar sources)
- Src_mphi = 0         ! Flag for random azimuth of source emission (0=No)
- Src_the = {{ sun_theta }} ! Source theta
- Src_phi = {{ sun_phi }} ! Source phi
- Src_apsize = 0.5 ! aperture size
-/
-{{ Rad_job }}
+{% for job in jobs %}
+{{ job.details }}
+{% endfor %}
 

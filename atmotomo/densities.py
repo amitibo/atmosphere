@@ -4,7 +4,7 @@
 from __future__ import division
 import numpy as np
 
-__all__ = ["density_front", "density_clouds1", "density_clouds_vadim", "single_cloud_vadim", "calcAirMcarats"]
+__all__ = ["density_front", "density_clouds1", "density_clouds_vadim", "single_cloud_vadim", "calcAirMcarats", "single_voxel_atmosphere"]
 
 
 def density_front(atmosphere_params):
@@ -113,6 +113,25 @@ def single_cloud_vadim(atmosphere_params):
     A_aerosols *= A_mask
 
     return A_air, A_aerosols, Y, X, H, h
+
+
+def single_voxel_atmosphere(atmosphere_params, heights=[0], density=0.1):
+    #
+    # Create the sky
+    #
+    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
+    width = atmosphere_params.cartesian_grids[0].stop
+
+    #
+    # Create the distributions of aerosols
+    #
+    A_aerosols = []
+    for height in heights:
+        tmp = np.zeros_like(H)
+        tmp[int(H.shape[0]/3), int(H.shape[1]/3), height] = density
+        A_aerosols.append(tmp)
+        
+    return A_aerosols, Y, X, H
 
 
 def fitExp(Z, z0, e0):
