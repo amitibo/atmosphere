@@ -40,14 +40,13 @@ def prepareSimulationFiles(results_path, img_size, target):
             slice(0, ATMOSPHERE_WIDTH, 1000.0), # X
             slice(0, ATMOSPHERE_HEIGHT, 100.)   # H
             ),
-        earth_radius=4000000,
         RGB_WAVELENGTH=RGB_WAVELENGTH,
         air_typical_h=8000,
         aerosols_typical_h=2000,
         sun_angle=30
     )
 
-    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, heights=[10, 20, 30])
+    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, heights=[10, 30, 50, 80])
     dx = abs(X[0, 1, 0] - X[0, 0, 0])
     dy = abs(Y[1, 0, 0] - Y[0, 0, 0])
     dz = abs(Z[0, 0, -1] - Z[0, 0, -2])
@@ -57,7 +56,7 @@ def prepareSimulationFiles(results_path, img_size, target):
     #
     # Set the camera position
     #
-    cameras_position = (np.array([0.5, 0.5, 0.0]), )
+    cameras_position = (np.array([0.5, 0.5, 1.0]), )
         
     #
     # Create the test

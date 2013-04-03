@@ -516,7 +516,9 @@ class Mcarats(object):
         prc_ret = sub.Popen(cmd, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
         ret_txt = prc_ret.stdout.read()
         Rmaxs = []
-        for line in ret_txt.split('\n')[1::2]:
+        for line in ret_txt.strip().split('\n'):
+            if line.strip().startswith('#'):
+                continue
             Rmaxs.append(float(line.split()[1]))
 
         return ret_txt, np.array(Rmaxs)
