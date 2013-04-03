@@ -115,7 +115,7 @@ def single_cloud_vadim(atmosphere_params):
     return A_air, A_aerosols, Y, X, H, h
 
 
-def single_voxel_atmosphere(atmosphere_params, heights=[0], density=0.1):
+def single_voxel_atmosphere(atmosphere_params, heights=[0], density=0.001):
     #
     # Create the sky
     #

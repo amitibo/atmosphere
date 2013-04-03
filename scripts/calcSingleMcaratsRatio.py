@@ -88,6 +88,7 @@ if __name__ == '__main__':
     parser.add_argument('--subgrid', type=float, default=8, help='Ratio of subgrid (multiplied by 100, 100, 10) (default=8).')
     args = parser.parse_args()
     
+    global camera_params
     camera_params.subgrid_res = [int(args.subgrid*i) for i in camera_params.subgrid_res]
     
     #
