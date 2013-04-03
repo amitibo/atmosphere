@@ -138,7 +138,7 @@ class TC_Handler(Handler):
 class resultAnalayzer(HasTraits):
     """Gui Application"""
     
-    tr_scaling = Range(-10.0, 10.0, 0.0, desc='Radiance scaling logarithmic')
+    tr_scaling = Range(-14.0, 14.0, 0.0, desc='Radiance scaling logarithmic')
     tr_relative_scaling = Range(-10.0, 10.0, 0.0, desc='Relative radiance scaling logarithmic')
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
@@ -273,10 +273,10 @@ class resultAnalayzer(HasTraits):
         self._ref_images = []
         self._final_images = []
         for i in range(0, len(image_list)):
-            for pattern, img_list in zip(('ref_img', 'final_img'), (self._ref_images, self._final_images)):
+            for pattern, img_list, step in zip(('ref_img', 'final_img'), (self._ref_images, self._final_images), (1, 1)):
                 img_path = os.path.join(path, "%s%d.mat" % (pattern, i+1))
                 data = sio.loadmat(img_path)
-                img_list.append(data['img'])
+                img_list.append(data['img'][::step, ::step, :])
 
         self.tr_len = len(self._ref_images) - 1
 

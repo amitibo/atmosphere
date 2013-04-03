@@ -63,7 +63,8 @@ def main():
             'scripts/resultsAtmoDualMcarats.py',
             'scripts/createMcaratsImgs.py',
             'scripts/radianceAtmoGui.py',
-            'scripts/calcMcaratsSingleRatio.py'
+            'scripts/calcMcaratsSingleRatio.py',
+            'scripts/createSingleImgs.py'
         ]
         )
 

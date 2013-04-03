@@ -1,4 +1,5 @@
 """
+Simulate single voxel atmospheres using MCARaTS on the tamnun cluster
 """
 
 from __future__ import division
