@@ -45,8 +45,6 @@ camera_params = amitibo.attrClass(
 
 camera_position = np.array((25001.0, 25001.0, 1.0))
 SUN_ANGLE = -np.pi/4
-
-profile = False
     
 VISIBILITY = 10000
 
