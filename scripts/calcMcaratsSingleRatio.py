@@ -5,25 +5,20 @@ Simulate single voxel atmospheres using MCARaTS on the tamnun cluster
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
-from atmotomo import RGB_WAVELENGTH, getResourcePath, getMisrDB,\
-     single_voxel_atmosphere, calcAirMcarats, Mcarats, SOLVER_F3D, Job
-import subprocess as sub
+from atmotomo import RGB_WAVELENGTH, getMisrDB,\
+     single_voxel_atmosphere, Mcarats, Job
 import itertools
 import argparse
 import amitibo
-import jinja2
+from amitibo import tamnun
 import time
 import os
 
 SLEEP_PERIOD = 10
-SENDMAIL = "/usr/sbin/sendmail" # sendmail location
-PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 
 ATMOSPHERE_WIDTH = 50000
 ATMOSPHERE_HEIGHT = 10000
-
-KM_TO_METERS = 1000
-VISIBILITY = 20 * KM_TO_METERS
+VISIBILITY = 20000
 
 
 def prepareSimulationFiles(results_path, img_size, target):
@@ -108,40 +103,6 @@ def prepareSimulationFiles(results_path, img_size, target):
     return conf_files
 
 
-def qsub(pbs_tpl, results_path, conf_file, out_file, photons_num):
-    """Submit a job"""
-    
-    prc_ret = sub.Popen('qsub', shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
-    pbs_script = pbs_tpl.render(
-        queue_name='minerva_h_p',
-        M=4,
-        N=12,
-        work_directory='$HOME/code/atmosphere',
-        cmd='$HOME/.local/bin/mcarats_mpi',
-        params='%d 0 %s %s' % (photons_num, conf_file, out_file)
-    )
-    prc_ret.stdin.write(pbs_script)
-    prc_ret.stdin.close()
-    id = prc_ret.stdout.read()
-    return id
-
-
-def qstat(id):
-    """Check the status of a job"""
-
-    prc_ret = sub.Popen('qstat %s' % id, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
-    out = prc_ret.stdout.read().strip()
-    err = prc_ret.stderr.read().strip()
-    
-    #
-    # Check if job finished
-    #
-    if 'Unknown Job Id' in err:
-        return False
-    
-    return True
-
-
 def main():
     """Main doc """
     
@@ -151,13 +112,6 @@ def main():
     parser.add_argument('--target', type=int, choices=range(2,4), default=2, help='Target mode 2=radiance, 3=volume rendering. (default=2).')
     args = parser.parse_args()
     
-    #
-    # Create template loader
-    #
-    tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
-    tpl_env = jinja2.Environment(loader=tpl_loader)
-    pbs_tpl = tpl_env.get_template(PBS_TEMPLATE_FILE_NAME)
-
     #
     # Create the results folder
     #
@@ -179,12 +133,12 @@ def main():
     jobs_id = []
     for conf_file, out_file in zip(conf_files, out_files):
         jobs_id.append(
-            qsub(
-                pbs_tpl,
-                results_path,
-                conf_file, 
-                out_file,
-                photons_num=args.photons
+            tamnun.qsub(
+                cmd='$HOME/.local/bin/mcarats_mpi',
+                params='%d 0 %s %s' % (args.photons_num, conf_file, out_file),
+                M=4,
+                N=12,
+                work_directory='$HOME/code/atmosphere'
             )
         )
         
@@ -193,7 +147,7 @@ def main():
     #
     while len(jobs_id) > 0:
         time.sleep(SLEEP_PERIOD)
-        jobs_id = [id for id in jobs_id if qstat(id)]
+        jobs_id = [id for id in jobs_id if tamnun.qstat(id)]
         
     #
     # Process the results
@@ -213,12 +167,7 @@ def main():
     #
     # Notify by email
     #
-    p = os.popen("%s -t" % SENDMAIL, "w")
-    p.write("To: amitibo@tx.technion.ac.il\n")
-    p.write("Subject: finished run\n")
-    p.write("\n") # blank line separating headers from body
-    p.write("Finished run\n")
-    sts = p.close()
+    tamnun.sendmail(subject="finished run", content="Finished run")
     
     
 if __name__ == '__main__':
