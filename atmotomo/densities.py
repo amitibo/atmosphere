@@ -115,7 +115,7 @@ def single_cloud_vadim(atmosphere_params):
     return A_air, A_aerosols, Y, X, H, h
 
 
-def single_voxel_atmosphere(atmosphere_params, heights=[0], density=0.001):
+def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density=0.001):
     #
     # Create the sky
     #
@@ -126,9 +126,9 @@ def single_voxel_atmosphere(atmosphere_params, heights=[0], density=0.001):
     # Create the distributions of aerosols
     #
     A_aerosols = []
-    for height in heights:
+    for voxel_indices in indices_list:
         tmp = np.zeros_like(H)
-        tmp[int(H.shape[0]/3), int(H.shape[1]/3), height] = density
+        tmp[voxel_indices] = density
         A_aerosols.append(tmp)
         
     return A_aerosols, Y, X, H

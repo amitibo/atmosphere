@@ -48,7 +48,18 @@ SUN_ANGLE = -np.pi/4
 
 profile = False
     
-   
+VISIBILITY = 10000
+
+VOXEL_INDICES= [
+    (25, 25, 15), 
+    (25, 25, 10),
+    (25, 25, 5),
+    (24, 24, 1),
+    (24, 24, 5),
+    (24, 24, 10),
+    (20, 26, 15),
+    (20, 20, 10)]
+
 def serial(particle_params):
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
@@ -56,7 +67,7 @@ def serial(particle_params):
     #
     # Create the distributions
     #
-    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, heights=[10, 30, 50, 80])
+    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=VOXEL_INDICES, density=1/VISIBILITY)
     
     #
     # Instantiating the camera
@@ -88,7 +99,6 @@ if __name__ == '__main__':
     parser.add_argument('--subgrid', type=float, default=8, help='Ratio of subgrid (multiplied by 100, 100, 10) (default=8).')
     args = parser.parse_args()
     
-    global camera_params
     camera_params.subgrid_res = [int(args.subgrid*i) for i in camera_params.subgrid_res]
     
     #
