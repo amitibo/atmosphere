@@ -4,18 +4,16 @@
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
-from atmotomo import RGB_WAVELENGTH, getResourcePath, getMisrDB, density_clouds1, calcAirMcarats, Mcarats, SOLVER_F3D
-import subprocess as sub
+from atmotomo import RGB_WAVELENGTH, getResourcePath, getMisrDB, density_clouds1,\
+     calcAirMcarats, Mcarats, Job
+from amitibo import tamnun
 import itertools
 import argparse
 import amitibo
-import jinja2
 import time
 import os
 
 SLEEP_PERIOD = 10
-SENDMAIL = "/usr/sbin/sendmail" # sendmail location
-PBS_TEMPLATE_FILE_NAME = 'pbs.jinja'
 
 ATMOSPHERE_WIDTH = 50000
 ATMOSPHERE_HEIGHT = 10000
@@ -89,23 +87,30 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
             dy=dy,
             z_coords=z_coords,
             target=target,
-            tmp_prof=0,
+            np1d=1,
+            np3d=1,
             img_width=img_size,
             img_height=img_size
         )
-        mc.add1Ddistribution(
-            ext1d=air_ext[ch],
-            omg1d=np.ones_like(air_ext[ch]),
-            apf1d=-1*np.ones_like(air_ext[ch])
-        )
-        mc.add3Ddistribution(
-            ext3d=k_RGB[ch]*A_aerosols / VISIBILITY,
-            omg3d=particle['w'][ch]*np.ones_like(A_aerosols),
-            apf3d=particle['g'][ch]*np.ones_like(A_aerosols)
+
+        job = Job()
+        
+        job.setSolarSource(theta=120.0, phi=180.0)
+        
+        job.set1Ddistribution(
+            ext=air_ext[ch],
+            omg=np.ones_like(air_ext[ch]),
+            apf=-1*np.ones_like(air_ext[ch])
         )
         
+        job.set3Ddistribution(
+            ext=k_RGB[ch]*A_aerosols / VISIBILITY,
+            omg=particle['w'][ch]*np.ones_like(A_aerosols),
+            apf=particle['g'][ch]*np.ones_like(A_aerosols)
+        )
+
         for ypos, xpos, zloc in cameras_position:
-            mc.addCamera(
+            job.addCamera(
                 xpos=xpos,
                 ypos=ypos,
                 zloc=zloc,
@@ -114,48 +119,12 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
                 psi=0,
             )
             
-        mc.setSolarSource(theta=120.0, phi=180.0)
-        
         #
         # Store the configuration files
         #
-        conf_files.append(mc.prepareSimulation())
+        conf_files.append(mc.prepareSimulation([job]))
     
     return conf_files
-
-
-def qsub(pbs_tpl, results_path, conf_file, out_file, photons_num):
-    """Submit a job"""
-    
-    prc_ret = sub.Popen('qsub', shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
-    pbs_script = pbs_tpl.render(
-        queue_name='minerva_h_p',
-        M=4,
-        N=12,
-        work_directory='$HOME/code/atmosphere',
-        cmd='$HOME/.local/bin/mcarats_mpi',
-        params='%d 0 %s %s' % (photons_num, conf_file, out_file)
-    )
-    prc_ret.stdin.write(pbs_script)
-    prc_ret.stdin.close()
-    id = prc_ret.stdout.read()
-    return id
-
-
-def qstat(id):
-    """Check the status of a job"""
-
-    prc_ret = sub.Popen('qstat %s' % id, shell=True, stdin=sub.PIPE, stdout=sub.PIPE, stderr=sub.PIPE)
-    out = prc_ret.stdout.read().strip()
-    err = prc_ret.stderr.read().strip()
-    
-    #
-    # Check if job finished
-    #
-    if 'Unknown Job Id' in err:
-        return False
-    
-    return True
 
 
 def main():
@@ -168,13 +137,6 @@ def main():
     parser.add_argument('--target', type=int, choices=range(2,4), default=2, help='Target mode 2=radiance, 3=volume rendering. (default=2).')
     args = parser.parse_args()
     
-    #
-    # Create template loader
-    #
-    tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
-    tpl_env = jinja2.Environment(loader=tpl_loader)
-    pbs_tpl = tpl_env.get_template(PBS_TEMPLATE_FILE_NAME)
-
     #
     # Create the results folder
     #
@@ -198,11 +160,11 @@ def main():
     for conf_file, out_file in zip(conf_files, out_files):
         jobs_id.append(
             qsub(
-                pbs_tpl,
-                results_path,
-                conf_file, 
-                out_file,
-                photons_num=args.photons
+                cmd='$HOME/.local/bin/mcarats_mpi',
+                params='%d 0 %s %s' % (args.photons, conf_file, out_file),
+                M=4,
+                N=12,
+                work_directory='$HOME/code/atmosphere'
             )
         )
         
@@ -211,7 +173,7 @@ def main():
     #
     while len(jobs_id) > 0:
         time.sleep(SLEEP_PERIOD)
-        jobs_id = [id for id in jobs_id if qstat(id)]
+        jobs_id = [id for id in jobs_id if tamnun.qstat(id)]
         
     #
     # Process the results
@@ -231,12 +193,7 @@ def main():
     #
     # Notify by email
     #
-    p = os.popen("%s -t" % SENDMAIL, "w")
-    p.write("To: amitibo@tx.technion.ac.il\n")
-    p.write("Subject: finished run\n")
-    p.write("\n") # blank line separating headers from body
-    p.write("Finished run\n")
-    sts = p.close()
+    tamnun.sendmail(subject="finished run", content="Finished run")
     
     
 if __name__ == '__main__':

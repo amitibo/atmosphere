@@ -19,17 +19,11 @@ SLEEP_PERIOD = 10
 ATMOSPHERE_WIDTH = 50000
 ATMOSPHERE_HEIGHT = 10000
 
-VISIBILITY = 10000
+VISIBILITY = 1000
 
 VOXEL_INDICES= [
-    (25, 25, 15), 
-    (25, 25, 10),
-    (25, 25, 5),
-    (24, 24, 1),
-    (24, 24, 5),
-    (24, 24, 10),
-    (20, 26, 15),
-    (20, 20, 10)]
+    (24, 24, 7),
+    (24, 22, 9)]
 
 
 def prepareSimulationFiles(results_path, img_size, target):
@@ -122,6 +116,7 @@ def main():
     parser.add_argument('--photons', type=int, default=1e9, help='Number of photos to simulate (default=1e9).')
     parser.add_argument('--img_size', type=int, default=128, help='Image size, used for width and height (default=128).')
     parser.add_argument('--target', type=int, choices=range(2,4), default=2, help='Target mode 2=radiance, 3=volume rendering. (default=2).')
+    parser.add_argument('--queue', type=str, choices=['minerva_h_p', 'gpu_l_p'], default='minerva_h_p', help='pbs queue name {minerva_h_p, gpu_l_p}')
     args = parser.parse_args()
     
     #
@@ -150,7 +145,8 @@ def main():
                 params='%d 0 %s %s' % (args.photons, conf_file, out_file),
                 M=4,
                 N=12,
-                work_directory='$HOME/code/atmosphere'
+                work_directory='$HOME/code/atmosphere',
+                queue_name='gpu_l_p'
             )
         )
         
