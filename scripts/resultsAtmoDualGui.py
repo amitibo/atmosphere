@@ -141,7 +141,7 @@ class resultAnalayzer(HasTraits):
     """Gui Application"""
     
     tr_scaling = Range(-10.0, 10.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_relative_scaling = Range(-10.0, 10.0, 0.0, desc='Relative radiance scaling logarithmic')
+    tr_relative_scaling = Range(-15.0, 15.0, 0.0, desc='Relative radiance scaling logarithmic')
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
     tr_gamma_correction = Bool()
@@ -158,6 +158,7 @@ class resultAnalayzer(HasTraits):
     tr_cross_plot1 = Instance(Plot)
     tr_cross_plot2 = Instance(Plot)
     tr_cursor1 = Instance(BaseCursorTool)
+    tr_cursor2 = Instance(BaseCursorTool)
     tr_channel = Enum(0, 1, 2)
     
     traits_view  = View(
@@ -201,15 +202,14 @@ class resultAnalayzer(HasTraits):
         self.plotdata = ArrayPlotData(result_img1=np.zeros((128, 128, 3), dtype=np.uint8), results_img2=np.zeros((128, 128, 3), dtype=np.uint8))
         
         self.img_container1 = Plot(self.plotdata)
-        img_plot = self.img_container1.img_plot('result_img1')[0]
+        img_plot1 = self.img_container1.img_plot('result_img1')[0]
         self.tr_cursor1 = CursorTool(
-            component=img_plot,
+            component=img_plot1,
             drag_button='left',
             color='white',
             line_width=1.0
         )                
-        img_plot.overlays.append(self.tr_cursor1)
-        self.tr_cursor1.current_position = 64, 64
+        img_plot1.overlays.append(self.tr_cursor1)
         self.img_container1.overlays.append(PlotLabel("Monte-Carlo Simulation",
                                       component=self.img_container1,
                                       font = "swiss 16",
@@ -217,7 +217,15 @@ class resultAnalayzer(HasTraits):
         
 
         self.img_container2 = Plot(self.plotdata)
-        self.img_container2.img_plot('result_img2')
+        img_plot2 = self.img_container2.img_plot('result_img2')[0]
+        self.tr_cursor2 = CursorTool(
+            component=img_plot2,
+            drag_button='left',
+            color='white',
+            line_width=1.0
+        )                
+        img_plot2.overlays.append(self.tr_cursor2)
+        self.tr_cursor2.current_position = 64, 64
         self.img_container2.overlays.append(PlotLabel("Single-Scattering",
                                       component=self.img_container2,
                                       font = "swiss 16",
@@ -250,6 +258,9 @@ class resultAnalayzer(HasTraits):
     @on_trait_change('tr_sigma, tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_vadim_index, tr_amit_index')
     def _updateImg(self):
         
+        if self.tr_cursor2:
+            self.tr_cursor2.current_index = self.tr_cursor1.current_index
+        
         relative_scaling = [0, self.tr_relative_scaling]
         h, w, d = self._images_amit[self.tr_amit_index].shape
         
@@ -273,6 +284,11 @@ class resultAnalayzer(HasTraits):
             self.plotdata.set_data('img%d_x' % (i+1), img[self.tr_cursor1.current_index[1], :, self.tr_channel])
             self.plotdata.set_data('img%d_y' % (i+1), img[:, self.tr_cursor1.current_index[0], self.tr_channel])
             
+    @on_trait_change('tr_cursor2.current_index')
+    def _updateCursor(self):
+        
+        self.tr_cursor1.current_index = self.tr_cursor2.current_index
+        
     @on_trait_change('tr_DND_vadim')
     def _updateDragNDrop1(self):
         path = self.tr_DND_vadim[0].absolute_path

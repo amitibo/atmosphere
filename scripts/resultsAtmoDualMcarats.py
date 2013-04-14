@@ -142,7 +142,7 @@ class resultAnalayzer(HasTraits):
     """Gui Application"""
     
     tr_scaling = Range(-10.0, 10.0, 0.0, desc='Radiance scaling logarithmic')
-    tr_relative_scaling = Range(-10.0, 10.0, 0.0, desc='Relative radiance scaling logarithmic')
+    tr_relative_scaling = Range(-15.0, 15.0, 0.0, desc='Relative radiance scaling logarithmic')
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
     tr_gamma_correction = Bool()

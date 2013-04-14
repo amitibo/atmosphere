@@ -63,8 +63,12 @@ class Camera(object):
         timer.tock()
         timer.tick()        
         print 'sensor'
-        H_sensor = grids.integrateGrids(
-            camera_position, Y, X, H, camera_params.image_res, subgrid_max=camera_params.subgrid_res, subgrid_noise=camera_params.grid_noise
+        H_sensor = grids.rayCasting(
+            camera_position,
+            Y, X, H,
+            camera_params.image_res,
+            samples_num=2000,
+            replicate=10
         )
         print 'finished calculation'
         timer.tock()
@@ -167,7 +171,7 @@ class Camera(object):
             # Calculate the radiance
             #
             radiance = (scatter_air + scatter_aerosols) * (exp_air * exp_aerosols)
-    
+            
             #
             # Calculate projection on camera
             #

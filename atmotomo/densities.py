@@ -115,12 +115,17 @@ def single_cloud_vadim(atmosphere_params):
     return A_air, A_aerosols, Y, X, H, h
 
 
-def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density=0.001):
+def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density=0.001, decay=False):
     #
     # Create the sky
     #
     Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
     width = atmosphere_params.cartesian_grids[0].stop
+    
+    A_aerosol_base = density
+    if decay:
+        h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + H**2)
+        A_aerosol_base = A_aerosol_base * np.exp(-h/atmosphere_params.aerosols_typical_h)
 
     #
     # Create the distributions of aerosols
@@ -128,8 +133,8 @@ def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density
     A_aerosols = []
     for voxel_indices in indices_list:
         tmp = np.zeros_like(H)
-        tmp[voxel_indices] = density
-        A_aerosols.append(tmp)
+        tmp[voxel_indices] = 1
+        A_aerosols.append(tmp * A_aerosol_base)
         
     return A_aerosols, Y, X, H
 
