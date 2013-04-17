@@ -38,8 +38,6 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(100, 100, 10),
-    grid_noise=1.,
     photons_per_pixel=40000
 )
 
@@ -48,35 +46,64 @@ SUN_ANGLE = -np.pi/4
     
 VISIBILITY = 10000
 
-VOXEL_INDICES= [
-    (25, 25, 15), 
-    (25, 25, 10),
-    (25, 25, 5),
-    (24, 24, 1),
-    (24, 24, 5),
-    (24, 24, 10),
-    (20, 26, 15),
-    (20, 20, 10)]
+#VOXEL_INDICES= [
+    #(24, 24, 7), 
+    #(24, 22, 5)]
+    
+#
+# The cluster values
+#
+#VOXEL_INDICES= [
+    #(16, 16, 10), 
+    #(16, 16, 30), 
+    #(16, 16, 50), 
+    #(16, 16, 80)]
 
-def serial(particle_params):
+#
+# Vadim values
+#
+#VOXEL_INDICES= [
+    #(24, 24, 5),
+    #(24, 24, 7,),
+    #(24, 24, 10),
+    #(24, 24, 15),
+    #(24, 24, 20),
+    #(24, 24, 25),
+    #(24, 24, 30),
+    #(24, 24, 35),
+    #(24, 24, 40),
+    #(24, 24, 45),
+    #(24, 24, 50),
+#]
+VOXEL_INDICES = [(24, 24, i-1) for i in (5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100)]
+
+def serial(particle_params, save_path=None, load_path=None):
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
    
     #
     # Create the distributions
     #
-    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=VOXEL_INDICES, density=1/VISIBILITY)
+    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=VOXEL_INDICES, density=1/VISIBILITY, decay=False)
     
     #
     # Instantiating the camera
     #
     cam = Camera()
-    cam.create(
-        SUN_ANGLE,
-        atmosphere_params=atmosphere_params,
-        camera_params=camera_params,
-        camera_position=camera_position
-    )
+    
+    if load_path != None:
+        cam.load(os.path.abspath(load_path))
+    else:
+        cam.create(
+            SUN_ANGLE,
+            atmosphere_params=atmosphere_params,
+            camera_params=camera_params,
+            camera_position=camera_position
+        )
+        
+        if save_path != None:
+            cam.save(os.path.abspath(save_path))
+            
     cam.setA_air(np.zeros_like(A_aerosols[0]))
 
     #
@@ -94,10 +121,9 @@ if __name__ == '__main__':
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Simulate single voxel atmosphere')
-    parser.add_argument('--subgrid', type=float, default=8, help='Ratio of subgrid (multiplied by 100, 100, 10) (default=8).')
+    parser.add_argument('--save_path', type=str, default=None, help='Path for storing the camera.')
+    parser.add_argument('--load_path', type=str, default=None, help='Path for loading the camera.')
     args = parser.parse_args()
-    
-    camera_params.subgrid_res = [int(args.subgrid*i) for i in camera_params.subgrid_res]
     
     #
     # Load the MISR database.
@@ -110,4 +136,4 @@ if __name__ == '__main__':
         g_RGB=(particle['g'])
         )
 
-    serial(particle_params)
+    serial(particle_params, args.save_path, args.load_path)
