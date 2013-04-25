@@ -13,24 +13,6 @@ import os
 __all__ = ["Camera"]
 
 
-def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
-    """
-    Calclculate the scattering angle at each voxel.
-    """
-
-    H_rot = atmo_utils.calcRotationMatrix(sun_rotation)
-    sun_vector = np.dot(H_rot, np.array([[0.], [0.], [1.], [1.]]))
-    
-    Y_ = Y-camera_position[0]
-    X_ = X-camera_position[1]
-    Z_ = Z-camera_position[2]
-    R = np.sqrt(Y_**2 + X_**2 + Z_**2)
-
-    mu = (Y_ * sun_vector[0] + X_ * sun_vector[1] + Z_ * sun_vector[2])/ (R + amitibo.eps(R))
-    
-    return mu
-
-
 class Camera(object):
     """A class that encapsulates the functions of a camera"""
     
@@ -54,37 +36,45 @@ class Camera(object):
         #
         timer = amitibo.timer()
         
-        print 'Distances1'
-        H_distances1 = grids.point2grids(camera_position, Y, X, H)
-        timer.tock()
-        timer.tick()
-        print 'Distances2'
-        H_distances2 = grids.direction2grids(0, -sun_angle, Y, X, H)
+        print 'Distances from sun'
+        H_distances_from_sun = grids.direction2grids(0, -sun_angle, Y, X, H)
         timer.tock()
         timer.tick()        
-        print 'sensor'
-        H_sensor = grids.rayCasting(
+        print 'Cartesian to camera projection'
+        H_cart2polar, R, PHI, THETA = grids.cartesian2sensor(
             camera_position,
             Y, X, H,
             camera_params.image_res,
+            camera_params.radius_res,
             samples_num=2000,
             replicate=10
         )
+        timer.tock()
+        timer.tick()
+        print 'sensor'
+        H_sensor = grids.integralTransformMatrix((R, PHI, THETA), axis=0)
+        timer.tock()
+        timer.tick()        
+        print 'Distances from sun'
+        H_distances_to_sensor = grids.cumsumTransformMatrix((R, PHI, THETA), axis=0, direction=0)
         print 'finished calculation'
         timer.tock()
         
         #
         # Calculate the mu
         #
-        warnings.warn('Currently we are using a hack to align the scattering angle with the rotation of the atmosphere')
-        mu = calcScatterAngle(Y, X, H, camera_position, sun_rotation=(sun_angle, 0, 0))
+        scatter_angle = atmo_utils.calcScatterAngle(
+            R, PHI, THETA,
+            sun_angle
+        )
         
         #
         # Store the matrices
         #
-        self.H_distances = H_distances1 + H_distances2
+        self.H_cart2polar = H_cart2polar
+        self.H_distances = H_distances_to_sensor * H_cart2polar + H_cart2polar * H_distances_from_sun
         self.H_sensor = H_sensor
-        self.mu = mu.reshape((-1, 1))
+        self.mu = np.cos(scatter_angle).reshape((-1, 1))
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
         self.A_air_ = np.empty(1)
@@ -140,7 +130,7 @@ class Camera(object):
         """Precalculate the air extinction and scattering"""
         
         self._air_exts = [np.exp(-self.H_distances * air_ext_coef) for air_ext_coef in air_ext_coefs]
-        self._air_scat = [(3 / (16*np.pi) * ((1 + self.mu**2) * air_ext_coef)) for air_ext_coef in air_ext_coefs]
+        self._air_scat = [(3 / (16*np.pi) * (1 + self.mu**2) * (self.H_cart2polar * air_ext_coef)) for air_ext_coef in air_ext_coefs]
         
     def calcImage(self, A_aerosols, particle_params, add_noise=False):
         """Calculate the image for a given aerosols distribution"""
@@ -164,7 +154,7 @@ class Camera(object):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            scatter_aerosols = w * k * (A_aerosols_ * atmo_utils.calcHG(self.mu, g))
+            scatter_aerosols = w * k * ((self.H_cart2polar * A_aerosols_) * atmo_utils.calcHG(self.mu, g))
             exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             #

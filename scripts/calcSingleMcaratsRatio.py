@@ -6,7 +6,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath, getMisrDB
 from atmotomo import Camera
-from atmotomo import single_voxel_atmosphere, calcAirMcarats
+from atmotomo import single_voxel_atmosphere
 import atmotomo
 import amitibo
 import scipy.io as sio
@@ -38,6 +38,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
+    radius_res=30,
     photons_per_pixel=40000
 )
 
