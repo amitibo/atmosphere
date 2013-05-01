@@ -33,7 +33,7 @@ import pkg_resources
 import grids
 import amitibo
 
-__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath", "getMisrDB", "calcScatterAngle"]
+__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath", "getMisrDB", "calcScatterMu"]
 
 
 #
@@ -139,44 +139,22 @@ def testHG():
     plt.show()
 
 
-#def calcScatterAngle(Y, X, Z, camera_position, sun_rotation):
-    #"""
-    #Calclculate the scattering angle at each voxel.
-    #"""
-
-    #H_rot = grids.calcRotationMatrix(sun_rotation)
-    #sun_vector = np.dot(H_rot, np.array([[0.], [0.], [1.], [1.]]))
-    
-    #Y_ = Y-camera_position[0]
-    #X_ = X-camera_position[1]
-    #Z_ = Z-camera_position[2]
-    #R = np.sqrt(Y_**2 + X_**2 + Z_**2)
-
-    #mu = (Y_ * sun_vector[0] + X_ * sun_vector[1] + Z_ * sun_vector[2])/ (R + amitibo.eps(R))
-    
-    #return mu
-
-
-def calcScatterAngle(R, PHI, THETA, sun_angle):
+def calcScatterMu(grids, sun_angle):
     """
-    Calclculate the scattering angle at each voxel.
+    Calclculate the cosine of the scattering angle at each voxel.
     """
 
-    H_rot = grids.calcRotationMatrix((0, sun_angle, 0))
+    #
+    # Rotate the grids so that the Z axis will point in the direction of the sun
+    #
+    grids_rotated = grids.rotate(-sun_angle, 0, 0)
     
-    X_ = R * np.sin(THETA) * np.cos(PHI)
-    Y_ = R * np.sin(THETA) * np.sin(PHI)
-    Z_ = R * np.cos(THETA)
+    Z_rotated = grids_rotated[2]
+    R_rotated = np.sqrt(grids_rotated[0]**2 + grids_rotated[1]**2 + grids_rotated[2]**2)
 
-    XYZ_dst = np.vstack((X_.ravel(), Y_.ravel(), Z_.ravel(), np.ones(R.size)))
-    XYZ_src_ = np.dot(H_rot, XYZ_dst)
+    mu = Z_rotated/(R_rotated+amitibo.eps(R_rotated))
 
-    Z_rotated = XYZ_src_[2, :]
-    R_rotated = np.sqrt(np.sum(XYZ_src_[:3, :]**2, axis=0))
-
-    angle = np.arccos(Z_rotated/(R_rotated+amitibo.eps(R_rotated)))
-
-    return angle
+    return mu
 
 
 if __name__ == '__main__':

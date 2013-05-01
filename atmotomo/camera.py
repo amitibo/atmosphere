@@ -6,6 +6,8 @@ import numpy as np
 from . import atmo_utils
 import amitibo
 import warnings
+import sparse_transforms as spt
+import numpy as np
 import grids
 import time
 import os
@@ -28,8 +30,8 @@ class Camera(object):
         
         assert camera_orientation==None, "orientation not implemented yet"
         
-        Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-        self._shape = H.shape
+        grids = atmosphere_params.cartesian_grids
+        self._shape = grids.shape
         
         #
         # Calculate the distance matrices and scattering angle
@@ -37,46 +39,63 @@ class Camera(object):
         timer = amitibo.timer()
         
         print 'Distances from sun'
-        H_distances_from_sun = grids.direction2grids(0, -sun_angle, Y, X, H)
+        H_distances_from_sun = spt.DirectionTransform(
+            in_grids=grids,
+            direction_phi=0,
+            direction_theta=-sun_angle
+            )
         timer.tock()
+        
         timer.tick()        
         print 'Cartesian to camera projection'
-        H_cart2polar, R, PHI, THETA = grids.cartesian2sensor(
+        H_cart2polar = spt.SensorTransform(
+            grids,
             camera_position,
-            Y, X, H,
             camera_params.image_res,
             camera_params.radius_res,
-            samples_num=2000,
+            samples_num=4000,
             replicate=10
         )
         timer.tock()
-        timer.tick()
-        print 'sensor'
-        H_sensor = grids.integralTransformMatrix((R, PHI, THETA), axis=0)
-        timer.tock()
+        
+        sensor_grids = H_cart2polar.out_grids
+        
         timer.tick()        
         print 'Distances from sun'
-        H_distances_to_sensor = grids.cumsumTransformMatrix((R, PHI, THETA), axis=0, direction=0)
+        H_distances_to_sensor = spt.CumsumTransform(
+            sensor_grids,
+            axis=0,
+            direction=0
+        )
+        timer.tock()
+        
+        timer.tick()
+        print 'sensor'
+        H_sensor = spt.IntegralTransform(
+            sensor_grids,
+            axis=0
+        )
         print 'finished calculation'
         timer.tock()
         
         #
-        # Calculate the mu
-        #
-        scatter_angle = atmo_utils.calcScatterAngle(
-            R, PHI, THETA,
-            sun_angle
-        )
-        
-        #
-        # Store the matrices
+        # Store the transforms
         #
         self.H_cart2polar = H_cart2polar
         self.H_distances = H_distances_to_sensor * H_cart2polar + H_cart2polar * H_distances_from_sun
         self.H_sensor = H_sensor
-        self.mu = np.cos(scatter_angle).reshape((-1, 1))
+        
+        #
+        # Calculated the scattering cosinus angle
+        #
+        self.mu = atmo_utils.calcScatterMu(H_cart2polar.inv_grids, sun_angle).reshape((-1, 1))
+        
+        #
+        # Store simulation parameters
+        #
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
+        
         self.A_air_ = np.empty(1)
         self._air_exts = ()
         

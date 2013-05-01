@@ -119,8 +119,8 @@ def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density
     #
     # Create the sky
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
     
     A_aerosol_base = density
     if decay:
