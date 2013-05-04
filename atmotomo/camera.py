@@ -39,7 +39,7 @@ class Camera(object):
         timer = amitibo.timer()
         
         print 'Distances from sun'
-        H_distances_from_sun = spt.DirectionTransform(
+        H_distances_from_sun = spt.directionTransform(
             in_grids=grids,
             direction_phi=0,
             direction_theta=-sun_angle
@@ -48,13 +48,13 @@ class Camera(object):
         
         timer.tick()        
         print 'Cartesian to camera projection'
-        H_cart2polar = spt.SensorTransform(
+        H_cart2polar = spt.sensorTransform(
             grids,
             camera_position,
             camera_params.image_res,
             camera_params.radius_res,
-            samples_num=4000,
-            replicate=10
+            samples_num=8000,
+            replicate=40
         )
         timer.tock()
         
@@ -62,7 +62,7 @@ class Camera(object):
         
         timer.tick()        
         print 'Distances from sun'
-        H_distances_to_sensor = spt.CumsumTransform(
+        H_distances_to_sensor = spt.cumsumTransform(
             sensor_grids,
             axis=0,
             direction=0
@@ -71,7 +71,7 @@ class Camera(object):
         
         timer.tick()
         print 'sensor'
-        H_sensor = spt.IntegralTransform(
+        H_sensor = spt.integralTransform(
             sensor_grids,
             axis=0
         )

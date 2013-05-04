@@ -11,9 +11,9 @@ def density_front(atmosphere_params):
     #
     # Create the sky
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
 
     #
@@ -37,9 +37,9 @@ def density_clouds1(atmosphere_params):
     #
     # Create the sky
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
 
     #
@@ -65,9 +65,9 @@ def density_clouds_vadim(atmosphere_params):
     #
     # Create the sky
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
 
     #
@@ -93,9 +93,9 @@ def single_cloud_vadim(atmosphere_params):
     #
     # Create the sky
     #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
 
     #
@@ -164,34 +164,8 @@ def calcAirMcarats(Z):
     return (e67, e55, e45)
 
 
-def main():
-    """Main doc """
-    
-    import amitibo
-    import mayavi.mlab as mlab
-    
-    atmosphere_params = amitibo.attrClass(
-        cartesian_grids=(
-            slice(0, 50000, 1000.0), # Y
-            slice(0, 50000, 1000.0), # X
-            slice(0, 10000, 100.0)   # H
-            ),
-        earth_radius=4000000,
-        air_typical_h=8000,
-        aerosols_typical_h=2000
-    )
-
-    A_air, A_aerosols1, Y, X, H, h = density_clouds1(atmosphere_params)
-    A_air, A_aerosols2, Y, X, H, h = density_clouds_vadim(atmosphere_params)
-    
-    amitibo.viz3D(Y, X, H, A_aerosols1)
-    amitibo.viz3D(Y, X, H, A_aerosols2)
-
-    mlab.show()
-    
-    
 if __name__ == '__main__':
-    main()
+    pass
 
     
     
