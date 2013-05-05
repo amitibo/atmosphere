@@ -4,9 +4,9 @@
 #---------------------------------------------------
 #PBS -N job_name
 #
-# Submit the job to the queue "queue_name" (minerva_h_p, gpu_l_p)
+# Submit the job to the queue "queue_name" (minerva_h_p, gpu_l_p, np_weekend, all_l_p)
 #---------------------------------------------------
-#PBS -q  minerva_h_p
+#PBS -q  all_l_p
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------

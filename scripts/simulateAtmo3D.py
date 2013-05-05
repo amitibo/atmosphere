@@ -7,6 +7,7 @@ import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath, getMisrDB
 from atmotomo import Camera
 from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats
+import sparse_transforms as spt
 import atmotomo
 import amitibo
 import scipy.io as sio
@@ -24,10 +25,10 @@ import glob
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
-    cartesian_grids=(
-        slice(0, 50000, 1000.0), # Y
-        slice(0, 50000, 1000.0), # X
-        slice(0, 10000, 100.0)   # H
+    cartesian_grids=spt.Grids(
+        np.arange(0, 50000, 1000.0), # Y
+        np.arange(0, 50000, 1000.0), # X
+        np.arange(0, 10000, 100.0)   # H
         ),
     earth_radius=4000000,
     L_SUN_RGB=L_SUN_RGB,
@@ -38,8 +39,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(800, 800, 80),
-    grid_noise=1.,
+    radius_res=100,
     photons_per_pixel=40000
 )
 
