@@ -226,7 +226,7 @@ class Camera(object):
             # Calculate scattering and extiniction for aerosols
             #
             P_aerosols = atmo_utils.calcHG(self.mu, g)
-            scatter_aerosols =  w * k * (A_aerosols_ * P_aerosols)
+            scatter_aerosols =  w * k * ((self.H_cart2polar * A_aerosols_) * P_aerosols)
             exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             ##
@@ -245,8 +245,9 @@ class Camera(object):
             # An efficient calculation of the above, just without creating unnecessary huge sparse matrices.
             # The reason for this implementation is to avoid memory problems.
             #
-            part1 = w * k * (P_aerosols * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
-            part2 = k * self.H_distances.T * ((scatter_air + scatter_aerosols) * (exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))))
+            temp = exp_air * exp_aerosols * (self.H_sensor.T * img_err[:, :, i].reshape((-1, 1)))
+            part1 = w * k * (self.H_cart2polar.T * (P_aerosols * temp))
+            part2 = k * (self.H_distances.T * ((scatter_air + scatter_aerosols) * temp))
 
             gimg.append(-2 * L_sun * (part1 - part2))
             

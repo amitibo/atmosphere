@@ -6,6 +6,7 @@ import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
 from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats
+import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
 import scipy.ndimage as ndimage
@@ -44,9 +45,9 @@ KM_TO_METER = 1000
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50000., 1000.), # Y
-        slice(0, 50000., 1000.), # X
-        slice(0, 10000., 100.)  # H
+        np.arange(0, 50000, 1000.0), # Y
+        np.arange(0, 50000, 1000.0), # X
+        np.arange(0, 10000, 100.0)   # H
         ),
     earth_radius=4000000,
     L_SUN_RGB=L_SUN_RGB,
@@ -57,8 +58,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(800, 800, 80),
-    grid_noise=1.,
+    radius_res=100,
     photons_per_pixel=40000
 )
 
@@ -301,7 +301,7 @@ def master(particle_params, solver='ipopt'):
     )
 
 
-def slave(particle_params, camera_position, ref_img, scaling=1):
+def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
@@ -330,7 +330,10 @@ def slave(particle_params, camera_position, ref_img, scaling=1):
     A_aerosols = data[1]
     results_path = data[2]
     
-    cam.set_air_extinction(air_exts)
+    if no_air:
+        cam.setA_air(np.zeros_like(A_aerosols))
+    else:
+        cam.set_air_extinction(air_exts)
 
     if ref_img is None:
         ref_img = cam.calcImage(
@@ -405,6 +408,7 @@ def main():
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+    parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
     args = parser.parse_args()
     
     #
@@ -481,7 +485,7 @@ def main():
             ref_img = None
             scaling=1
             
-        slave(particle_params, camera_position, ref_img, scaling=scaling)
+        slave(particle_params, camera_position, ref_img, scaling=scaling, no_air=args.no_air)
 
 
 if __name__ == '__main__':

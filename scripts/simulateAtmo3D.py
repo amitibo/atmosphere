@@ -6,7 +6,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath, getMisrDB
 from atmotomo import Camera
-from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats
+from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats, single_voxel_atmosphere
 import sparse_transforms as spt
 import atmotomo
 import amitibo
@@ -47,7 +47,7 @@ camera_position = np.array((9507, 22815.9, 84.431))
 SUN_ANGLE = -np.pi/4
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5000., 45000, 5), np.linspace(5000., 45000, 5))]
 
-VISIBILITY = 100000
+VISIBILITY = 10000
 KM_TO_METER = 1000
 profile = False
     
@@ -71,8 +71,9 @@ def parallel(particle_params, cameras):
     #
     # Create the distributions
     #
-    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
-    A_aerosols = A_aerosols / VISIBILITY
+    #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    #A_aerosols = A_aerosols / VISIBILITY
+    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 20)], density=1/VISIBILITY, decay=False)
     
     #
     # Instantiating the camera
@@ -85,14 +86,15 @@ def parallel(particle_params, cameras):
         camera_position=cameras[comm.rank]
     )
     
-    z_coords = H[0, 0, :]
-    air_exts = calcAirMcarats(z_coords)
-    cam.set_air_extinction(air_exts)
+    #z_coords = H[0, 0, :]
+    #air_exts = calcAirMcarats(z_coords)
+    #cam.set_air_extinction(air_exts)
+    cam.setA_air(np.zeros_like(A_aerosols[0]))
     
     #
     # Calculating the image
     #
-    img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=True)
+    img = cam.calcImage(A_aerosols=A_aerosols[0], particle_params=particle_params, add_noise=True)
         
     result = comm.gather(img, root=0)
     if comm.rank == 0:
