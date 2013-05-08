@@ -44,7 +44,7 @@ KM_TO_METER = 1000
 # Global settings
 #
 atmosphere_params = amitibo.attrClass(
-    cartesian_grids=(
+    cartesian_grids=spt.Grids(
         np.arange(0, 50000, 1000.0), # Y
         np.arange(0, 50000, 1000.0), # X
         np.arange(0, 10000, 100.0)   # H
@@ -83,6 +83,8 @@ CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
+
+VADIM_IMG_SCALE = 9.75122
 
 profile = False
 
@@ -211,6 +213,8 @@ class RadianceProblem(object):
 def master(particle_params, solver='ipopt'):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
+    #import wingdbstub
+
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
     logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
 
@@ -279,8 +283,7 @@ def master(particle_params, solver='ipopt'):
             bounds=[(0, None)]*x0.size,
             maxfun=MAX_ITERATIONS
         )
-        
-    
+
     #
     # Kill all slaves
     #
@@ -353,7 +356,7 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
     #
     while 1:
         comm.Recv(A_aerosols, source=0, tag=MPI.ANY_TAG, status=sts)
-
+        
         tag = sts.Get_tag()
         if tag == DIETAG:
             break
@@ -400,24 +403,93 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
     )
 
 
-def main():
-    #
-    # Parse the input
-    #
-    parser = argparse.ArgumentParser(description='Analyze atmosphere')
-    parser.add_argument('--mcarats', help='path to reference mcarats results folder')
-    parser.add_argument('--ref_images', help='path to reference images')
-    parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
-    parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
-    args = parser.parse_args()
+def loadSlaveData(ref_images, mcarats, sigma):
+    """"""
     
-    #
-    # Load the reference images
-    #
-    folder_list = []
-    if args.ref_images:
-        folder_list = glob.glob(os.path.join(args.ref_images, "*"))
-         
+    global mpi_size
+    
+    ref_img = None
+    camera_position = ()
+    scaling=1
+
+    if mcarats:
+        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
+            lines = f.readlines()
+            
+        mpi_size = min(mpi_size, len(lines)+1)
+        
+        if mpi_rank >= mpi_size:
+            sys.exit()
+                
+        path = os.path.abspath(mcarats)
+
+        R_ch, G_ch, B_ch = [np.fromfile(os.path.join(path, 'base%d_conf_out' % i), dtype=np.float32) for i in range(3)]
+        IMG_SHAPE = (128, 128)
+        IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
+        
+        if mpi_rank > 0:
+            slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
+            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE)
+            ref_img = ref_img.astype(np.float)
+        
+            camera_position = np.array([float(i) for i in lines[mpi_rank-1].strip().split()])*KM_TO_METER
+
+        scaling = MCARATS_IMG_SCALE
+        
+    elif ref_images:
+        #
+        # Load the reference images
+        #
+        folder_list = glob.glob(os.path.join(ref_images, "*"))
+             
+        #
+        # Limit the number of mpi processes used.
+        #
+        mpi_size = min(mpi_size, len(folder_list)+1)
+        
+        if mpi_rank >= mpi_size:
+            sys.exit()
+            
+        if mpi_rank > 0:
+            path = folder_list[mpi_rank-1]
+            img_path = os.path.join(path, "RGB_MATRIX.mat")
+            data = sio.loadmat(img_path)
+            
+            ref_img = data['Detector'] / REF_IMG_SCALE
+        
+            if sigma > 0.0:
+                for channel in range(ref_img.shape[2]):
+                    ref_img[:, :, channel] = \
+                        ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
+                
+            #
+            # Parse cameras center file
+            #
+            with open(os.path.join(path, 'params.txt'), 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts[0] == 'CameraPosition':
+                        camera_position = np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))
+                        break
+            
+        scaling = VADIM_IMG_SCALE
+    else:
+        mpi_size = min(mpi_size, len(CAMERA_CENTERS)+1)
+        
+        if mpi_rank >= mpi_size:
+            sys.exit()
+            
+        if mpi_rank > 0:
+            camera_position = CAMERA_CENTERS[mpi_rank-1]
+
+    return ref_img, camera_position, scaling
+    
+
+def main(ref_images=None, mcarats=None, sigma=0.0, no_air=False):
+    
+    global mpi_size
+    
     #
     # Load the MISR database.
     #
@@ -432,61 +504,31 @@ def main():
         g_RGB=(particle['g'])
         )
     
+    #
+    # Calculate the camera position (this is relevant only for the slave
+    # but it also calculated the mpi_size which important for the master
+    # also)
+    #
+    ref_img, camera_position, scaling = loadSlaveData(ref_images, mcarats, sigma)
+    
     if mpi_rank == 0:
         #
         # Set up the solver server.
         #
         master(particle_params, solver='bfgs')
     else:
-        if args.mcarats:
-            path = os.path.abspath(args.mcarats)
-    
-            R_ch, G_ch, B_ch = [np.fromfile(os.path.join(path, 'base%d_conf_out' % i), dtype=np.float32) for i in range(3)]
-            IMG_SHAPE = (128, 128)
-            IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
-            
-            slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
-            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE)
-            ref_img = ref_img.astype(np.float)
-            
-            with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
-                lines = f.readlines()
-                camera_position = np.array([float(i) for i in lines[mpi_rank-1].strip().split()])*KM_TO_METER
-
-            scaling = MCARATS_IMG_SCALE
-            
-        elif folder_list:
-            path = folder_list[mpi_rank-1]
-            img_path = os.path.join(path, "RGB_MATRIX.mat")
-            data = sio.loadmat(img_path)
-            
-            ref_img = data['Detector'] / REF_IMG_SCALE
-            
-            if args.sigma > 0.0:
-                for channel in range(ref_img.shape[2]):
-                    ref_img[:, :, channel] = \
-                        ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=args.sigma)
-                
-            #
-            # Parse cameras center file
-            #
-            with open(os.path.join(path, 'params.txt'), 'r') as f:
-                lines = f.readlines()
-                for line in lines:
-                    parts = line.strip().split()
-                    if parts[0] == 'CameraPosition':
-                        camera_position = np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))/ 1000
-                        break
-                    
-            scaling=1
-            
-        else:
-            camera_position = CAMERA_CENTERS[mpi_rank-1]
-            ref_img = None
-            scaling=1
-            
-        slave(particle_params, camera_position, ref_img, scaling=scaling, no_air=args.no_air)
+        slave(particle_params, camera_position, ref_img, scaling=scaling, no_air=no_air)
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__':    
+    #
+    # Parse the input
+    #
+    parser = argparse.ArgumentParser(description='Analyze atmosphere')
+    parser.add_argument('--mcarats', help='path to reference mcarats results folder')
+    parser.add_argument('--ref_images', help='path to reference images')
+    parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+    parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
+    args = parser.parse_args()
+
+    main(args.ref_images, args.mcarats, args.sigma, args.no_air)

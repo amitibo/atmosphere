@@ -73,35 +73,39 @@ def parallel(particle_params, cameras):
     #
     #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     #A_aerosols = A_aerosols / VISIBILITY
-    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 20)], density=1/VISIBILITY, decay=False)
+    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
     
     #
     # Instantiating the camera
     #
-    cam = Camera()
-    cam.create(
-        SUN_ANGLE,
-        atmosphere_params=atmosphere_params,
-        camera_params=camera_params,
-        camera_position=cameras[comm.rank]
-    )
-    
-    #z_coords = H[0, 0, :]
-    #air_exts = calcAirMcarats(z_coords)
-    #cam.set_air_extinction(air_exts)
-    cam.setA_air(np.zeros_like(A_aerosols[0]))
-    
-    #
-    # Calculating the image
-    #
-    img = cam.calcImage(A_aerosols=A_aerosols[0], particle_params=particle_params, add_noise=True)
+    if comm.rank < len(cameras):
+        cam = Camera()
+        cam.create(
+            SUN_ANGLE,
+            atmosphere_params=atmosphere_params,
+            camera_params=camera_params,
+            camera_position=cameras[comm.rank]
+        )
+        
+        #z_coords = H[0, 0, :]
+        #air_exts = calcAirMcarats(z_coords)
+        #cam.set_air_extinction(air_exts)
+        cam.setA_air(np.zeros_like(A_aerosols[0]))
+        
+        #
+        # Calculating the image
+        #
+        img = cam.calcImage(A_aerosols=A_aerosols[0], particle_params=particle_params, add_noise=True)
+    else:
+        img = []
         
     result = comm.gather(img, root=0)
     if comm.rank == 0:
         results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
         
         for i, img in enumerate(result):
-            sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
+            if img != []:
+                sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
     
     
 def serial(particle_params):

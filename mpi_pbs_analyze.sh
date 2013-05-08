@@ -6,7 +6,26 @@
 #
 # Submit the job to the queue "queue_name" (minerva_h_p, gpu_l_p)
 #---------------------------------------------------
-#PBS -q  minerva_h_p
+# Minerva  queue      High	      minerva_h_p         wall time limit=168 h             Minerva, Training
+#       						  av. hosts n029 - n080
+#							  user CPU number limit=160 
+# General queue    	  Low          all_l_p              wall time limit=24 h		    
+#							   av. hosts n001-n026
+#                                                              n029-n076	                 All Users
+#	                                                temporary:   n101-n108      
+#							   user CPU number limit = 160                                             
+# Non-prime time       Low         np_weekend       active from Thu 17:00 to Sun 8:00   
+#     queue                                                maximum 63 h
+#                                                       av. hosts n001-n080                    All Users
+#                                                   user CPU number limit = 200
+#                                                   job  CPU number limit = 120    
+# Graphical Processing   High        gpu_l_p	  	wall time limit= 72 h	        
+#     Units (GPU)						av. hosts gn01 - gn04                 All users
+#							        CPU number limit=12
+#   General		Low	      general_ld	    wall time limit=24 h            
+#  Large Disk						    av. hosts n097 - n100                    All users
+#
+#PBS -q  gpu_l_p
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
