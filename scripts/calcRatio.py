@@ -49,27 +49,58 @@ def getSingleMatList(path):
     return img_list
 
 
+def findMatched(mc_img, single_imgs):
+
+    mask_results = []
+    
+    for single_img in single_imgs:
+        mask = (mc_img > 0) * (single_img > 0)
+        mask_results.append(mask.sum())
+        
+    return single_imgs[np.argmax(mask_results)]
+
+
 def main(mc_path, single_path):
     """Main doc """
     
     mc_imgs = getMcMatList(mc_path)
     single_imgs = getSingleMatList(single_path)
 
+    matched_single_imgs = []
+    for mc_img in mc_imgs:
+        matched_single_imgs.append(findMatched(mc_img, single_imgs))
+        
     means = []
-    stds = []
-    for mc_img, single_img in zip(mc_imgs, single_imgs):
+    for mc_img, single_img in zip(mc_imgs, matched_single_imgs):
         mask = (mc_img > 0) * (single_img > 0)
         
-        ratios = single_img[mask] / mc_img[mask]
-        means.append(ratios.mean())
-        stds.append(ratios.std())
+        ratio = mc_img[mask].mean() / single_img[mask].mean()
+        
+        means.append(ratio)
+        
+        showImages(mc_img, single_img, mask, ratio)
         
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    rects1 = ax.bar(np.arange(len(means)), means, color='r', yerr=stds)
+    rects1 = ax.bar(np.arange(len(means)), means, color='r')
     plt.show()
     
-        
+    print 'Mean: %g (=10^%g)' % (np.mean(means), np.log10(np.mean(means)))
+
+
+def showImages(mc_img, single_img, mask, ratio):
+    plt.figure()
+    plt.subplot(131)
+    plt.imshow(mc_img)
+    plt.title('MC')
+    plt.subplot(132)
+    plt.imshow(single_img*ratio)
+    plt.title('Single')
+    plt.subplot(133)
+    plt.imshow(mask)
+    plt.title('Mask')
+
+
 if __name__ == '__main__':
     #
     # Parse the input
