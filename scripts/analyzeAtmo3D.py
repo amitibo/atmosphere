@@ -5,7 +5,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
-from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats
+from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere
 import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
@@ -36,6 +36,8 @@ IMGTAG = 1
 OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
+
+VISIBILITY = 10000
 
 MAX_ITERATIONS = 4000
 KM_TO_METER = 1000
@@ -84,8 +86,9 @@ SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
 
-VADIM_IMG_SCALE = 9.75122
-
+#VADIM_IMG_SCALE = 9.75122
+#VADIM_IMG_SCALE = 2493.67
+VADIM_IMG_SCALE = 880
 profile = False
 
 
@@ -221,7 +224,9 @@ def master(particle_params, solver='ipopt'):
     #
     # Create the distributions
     #
-    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    A_aerosols, Y, X, H = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
+    A_aerosols = A_aerosols[0]
     
     z_coords = H[0, 0, :]
     air_exts = calcAirMcarats(z_coords)
@@ -403,7 +408,7 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
     )
 
 
-def loadSlaveData(ref_images, mcarats, sigma):
+def loadSlaveData(ref_images, mcarats, simulate, sigma):
     """"""
     
     global mpi_size
@@ -449,7 +454,10 @@ def loadSlaveData(ref_images, mcarats, sigma):
         
         if mpi_rank >= mpi_size:
             sys.exit()
-            
+        
+        #
+        # Load the reference images
+        #
         if mpi_rank > 0:
             path = folder_list[mpi_rank-1]
             img_path = os.path.join(path, "RGB_MATRIX.mat")
@@ -483,10 +491,13 @@ def loadSlaveData(ref_images, mcarats, sigma):
         if mpi_rank > 0:
             camera_position = CAMERA_CENTERS[mpi_rank-1]
 
+    if simulate:
+        ref_img = None
+        
     return ref_img, camera_position, scaling
     
 
-def main(ref_images=None, mcarats=None, sigma=0.0, no_air=False):
+def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False):
     
     global mpi_size
     
@@ -509,7 +520,7 @@ def main(ref_images=None, mcarats=None, sigma=0.0, no_air=False):
     # but it also calculated the mpi_size which important for the master
     # also)
     #
-    ref_img, camera_position, scaling = loadSlaveData(ref_images, mcarats, sigma)
+    ref_img, camera_position, scaling = loadSlaveData(ref_images, mcarats, simulate, sigma)
     
     if mpi_rank == 0:
         #
@@ -529,6 +540,7 @@ if __name__ == '__main__':
     parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
+    parser.add_argument('--simulate', action='store_true', help='Use simulated images (overrides previous flags like mcarats and ref_images).')
     args = parser.parse_args()
 
-    main(args.ref_images, args.mcarats, args.sigma, args.no_air)
+    main(args.ref_images, args.mcarats, args.simulate, args.sigma, args.no_air)

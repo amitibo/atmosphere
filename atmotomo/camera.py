@@ -150,7 +150,7 @@ class Camera(object):
         """Precalculate the air extinction and scattering"""
         
         self._air_exts = [np.exp(-self.H_distances * air_ext_coef) for air_ext_coef in air_ext_coefs]
-        self._air_scat = [(3 / (16*np.pi) * (1 + self.mu**2) * (self.H_cart2polar * air_ext_coef)*self.R_derivatives) for air_ext_coef in air_ext_coefs]
+        self._air_scat = [(3 / (16*np.pi) * (1 + self.mu**2) * (self.H_cart2polar * air_ext_coef)) for air_ext_coef in air_ext_coefs]
         
     def calcImage(self, A_aerosols, particle_params, add_noise=False):
         """Calculate the image for a given aerosols distribution"""
@@ -174,7 +174,7 @@ class Camera(object):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            scatter_aerosols = w * k * ((self.H_cart2polar * A_aerosols_) * atmo_utils.calcHG(self.mu, g) * self.R_derivatives)
+            scatter_aerosols = w * k * (self.H_cart2polar * A_aerosols_) * atmo_utils.calcHG(self.mu, g)
             exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             #

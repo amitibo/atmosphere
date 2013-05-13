@@ -31,10 +31,10 @@ def prepareSimulationFiles(results_path, cameras_file, img_size, target):
     # Simulation parameters
     #
     atmosphere_params = amitibo.attrClass(
-        cartesian_grids=(
-            slice(0, ATMOSPHERE_WIDTH, 1000.0), # Y
-            slice(0, ATMOSPHERE_WIDTH, 1000.0), # X
-            slice(0, ATMOSPHERE_HEIGHT, 100.)   # H
+        cartesian_grids=spt.Grids(
+            np.arange(0, 50000, 1000.0), # Y
+            np.arange(0, 50000, 1000.0), # X
+            np.arange(0, 10000, 100.0)   # H
             ),
         earth_radius=4000000,
         RGB_WAVELENGTH=RGB_WAVELENGTH,

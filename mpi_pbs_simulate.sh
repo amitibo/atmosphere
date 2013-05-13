@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  general_ld
+#PBS -q  all_l_p
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------

@@ -52,7 +52,7 @@ KM_TO_METER = 1000
 profile = False
     
 
-def parallel(particle_params, cameras):
+def parallel(particle_params, cameras, add_noise):
     
     from mpi4py import MPI
     
@@ -74,6 +74,8 @@ def parallel(particle_params, cameras):
     #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     #A_aerosols = A_aerosols / VISIBILITY
     A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
+    A_aerosols = A_aerosols[0]
+    #A_aerosols = sio.loadmat('/u/amitibo/code/atmosphere/results/210+/13_05_08__09_01_43/radiance.mat')['estimated']
     
     #
     # Instantiating the camera
@@ -90,12 +92,12 @@ def parallel(particle_params, cameras):
         #z_coords = H[0, 0, :]
         #air_exts = calcAirMcarats(z_coords)
         #cam.set_air_extinction(air_exts)
-        cam.setA_air(np.zeros_like(A_aerosols[0]))
+        cam.setA_air(np.zeros_like(A_aerosols))
         
         #
         # Calculating the image
         #
-        img = cam.calcImage(A_aerosols=A_aerosols[0], particle_params=particle_params, add_noise=True)
+        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=add_noise)
     else:
         img = []
         
@@ -108,7 +110,7 @@ def parallel(particle_params, cameras):
                 sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
     
     
-def serial(particle_params):
+def serial(particle_params, add_noise):
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
    
@@ -136,7 +138,7 @@ def serial(particle_params):
         #
         # Calculating the image
         #
-        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=True)
+        img = cam.calcImage(A_aerosols=A_aerosols, particle_params=particle_params, add_noise=add_noise)
         
         sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
         
@@ -151,6 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('--ref_images', help='path to reference images')
     parser.add_argument('--parallel', action='store_true', help='run the parallel mode')
     parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
+    parser.add_argument('--noise', action='store_true', help='Add noise to the image creation')
     args = parser.parse_args()
     
     cameras = []
@@ -196,10 +199,10 @@ if __name__ == '__main__':
 
     if args.profile:
         import cProfile    
-        cmd = "serial(particle_params)"
+        cmd = "serial(particle_params, args.noise)"
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
         if args.parallel:
-            parallel(particle_params, cameras)
+            parallel(particle_params, cameras, args.noise)
         else:
-            serial(particle_params)
+            serial(particle_params, args.noise, args.noise)
