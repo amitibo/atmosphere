@@ -39,7 +39,7 @@ DIETAG = 4
 
 VISIBILITY = 10000
 
-MAX_ITERATIONS = 4000
+MAX_ITERATIONS = 200
 KM_TO_METER = 1000
 
 #
@@ -83,12 +83,11 @@ CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itert
 CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 
 SUN_ANGLE = -np.pi/4
-REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
 
 #VADIM_IMG_SCALE = 9.75122
 #VADIM_IMG_SCALE = 2493.67
-VADIM_IMG_SCALE = 880
+VADIM_IMG_SCALE = 1020
 profile = False
 
 
@@ -309,7 +308,7 @@ def master(particle_params, solver='ipopt'):
     )
 
 
-def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
+def slave(particle_params, camera_position, ref_img, no_air=False):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
@@ -372,7 +371,7 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
                 particle_params=particle_params
             )
             
-            temp = ref_img.reshape((-1, 1)) - scaling * img.reshape((-1, 1))
+            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
             obj = np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)
@@ -384,10 +383,10 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
             )
             
             grad = cam.calcImageGradient(
-                        img_err=ref_img-scaling*img,
+                        img_err=ref_img-img,
                         A_aerosols=A_aerosols,
                         particle_params=particle_params
-                    ) * scaling
+                    )
             
             comm.Send(grad, dest=0)
         else:
@@ -415,7 +414,6 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
     
     ref_img = None
     camera_position = ()
-    scaling=1
 
     if mcarats:
         with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
@@ -435,12 +433,10 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
         if mpi_rank > 0:
             slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
             ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE)
-            ref_img = ref_img.astype(np.float)
+            ref_img = ref_img.astype(np.float) / MCARATS_IMG_SCALE
         
             camera_position = np.array([float(i) for i in lines[mpi_rank-1].strip().split()])*KM_TO_METER
 
-        scaling = MCARATS_IMG_SCALE
-        
     elif ref_images:
         #
         # Load the reference images
@@ -451,7 +447,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
         #
         # Limit the number of mpi processes used.
         #
-        mpi_size = min(mpi_size, len(cameras)+1)
+        mpi_size = min(mpi_size, len(cameras_list)+1)
         
         if mpi_rank >= mpi_size:
             sys.exit()
@@ -460,7 +456,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
         # Select the reference image/camera according to the rank
         #
         if mpi_rank > 0:
-            ref_img = ref_images_list[mpi_rank-1] / REF_IMG_SCALE
+            ref_img = ref_images_list[mpi_rank-1] / VADIM_IMG_SCALE
         
             if sigma > 0.0:
                 for channel in range(ref_img.shape[2]):
@@ -469,7 +465,6 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
                 
             camera_position = cameras_list[mpi_rank-1]
             
-        scaling = VADIM_IMG_SCALE
     else:
         mpi_size = min(mpi_size, len(CAMERA_CENTERS)+1)
         
@@ -482,7 +477,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
     if simulate:
         ref_img = None
         
-    return ref_img, camera_position, scaling
+    return ref_img, camera_position
     
 
 def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False):
@@ -508,7 +503,7 @@ def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False)
     # but it also calculated the mpi_size which important for the master
     # also)
     #
-    ref_img, camera_position, scaling = loadSlaveData(ref_images, mcarats, simulate, sigma)
+    ref_img, camera_position = loadSlaveData(ref_images, mcarats, simulate, sigma)
     
     if mpi_rank == 0:
         #
@@ -516,7 +511,7 @@ def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False)
         #
         master(particle_params, solver='bfgs')
     else:
-        slave(particle_params, camera_position, ref_img, scaling=scaling, no_air=no_air)
+        slave(particle_params, camera_position, ref_img, no_air=no_air)
 
 
 if __name__ == '__main__':    

@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  all_l_p
+#PBS -q  minerva_h_p
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -70,6 +70,6 @@ cd $PBS_O_WORKDIR
 #------------------------------------------------------
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --sigma 1.0 --ref_images /u/amitibo/data/Low_Density
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --mcarats /u/amitibo/data/mcarats/3
-mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_single_voxel --no_air
+mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_mc_limited --no_air
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
