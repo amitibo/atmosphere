@@ -10,17 +10,18 @@ import glob
 import scipy.io as sio
 import re
 import os
+import skimage.morphology as morph
 
 
 def getMcMatList(path):
     
     folder_list = glob.glob(os.path.join(path, "*"))
     if not folder_list:
-        warning(info.ui.control, "No img found in the folder", "Warning")
-        return
+        raise Exception("No img found in the folder")
     
     img_list = []
     for folder in folder_list:
+        print folder
         img_path = os.path.join(folder, "RGB_MATRIX.mat")
         try:
             data = sio.loadmat(img_path)
@@ -39,6 +40,7 @@ def getSingleMatList(path):
     
     img_list = []
     for img_path in files_list:
+        print img_path
         try:
             data = sio.loadmat(img_path)
         except:
@@ -49,52 +51,78 @@ def getSingleMatList(path):
     return img_list
 
 
-def findMatched(mc_img, single_imgs):
+def findMatched(ref_img, single_imgs):
 
     mask_results = []
+    masks = []
     
-    for single_img in single_imgs:
-        mask = (mc_img > 0) * (single_img > 0)
-        mask_results.append(mask.sum())
+    if (ref_img>0).sum() > (ref_img.size*3/4):
+        #
+        # The mcarats ref images have values all over the sky
+        # so I supress all values below the median
+        #
+        ref_img = ref_img.copy()
+        mean_val = ref_img.mean()
+        ref_img[ref_img < mean_val] = 0
         
-    return single_imgs[np.argmax(mask_results)]
+    for single_img in single_imgs:
+        #
+        # Calc a joint mask
+        #
+        mask = (ref_img > 0) * (single_img > 0)
+        for i in range(3):
+            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
+        mask = mask>0
+        
+        temp = single_img[mask]
+        mask_results.append(temp.sum())
+        masks.append(mask)
+    
+    ind = np.argmax(mask_results)
+    print ind
+    return single_imgs[ind], masks[ind]
 
 
-def main(mc_path, single_path):
+def main(ref_path, single_path, vadim_ref):
     """Main doc """
     
-    mc_imgs = getMcMatList(mc_path)
+    if vadim_ref:
+        ref_imgs = getMcMatList(ref_path)
+    else:
+        ref_imgs = getSingleMatList(ref_path)
+        
     single_imgs = getSingleMatList(single_path)
 
     matched_single_imgs = []
-    for mc_img in mc_imgs:
-        matched_single_imgs.append(findMatched(mc_img, single_imgs))
+    matched_masks = []
+    for ref_img in ref_imgs:
+        single_img, mask = findMatched(ref_img, single_imgs)
+        matched_single_imgs.append(single_img)
+        matched_masks.append(mask)
         
     means = []
-    for mc_img, single_img in zip(mc_imgs, matched_single_imgs):
-        mask = (mc_img > 0) * (single_img > 0)
-        
-        ratio = mc_img[mask].mean() / single_img[mask].mean()
+    for ref_img, single_img, mask in zip(ref_imgs, matched_single_imgs, matched_masks):
+        ratio = ref_img[mask].mean() / single_img[mask].mean()
         
         means.append(ratio)
         
-        showImages(mc_img, single_img, mask, ratio)
+        showImages(ref_img, single_img, mask, ratio)
         
+    print 'Mean: %g (=10^%g)' % (np.mean(means[7:]), np.log10(np.mean(means[7:])))
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
     rects1 = ax.bar(np.arange(len(means)), means, color='r')
     plt.show()
     
-    print 'Mean: %g (=10^%g)' % (np.mean(means), np.log10(np.mean(means)))
 
-
-def showImages(mc_img, single_img, mask, ratio):
+def showImages(ref_img, single_img, mask, ratio):
     plt.figure()
     plt.subplot(131)
-    plt.imshow(mc_img)
-    plt.title('MC')
+    plt.imshow(ref_img/ref_img.max())
+    plt.title('Reference')
     plt.subplot(132)
-    plt.imshow(single_img*ratio)
+    plt.imshow(single_img/single_img.max())
     plt.title('Single')
     plt.subplot(133)
     plt.imshow(mask)
@@ -106,8 +134,9 @@ if __name__ == '__main__':
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Calculate the ratio between two sets of images')
-    parser.add_argument('mc', type=str, help='The monte carlo set of images.')
+    parser.add_argument('--vadim_ref', action='store_true', help='The reference images are stored in Vadim\'s format (folder of folders).')
+    parser.add_argument('reference', type=str, help='The reference set of images.')
     parser.add_argument('single', type=str, help='The single scatter set of images.')
     args = parser.parse_args()
 
-    main(args.mc, args.single)
+    main(args.reference, args.single, args.vadim_ref)
