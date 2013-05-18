@@ -123,7 +123,21 @@ class Job(BaseData):
         self._atmosphere3D = {}
 
     def set1Ddistribution(self, ext, omg, apf, tmp=None, abst=None):
-        """Add a 1D distribution"""
+        """
+        Add a 1D distribution
+        ---------------------
+        
+        ext: 1D array like.
+             Extinction coefficients [1/m]
+        omg: 1D array like,
+             Single scattering albedo
+        apf: 1D array like.
+             Phase function specification parameter.
+             apf <= -2 : Isotropic phase function.
+             -2 < apf <= -1 : Rayleigh scattering.
+             -1 < apf < 1 : Henyey-Greenstein phase function
+             1 < apf : Tabulated phase function given by database file (Not supported yet in this code).
+        """
         
         if ext.ndim != 1:
             raise NotImplementedError("Multiple 1D particle distributions not yet supported")
@@ -143,7 +157,21 @@ class Job(BaseData):
             )
         
     def set3Ddistribution(self, ext, omg, apf, tmp=None, abst=None):
-        """Add a 3D distribution"""
+        """
+        Add a 3D distribution
+        ---------------------
+        
+        ext: 3D array like.
+             Extinction coefficients [1/m]
+        omg: 3D array like,
+             Single scattering albedo
+        apf: 3D array like.
+             Phase function specification parameter.
+             apf <= -2 : Isotropic phase function.
+             -2 < apf <= -1 : Rayleigh scattering.
+             -1 < apf < 1 : Henyey-Greenstein phase function
+             1 < apf : Tabulated phase function given by database file (Not supported yet in this code).
+"""
         
         if ext.ndim != 3:
             raise NotImplementedError("Multiple 3D particle distributions not yet supported")

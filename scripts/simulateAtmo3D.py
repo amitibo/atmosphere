@@ -170,22 +170,13 @@ if __name__ == '__main__':
         #
         # Get the camera positions from the ref images folders
         #
+        closed_grids = atmosphere_params.cartesian_grids.closed
         
-        for path in glob.glob(os.path.join(args.ref_images, "*")):
-            #
-            # Parse cameras center file
-            #
-            with open(os.path.join(path, 'params.txt'), 'r') as f:
-                lines = f.readlines()
-                for line in lines:
-                    parts = line.strip().split()
-                    if parts[0] == 'CameraPosition':
-                        cameras.append(np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3]))))
-                        break
-    
+        dumb, cameras = atmotomo.loadVadimData(args.ref_images, (closed_grids[0][-1]/2, closed_grids[1][-1]/2))
+        
     else:
         cameras = CAMERA_CENTERS
-        
+    
     #
     # Load the MISR database.
     #

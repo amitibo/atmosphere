@@ -9,14 +9,12 @@ import os
 import argparse
 
 
-MCARATS_IMG_SCALE = 10.0**9.7
-
-
 def main():
     #
     # Parse the input
     #
     parser = argparse.ArgumentParser(description='Create mcarats images')
+    parser.add_argument('--remove_sun', action='store_true', help='remove the sun spots from the images.')
     parser.add_argument('mcarats', help='path to mcarats images')
     args = parser.parse_args()
     
@@ -28,7 +26,7 @@ def main():
     
     for i in range(int(R_ch.size/IMG_SIZE)):
         slc = slice(i*IMG_SIZE, (i+1)*IMG_SIZE)
-        ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE, remove_sun=False)
+        ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE, remove_sun=args.remove_sun)
         ref_img = ref_img.astype(np.float)
         
         sio.savemat(

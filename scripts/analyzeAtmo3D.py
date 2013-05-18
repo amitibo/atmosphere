@@ -445,41 +445,29 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
         #
         # Load the reference images
         #
-        folder_list = glob.glob(os.path.join(ref_images, "*"))
-             
+        closed_grids = atmosphere_params.cartesian_grids.closed
+        ref_images_list, cameras_list = atmotomo.loadVadimData(ref_images, (closed_grids[0][-1]/2, closed_grids[1][-1]/2))
+        
         #
         # Limit the number of mpi processes used.
         #
-        mpi_size = min(mpi_size, len(folder_list)+1)
+        mpi_size = min(mpi_size, len(cameras)+1)
         
         if mpi_rank >= mpi_size:
             sys.exit()
         
         #
-        # Load the reference images
+        # Select the reference image/camera according to the rank
         #
         if mpi_rank > 0:
-            path = folder_list[mpi_rank-1]
-            img_path = os.path.join(path, "RGB_MATRIX.mat")
-            data = sio.loadmat(img_path)
-            
-            ref_img = data['Detector'] / REF_IMG_SCALE
+            ref_img = ref_images_list[mpi_rank-1] / REF_IMG_SCALE
         
             if sigma > 0.0:
                 for channel in range(ref_img.shape[2]):
                     ref_img[:, :, channel] = \
                         ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
                 
-            #
-            # Parse cameras center file
-            #
-            with open(os.path.join(path, 'params.txt'), 'r') as f:
-                lines = f.readlines()
-                for line in lines:
-                    parts = line.strip().split()
-                    if parts[0] == 'CameraPosition':
-                        camera_position = np.array((float(parts[4])+25000, float(parts[2])+25000, float(parts[3])))
-                        break
+            camera_position = cameras_list[mpi_rank-1]
             
         scaling = VADIM_IMG_SCALE
     else:

@@ -32,8 +32,18 @@ import itertools
 import pkg_resources
 import grids
 import amitibo
+import os
 
-__all__ = ["calcHG", "L_SUN_RGB", "RGB_WAVELENGTH", "getResourcePath", "getMisrDB", "calcScatterMu"]
+__all__ = [
+    "calcHG",
+    "calcHG_other",
+    "L_SUN_RGB",
+    "RGB_WAVELENGTH", 
+    "getResourcePath",
+    "getMisrDB",
+    "calcScatterMu",
+    "loadVadimData"
+]
 
 
 #
@@ -68,41 +78,6 @@ def getMisrDB():
     return misr
 
     
-def viz3D(X, Y, Z, V, X_label='X', Y_label='Y', Z_label='Z', title='3D Visualization'):
-
-    import mayavi.mlab as mlab
-    
-    mlab.figure()
-
-    src = mlab.pipeline.scalar_field(X, Y, Z, V)
-    src.spacing = [1, 1, 1]
-    src.update_image_data = True    
-    ipw_x = mlab.pipeline.image_plane_widget(src, plane_orientation='x_axes')
-    ipw_y = mlab.pipeline.image_plane_widget(src, plane_orientation='y_axes')
-    ipw_z = mlab.pipeline.image_plane_widget(src, plane_orientation='z_axes')
-    mlab.colorbar()
-    mlab.outline()
-    mlab.xlabel(X_label)
-    mlab.ylabel(Y_label)
-    mlab.zlabel(Z_label)
-
-    limits = []
-    for grid in (X, Y, Z):
-        limits += [grid.min()]
-        limits += [grid.max()]
-    mlab.axes(ranges=limits)
-    mlab.title(title)
-
-
-def viz2D(V):
-    
-    import matplotlib.pyplot as plt
-    
-    plt.figure()    
-    plt.imshow(V, interpolation='nearest')
-    plt.gray()
-    
-
 def calcHG(mu, g):
     """Calculate the Henyey-Greenstein function for each voxel.
     I use the modified Henyey-Greenstein function from
@@ -124,21 +99,6 @@ def calcHG_other(mu, g):
     return HG
 
 
-def testHG():
-    
-    g = 0.4
-    angle = np.linspace(0, np.pi, 200)
-    hg1 = calcHG(np.cos(angle), g)
-    hg2 = calcHG_other(np.cos(angle), g)
-    
-    import matplotlib.pyplot as plt
-    
-    plt.figure()
-    plt.plot(angle, hg1)
-    plt.plot(angle, hg2)
-    plt.show()
-
-
 def calcScatterMu(grids, sun_angle):
     """
     Calclculate the cosine of the scattering angle at each voxel.
@@ -157,6 +117,63 @@ def calcScatterMu(grids, sun_angle):
     return mu
 
 
-if __name__ == '__main__':
-    testHG()
+def loadVadimData(path, offset=(0, 0)):
+    """
+    Load the simulation data from the format used by Vadim: A list of folders.
     
+    Parameters:
+    -----------
+    path : str
+        Base path under which lie the folders with simulation results
+    offset : (float, float)
+        y, x translation to apply to the coordinates of Vadim's cameras.
+        Vadim center is at 0, 0 while mine is at the center of the atmosphere.
+        
+    Returns:
+    --------
+    img_list : list of arrays
+        List of images loaded from Vadim's results. The list is sorted by folder
+        name
+    cameras_list : list of arrays
+        List of cameras centers as three element y, x, z. Given in meters, 
+    """
+        
+    import glob
+    import scipy.io as sio
+    
+    folder_list = glob.glob(os.path.join(path, "*"))
+    if not folder_list:
+        raise IOError("No img found in the folder")
+    folder_list.sort()
+    
+    img_list = []
+    cameras_list = []
+    for folder in folder_list:
+        #
+        # Load the image data
+        #
+        img_path = os.path.join(folder, "RGB_MATRIX.mat")
+        try:
+            data = sio.loadmat(img_path)
+        except:
+            print 'No image data in folder:', folder
+            continue
+        
+        img_list.append(data['Detector'])
+    
+        #
+        # Parse cameras center file
+        #
+        with open(os.path.join(folder, 'params.txt'), 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                parts = line.strip().split()
+                if parts[0] == 'CameraPosition':
+                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3]))))
+                    break
+
+    return img_list, cameras_list
+
+
+if __name__ == '__main__':
+    pass
