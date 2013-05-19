@@ -5,7 +5,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
 from atmotomo import Camera
-from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere
+from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere, density_clouds_vadim
 import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
@@ -37,9 +37,9 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-VISIBILITY = 10000
+VISIBILITY = 100000
 
-MAX_ITERATIONS = 200
+MAX_ITERATIONS = 1000
 KM_TO_METER = 1000
 
 #
@@ -223,11 +223,12 @@ def master(particle_params, solver='ipopt'):
     #
     # Create the distributions
     #
-    #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
-    A_aerosols, Y, X, H = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
-    A_aerosols = A_aerosols[0]
+    A_air, A_aerosols, Y, X, H, h = density_clouds_vadim(atmosphere_params)
+    A_aerosols = A_aerosols/VISIBILITY
+    #A_aerosols, Y, X, H = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
+    #A_aerosols = A_aerosols[0]
     
-    z_coords = H[0, 0, :]
+    z_coords = H[24, 24, :]
     air_exts = calcAirMcarats(z_coords)
     
     #
@@ -407,7 +408,7 @@ def slave(particle_params, camera_position, ref_img, no_air=False):
     )
 
 
-def loadSlaveData(ref_images, mcarats, simulate, sigma):
+def loadSlaveData(ref_images, mcarats, simulate, sigma, remove_sunspot):
     """"""
     
     global mpi_size
@@ -442,7 +443,11 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
         # Load the reference images
         #
         closed_grids = atmosphere_params.cartesian_grids.closed
-        ref_images_list, cameras_list = atmotomo.loadVadimData(ref_images, (closed_grids[0][-1]/2, closed_grids[1][-1]/2))
+        ref_images_list, cameras_list = atmotomo.loadVadimData(
+            ref_images,
+            (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
+            remove_sunspot=remove_sunspot
+        )
         
         #
         # Limit the number of mpi processes used.
@@ -480,7 +485,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma):
     return ref_img, camera_position
     
 
-def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False):
+def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False, remove_sunspot=False):
     
     global mpi_size
     
@@ -503,7 +508,7 @@ def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False)
     # but it also calculated the mpi_size which important for the master
     # also)
     #
-    ref_img, camera_position = loadSlaveData(ref_images, mcarats, simulate, sigma)
+    ref_img, camera_position = loadSlaveData(ref_images, mcarats, simulate, sigma, remove_sunspot)
     
     if mpi_rank == 0:
         #
@@ -524,6 +529,7 @@ if __name__ == '__main__':
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
     parser.add_argument('--simulate', action='store_true', help='Use simulated images (overrides previous flags like mcarats and ref_images).')
+    parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     args = parser.parse_args()
 
-    main(args.ref_images, args.mcarats, args.simulate, args.sigma, args.no_air)
+    main(args.ref_images, args.mcarats, args.simulate, args.sigma, args.no_air, args.remove_sunspot)

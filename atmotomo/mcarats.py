@@ -3,7 +3,6 @@
 
 from __future__ import division
 import numpy as np
-from atmotomo import getResourcePath
 import scipy.stats as stats
 import jinja2
 import os
@@ -280,6 +279,8 @@ class Mcarats(object):
         #
         # Create the template environment
         #
+        from .atmo_utils import getResourcePath
+        
         tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
         self._tpl_env = jinja2.Environment(loader=tpl_loader)
         

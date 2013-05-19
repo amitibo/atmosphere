@@ -52,7 +52,7 @@ KM_TO_METER = 1000
 profile = False
     
 
-def parallel(particle_params, cameras, add_noise):
+def parallel(particle_params, cameras, add_noise, no_air):
     
     from mpi4py import MPI
     
@@ -71,10 +71,10 @@ def parallel(particle_params, cameras, add_noise):
     #
     # Create the distributions
     #
-    #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
-    #A_aerosols = A_aerosols / VISIBILITY
-    A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
-    A_aerosols = A_aerosols[0]
+    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    A_aerosols = A_aerosols / VISIBILITY
+    #A_aerosols, Y, X, Z = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
+    #A_aerosols = A_aerosols[0]
     #A_aerosols = sio.loadmat('/u/amitibo/code/atmosphere/results/210+/13_05_08__09_01_43/radiance.mat')['estimated']
     
     #
@@ -89,10 +89,12 @@ def parallel(particle_params, cameras, add_noise):
             camera_position=cameras[comm.rank]
         )
         
-        #z_coords = H[0, 0, :]
-        #air_exts = calcAirMcarats(z_coords)
-        #cam.set_air_extinction(air_exts)
-        cam.setA_air(np.zeros_like(A_aerosols))
+        if no_air:
+            cam.setA_air(np.zeros_like(A_aerosols))
+        else:
+            z_coords = H[24, 24, :]
+            air_exts = calcAirMcarats(z_coords)
+            cam.set_air_extinction(air_exts)
         
         #
         # Calculating the image
@@ -110,7 +112,7 @@ def parallel(particle_params, cameras, add_noise):
                 sio.savemat(os.path.join(results_path, 'img%d.mat' % i), {'img':img}, do_compression=True)
     
     
-def serial(particle_params, add_noise):
+def serial(particle_params, add_noise, no_air):
     
     results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
    
@@ -131,7 +133,11 @@ def serial(particle_params, add_noise):
             camera_params=camera_params,
             camera_position=camera_position
         )
-        cam.setA_air(A_air)
+        
+        if no_air:
+            cam.setA_air(np.zeros_like(A_aerosols))
+        else:
+            cam.setA_air(A_air)
         #camera_path = amitibo.createResultFolder(base_path='d:/amit/tmp')
         #cam.save(camera_path)
         
@@ -154,6 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('--parallel', action='store_true', help='run the parallel mode')
     parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
     parser.add_argument('--noise', action='store_true', help='Add noise to the image creation')
+    parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
     args = parser.parse_args()
     
     cameras = []
@@ -194,6 +201,6 @@ if __name__ == '__main__':
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
         if args.parallel:
-            parallel(particle_params, cameras, args.noise)
+            parallel(particle_params, cameras, args.noise, args.no_air)
         else:
-            serial(particle_params, args.noise, args.noise)
+            serial(particle_params, args.noise, args.noise, args.no_air)

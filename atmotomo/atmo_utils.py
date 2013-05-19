@@ -117,7 +117,7 @@ def calcScatterMu(grids, sun_angle):
     return mu
 
 
-def loadVadimData(path, offset=(0, 0)):
+def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
     """
     Load the simulation data from the format used by Vadim: A list of folders.
     
@@ -128,6 +128,10 @@ def loadVadimData(path, offset=(0, 0)):
     offset : (float, float)
         y, x translation to apply to the coordinates of Vadim's cameras.
         Vadim center is at 0, 0 while mine is at the center of the atmosphere.
+    remove_sunspot : bool
+        Remove the sunspot from the image
+    FACMIN : float
+        Ratio between img mean and sunspot, used to determine the sunspot.
         
     Returns:
     --------
@@ -140,6 +144,7 @@ def loadVadimData(path, offset=(0, 0)):
         
     import glob
     import scipy.io as sio
+    from .mcarats import Mcarats
     
     folder_list = glob.glob(os.path.join(path, "*"))
     if not folder_list:
@@ -158,8 +163,18 @@ def loadVadimData(path, offset=(0, 0)):
         except:
             print 'No image data in folder:', folder
             continue
+
+        img = data['Detector']
+
+        if remove_sunspot:
+            R, G, B = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+            Rmax = Mcarats.calcRmax(R, FACMIN=FACMIN)
+            ys, xs = np.nonzero(R>Rmax)
+            R, G, B = [Mcarats.removeSunSpot(ch, ys, xs, MARGIN=1) for ch in (R, G, B)]
+            img = np.dstack((R, G, B))
         
-        img_list.append(data['Detector'])
+        
+        img_list.append(img)
     
         #
         # Parse cameras center file
