@@ -1,0 +1,28 @@
+[atmosphere]
+dx = {{ dx }}
+dy = {{ dy }}
+nx = {{ nx }}
+ny = {{ ny }}
+nz = {{ nz }}
+z_coords = {{ z_coords }}
+
+[distributions]
+air_dist_path = {{ air_dist_path }}
+aerosols_dist_path = {{ aerosols_dist_path }}
+
+[particle]
+name = {{ particle_name }}
+phase = {{ particle_phase }}
+{% if particle_k %} k =  {{ particle_k }}{% endif %}{% if particle_w %} w =  {{ particle_w }}{% endif %}{% if particle_g %} g =  {{ particle_g }}{% endif %}
+[cameras]
+resolution = {{ camera_resolution }}
+type = {{ camera_type }}
+cameras_num = {{ cameras_num }}
+y = {{ camera_ypos }}
+x = {{ camera_xpos }}
+z = {{ camera_zpos }}
+
+[sun]
+angle = {{ sun_angle }}
+intensities = {{ sun_intensities }}
+wavelengths = {{ sun_wavelengths }}

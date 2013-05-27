@@ -68,7 +68,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/Low_Density --remove_sunspot
+mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/New_Low_Density --job_id $PBS_JOBID
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --mcarats /u/amitibo/data/mcarats/3
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_mc_limited --no_air
 

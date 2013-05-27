@@ -39,10 +39,10 @@ __all__ = [
     "calcHG_other",
     "L_SUN_RGB",
     "RGB_WAVELENGTH", 
-    "getResourcePath",
     "getMisrDB",
     "calcScatterMu",
-    "loadVadimData"
+    "loadVadimData",
+    "readConfiguration"
 ]
 
 
@@ -57,22 +57,15 @@ SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
 
 
-def getResourcePath(name):
-    """
-    Return the path to a resource
-    """
-
-    return pkg_resources.resource_filename(__name__, "data/%s" % name)
-    
-
 def getMisrDB():
     """
     Return a dict with the records of the MISR particles.
     """
     
     import pickle
+    from amitibo import getResourcePath
     
-    with open(getResourcePath('misr.pkl'), 'rb') as f:
+    with open(getResourcePath('misr.pkl', package_name=__name__), 'rb') as f:
         misr = pickle.load(f)
     
     return misr
@@ -107,7 +100,7 @@ def calcScatterMu(grids, sun_angle):
     #
     # Rotate the grids so that the Z axis will point in the direction of the sun
     #
-    grids_rotated = grids.rotate(-sun_angle, 0, 0)
+    grids_rotated = grids.rotate(-sun_angle[1], sun_angle[0], 0)
     
     Z_rotated = grids_rotated[2]
     R_rotated = np.sqrt(grids_rotated[0]**2 + grids_rotated[1]**2 + grids_rotated[2]**2)
@@ -190,5 +183,91 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
     return img_list, cameras_list
 
 
+def readConfiguration(path):
+    
+    from configobj import ConfigObj
+    import sparse_transforms as spt
+    import scipy.io as sio
+    
+    config = ConfigObj(path)
+    
+    #
+    # Load atmosphere parameters
+    #
+    atmosphere_section = config['atmosphere']
+    dy = atmosphere_section.as_float('dy')
+    dx = atmosphere_section.as_float('dx')
+    ny = atmosphere_section.as_int('ny')
+    nx = atmosphere_section.as_int('nx')
+    z_coords = np.array([float(i) for i in atmosphere_section.as_list('z_coords')])
+    
+    atmosphere_params = amitibo.attrClass(
+        cartesian_grids=spt.Grids(
+            np.arange(0, ny*dy, dy), # Y
+            np.arange(0, nx*dx, dx), # X
+            z_coords
+            )
+    )
+    
+    #
+    # Load the sun parameters
+    #
+    sun_section = config['sun']
+
+    sun_params = amitibo.attrClass(
+        angle=[float(i) for i in sun_section.as_list('angle')],
+        intensities=[float(i) for i in sun_section['intensities']],
+        wavelengths=[float(i) for i in sun_section['wavelengths']]
+    )
+    
+    #
+    # Load distributions
+    #
+    try:
+        distributions_section = config['distributions']
+        air_dist_path = os.path.join(os.path.abspath(distributions_section['air_dist_path']))
+        aerosols_dist_path = os.path.join(os.path.abspath(distributions_section['aerosols_dist_path']))
+    except KeyError, e:
+        air_dist_path = os.path.join(os.path.abspath('.'))
+        aerosols_dist_path = os.path.join(os.path.abspath('.'))
+        
+    air_dist = sio.loadmat(air_dist_path)['distribution']
+    aerosols_dist = sio.loadmat(aerosols_dist_path)['distribution']
+    
+    #
+    # Load particle
+    #
+    particle_section = config['particle']
+
+    particle = getMisrDB()[particle_section['name']]
+    for attr in ('k', 'w', 'g'):
+        if attr in particle_section:
+            setattr(particle, attr, particle[attr])
+            
+    particle_params = amitibo.attrClass(
+        k=np.array(particle['k']) / np.max(np.array(particle['k'])),
+        w=particle['w'],
+        g=particle['g'],
+        phase=particle_section['phase']
+        )
+
+    #
+    # Load cameras
+    #
+    camera_section = config['cameras']
+    
+    camera_y =  np.array([float(i) for i in camera_section.as_list('y')])
+    camera_x =  np.array([float(i) for i in camera_section.as_list('x')])
+    camera_z =  np.array([float(i) for i in camera_section.as_list('z')])
+
+    camera_params = amitibo.attrClass(
+        resolution=[int(i) for i in camera_section['resolution']]
+        )
+    
+    cameras=[(camera_y[i], camera_x[i], camera_z[i]) for i in range(camera_section.as_int('cameras_num'))]
+
+    return atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist
+
+    
 if __name__ == '__main__':
     pass

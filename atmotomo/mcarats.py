@@ -7,6 +7,7 @@ import scipy.stats as stats
 import jinja2
 import os
 import subprocess as sub
+from amitibo import BaseData, getResourcePath
 
 __all__ = ["storeGRADS", "loadGRADS", "Mcarats", "SOLVER_F3D", "Job"]
 
@@ -64,47 +65,6 @@ def loadGRADS(file_name, dtype=np.float32):
     
     return vars_dict
 
-
-def arr2str(arr):
-    
-    val = ', '.join(['%g' % i for i in arr])
-    return val
-
-
-class BaseData(object):
-    _tpl_env  = None
-    
-    def __init__(self, template_path):
-
-        self._tpl = self._tpl_env.get_template(template_path)
-        self._data = {}
-    
-    @property
-    def data(self):
-        return self._data
-    
-    def _appendDataField(self, field_name, value):
-        if not field_name in self._data.keys():
-            self._data[field_name] = []
-        self._data[field_name].append(value)
-    
-    def addData(self, **kwrds):
-        for k, v in kwrds.items():
-            self._appendDataField(k ,v)
-            
-    def render(self):
-
-        data = {}
-        for k, v in self._data.items():
-            if len(v) == 1:
-                v = v[0]
-            if isinstance(v, list) or isinstance(v, tuple) or isinstance(v, np.ndarray):
-                data[k] = arr2str(v)
-            else:
-                data[k] = v
-                
-        return self._tpl.render(data)
-       
 
 class Job(BaseData):
     
@@ -279,9 +239,7 @@ class Mcarats(object):
         #
         # Create the template environment
         #
-        from .atmo_utils import getResourcePath
-        
-        tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.'))
+        tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.', package_name=__name__))
         self._tpl_env = jinja2.Environment(loader=tpl_loader)
         
         BaseData._tpl_env = self._tpl_env

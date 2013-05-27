@@ -3,8 +3,33 @@
 
 from __future__ import division
 import numpy as np
+from atmotomo import L_SUN_RGB, RGB_WAVELENGTH
+import sparse_transforms as spt
+import amitibo
+import os
 
-__all__ = ["density_front", "density_clouds1", "density_clouds_vadim", "single_cloud_vadim", "calcAirMcarats", "single_voxel_atmosphere"]
+__all__ = [
+    "density_front",
+    "clouds_simulation",
+    "density_clouds_vadim",
+    "single_cloud_vadim",
+    "calcAirMcarats",
+    "single_voxel_atmosphere",
+    "prepareSimulation"
+]
+
+SIMULATION_TEMPLATE_FILE_NAME = 'simulation.jinja'
+
+clouds_atmosphere = amitibo.attrClass(
+    cartesian_grids=spt.Grids(
+        np.arange(0, 50000, 1000.0), # Y
+        np.arange(0, 50000, 1000.0), # X
+        np.arange(0, 10000, 100.0)   # H
+        ),
+    earth_radius=4000000,
+    air_typical_h=8000,
+    aerosols_typical_h=2000
+)
 
 
 def density_front(atmosphere_params):
@@ -15,7 +40,7 @@ def density_front(atmosphere_params):
     width = atmosphere_params.cartesian_grids.closed[0][-1]
     height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-
+    
     #
     # Create the distributions of air
     #
@@ -33,7 +58,16 @@ def density_front(atmosphere_params):
     return A_air, A_aerosols, Y, X, H, h
 
 
-def density_clouds1(atmosphere_params):
+def clouds_simulation(
+    atmosphere_params=clouds_atmosphere,
+    particle_name='spherical_nonabsorbing_2.80',
+    particle_phase='HG',
+    camera_resolution=(128, 128),
+    camera_type='linear',
+    sun_angle=(0, -np.pi/4),
+    visibility=100000
+    ):
+
     #
     # Create the sky
     #
@@ -41,24 +75,54 @@ def density_clouds1(atmosphere_params):
     width = atmosphere_params.cartesian_grids.closed[0][-1]
     height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-
+    derivs = atmosphere_params.cartesian_grids.derivatives
+    
     #
     # Create the distributions of air
     #
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
+    air_dist = np.exp(-h/atmosphere_params.air_typical_h)
     
     #
     # Create the distributions of aerosols
     #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_mask = np.zeros_like(A_aerosols)
+    aerosols_dist = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    mask = np.zeros_like(aerosols_dist)
     Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
     Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z1<3000**2] = 1
-    A_mask[Z2<4000**2] = 1
-    A_aerosols *= A_mask
+    mask[Z1<3000**2] = 1
+    mask[Z2<4000**2] = 1
+    aerosols_dist *= mask
+    aerosols_dist /= visibility
+    
+    #
+    # Create the cameras
+    #
+    camera_X, camera_Y = np.meshgrid(
+        np.linspace(0, width, 12)[1:-1],
+        np.linspace(0, width, 12)[1:-1]
+        )
+    
+    data = {
+        'dy':derivs[0].ravel()[0],
+        'dx':derivs[1].ravel()[0],
+        'ny':Y.shape[0],
+        'nx':Y.shape[1],
+        'nz':Y.shape[2],
+        'z_coords':H[0, 0, :],
+        'particle_name':particle_name,
+        'particle_phase':particle_phase,
+        'camera_resolution':camera_resolution,
+        'camera_type':camera_type,
+        'cameras_num':100,
+        'camera_ypos':camera_Y.ravel(),
+        'camera_xpos':camera_X.ravel(),
+        'camera_zpos':np.ones(camera_X.size),
+        'sun_angle':sun_angle,
+        'sun_intensities':L_SUN_RGB,
+        'sun_wavelengths':RGB_WAVELENGTH
+    }
 
-    return A_air, A_aerosols, Y, X, H, h
+    return data, air_dist, aerosols_dist
 
 
 def density_clouds_vadim(atmosphere_params):
@@ -163,6 +227,39 @@ def calcAirMcarats(Z):
     
     return (e67, e55, e45)
 
+
+def prepareSimulation(path, func, *params, **kwrds):
+    import jinja2
+    from amitibo import getResourcePath, BaseData
+    import scipy.io as sio
+    
+    tpl_loader = jinja2.FileSystemLoader(searchpath=getResourcePath('.', package_name=__name__))
+    tpl_env = jinja2.Environment(loader=tpl_loader)
+    
+    BaseData._tpl_env = tpl_env
+    simulation = BaseData(template_path=SIMULATION_TEMPLATE_FILE_NAME)
+    
+    data, air_dist, aerosols_dist = func(*params, **kwrds)
+    
+    sio.savemat(
+        os.path.join(path, 'air_dist.mat'),
+        {'distribution': air_dist},
+        do_compression=True
+    )
+    simulation.addData(air_dist_path=os.path.join(path, 'air_dist.mat'))
+    
+    sio.savemat(
+        os.path.join(path, 'aerosols_dist.mat'),
+        {'distribution': aerosols_dist},
+        do_compression=True
+    )
+    simulation.addData(aerosols_dist_path=os.path.join(path, 'aerosols_dist.mat'))
+    
+    simulation.addData(**data)
+    
+    with open(os.path.join(path, 'configuration.ini'), 'w') as f:
+        f.write(simulation.render())
+    
 
 if __name__ == '__main__':
     pass

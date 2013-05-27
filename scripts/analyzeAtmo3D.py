@@ -3,9 +3,9 @@ Reconstruct a general distribution of aerosols in the atmosphere.
 """
 from __future__ import division
 import numpy as np
-from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath
+from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH
 from atmotomo import Camera
-from atmotomo import density_clouds1, calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere, density_clouds_vadim
+from atmotomo import calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere, density_clouds_vadim
 import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
@@ -52,16 +52,19 @@ atmosphere_params = amitibo.attrClass(
         np.arange(0, 10000, 100.0)   # H
         ),
     earth_radius=4000000,
-    L_SUN_RGB=L_SUN_RGB,
-    RGB_WAVELENGTH=RGB_WAVELENGTH,
     air_typical_h=8000,
     aerosols_typical_h=2000
 )
 
 camera_params = amitibo.attrClass(
-    image_res=128,
-    radius_res=100,
+    resolution=(128, 128),
     photons_per_pixel=40000
+)
+
+sun_params = amitibo.attrClass(
+    angle=(0, -np.pi/4),
+    intensities=L_SUN_RGB,
+    wavelengths=RGB_WAVELENGTH,
 )
 
 ##
@@ -87,7 +90,7 @@ MCARATS_IMG_SCALE = 10.0**9.7
 
 #VADIM_IMG_SCALE = 9.75122
 #VADIM_IMG_SCALE = 2493.67
-VADIM_IMG_SCALE = 1020
+VADIM_IMG_SCALE = 540
 profile = False
 
 
@@ -212,12 +215,16 @@ class RadianceProblem(object):
             return self._objective_values
         
 
-def master(particle_params, solver='ipopt'):
+def master(particle_params, solver='ipopt', job_id=None):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     #import wingdbstub
 
-    results_path = amitibo.createResultFolder(params=[atmosphere_params, particle_params, camera_params], src_path=atmotomo.__src_path__)
+    results_path = amitibo.createResultFolder(
+        params=[atmosphere_params, particle_params, camera_params],
+        src_path=atmotomo.__src_path__,
+        job_id=job_id
+    )
     logging.basicConfig(filename=os.path.join(results_path, 'run.log'), level=logging.DEBUG)
 
     #
@@ -317,7 +324,7 @@ def slave(particle_params, camera_position, ref_img, no_air=False):
     #
     cam = Camera()
     cam.create(
-        SUN_ANGLE,
+        sun_params=sun_params,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
         camera_position=camera_position
@@ -417,7 +424,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma, remove_sunspot):
     camera_position = ()
 
     if mcarats:
-        with open(getResourcePath('CamerasPositions.txt'), 'r') as f:
+        with open(amitibo.getResourcePath('CamerasPositions.txt'), 'r') as f:
             lines = f.readlines()
             
         mpi_size = min(mpi_size, len(lines)+1)
@@ -485,7 +492,7 @@ def loadSlaveData(ref_images, mcarats, simulate, sigma, remove_sunspot):
     return ref_img, camera_position
     
 
-def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False, remove_sunspot=False):
+def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False, remove_sunspot=False, job_id=None):
     
     global mpi_size
     
@@ -498,9 +505,10 @@ def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False,
     # Set aerosol parameters
     #
     particle_params = amitibo.attrClass(
-        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),
-        w_RGB=particle['w'],
-        g_RGB=(particle['g'])
+        k=np.array(particle['k']) / np.max(np.array(particle['k'])),
+        w=particle['w'],
+        g=(particle['g']),
+        phase='HG'
         )
     
     #
@@ -514,7 +522,7 @@ def main(ref_images=None, mcarats=None, simulate=False, sigma=0.0, no_air=False,
         #
         # Set up the solver server.
         #
-        master(particle_params, solver='bfgs')
+        master(particle_params, solver='bfgs', job_id=job_id)
     else:
         slave(particle_params, camera_position, ref_img, no_air=no_air)
 
@@ -530,6 +538,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_air', action='store_true', help='Use atmosphere without air molecules')
     parser.add_argument('--simulate', action='store_true', help='Use simulated images (overrides previous flags like mcarats and ref_images).')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
+    parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     args = parser.parse_args()
 
-    main(args.ref_images, args.mcarats, args.simulate, args.sigma, args.no_air, args.remove_sunspot)
+    main(args.ref_images, args.mcarats, args.simulate, args.sigma, args.no_air, args.remove_sunspot, args.job_id)

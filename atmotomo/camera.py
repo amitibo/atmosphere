@@ -14,13 +14,15 @@ import os
 
 __all__ = ["Camera"]
 
+RADIUS_RESOLUTION = 100
+
 
 class Camera(object):
     """A class that encapsulates the functions of a camera"""
     
     def create(
         self,
-        sun_angle,
+        sun_params,
         atmosphere_params,
         camera_params,
         camera_position,
@@ -41,8 +43,8 @@ class Camera(object):
         print 'Distances from sun'
         H_distances_from_sun = spt.directionTransform(
             in_grids=grids,
-            direction_phi=0,
-            direction_theta=-sun_angle
+            direction_phi=sun_params.angle[0],
+            direction_theta=-sun_params.angle[1]
             )
         timer.tock()
         
@@ -51,8 +53,8 @@ class Camera(object):
         H_cart2polar = spt.sensorTransform(
             grids,
             camera_position,
-            camera_params.image_res,
-            camera_params.radius_res,
+            camera_params.resolution,
+            RADIUS_RESOLUTION,
             samples_num=8000,
             replicate=40
         )
@@ -61,7 +63,7 @@ class Camera(object):
         sensor_grids = H_cart2polar.out_grids
         
         timer.tick()        
-        print 'Distances from sun'
+        print 'Distances from voxel'
         H_distances_to_sensor = spt.cumsumTransform(
             sensor_grids,
             axis=0,
@@ -89,13 +91,14 @@ class Camera(object):
         #
         # Calculated the scattering cosinus angle
         #
-        self.mu = atmo_utils.calcScatterMu(H_cart2polar.inv_grids, sun_angle).reshape((-1, 1))
+        self.mu = atmo_utils.calcScatterMu(H_cart2polar.inv_grids, sun_params.angle).reshape((-1, 1))
         
         #
         # Store simulation parameters
         #
         self.camera_params = camera_params
         self.atmosphere_params = atmosphere_params
+        self.sun_params = sun_params
         
         self.A_air_ = np.empty(1)
         self._air_exts = ()
@@ -137,7 +140,7 @@ class Camera(object):
         """Store the air distribution"""
         
         self.A_air_ = A_air.reshape((-1, 1))
-        air_ext_coef = [1.09e-3 * lambda_**-4.05 * self.A_air_ for lambda_ in self.atmosphere_params.RGB_WAVELENGTH]
+        air_ext_coef = [1.09e-3 * lambda_**-4.05 * self.A_air_ for lambda_ in self.sun_params.wavelengths]
         self.preCalcAir(air_ext_coef)
         
     def set_air_extinction(self, air_exts):
@@ -164,17 +167,24 @@ class Camera(object):
 
         img = []
         for L_sun, scatter_air, exp_air, k, w, g in zip(
-                self.atmosphere_params.L_SUN_RGB,
+                self.sun_params.intensities,
                 self._air_scat,
                 self._air_exts,
-                particle_params.k_RGB,
-                particle_params.w_RGB,
-                particle_params.g_RGB
+                particle_params.k,
+                particle_params.w,
+                particle_params.g
                 ):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            scatter_aerosols = w * k * (self.H_cart2polar * A_aerosols_) * atmo_utils.calcHG(self.mu, g)
+            scatter_aerosols = w * k * (self.H_cart2polar * A_aerosols_)
+            if particle_params.phase == 'isotropic':
+                scatter_aerosols *= 1/4/np.pi
+            elif particle_params.phase == 'HG':
+                scatter_aerosols *= atmo_utils.calcHG(self.mu, g)
+            else:
+                raise Exception('Unsupported phase function %s' % particle_params.phase)
+                                
             exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
             #
@@ -197,7 +207,7 @@ class Camera(object):
                 temp_img += noise
                 temp_img[temp_img<0] = 0
             
-            img.append(temp_img.reshape(self.camera_params.image_res, self.camera_params.image_res))
+            img.append(temp_img.reshape(*self.camera_params.resolution))
             
         img = np.transpose(np.array(img), (1, 2, 0))
         
@@ -215,17 +225,23 @@ class Camera(object):
 
         gimg = []
         for i, (L_sun, scatter_air, exp_air, k, w, g) in enumerate(zip(
-            self.atmosphere_params.L_SUN_RGB,
+            self.sun_params.intensities,
             self._air_scat,
             self._air_exts,
-            particle_params.k_RGB,
-            particle_params.w_RGB,
-            particle_params.g_RGB
+            particle_params.k,
+            particle_params.w,
+            particle_params.g
             )):
             #
             # Calculate scattering and extiniction for aerosols
             #
-            P_aerosols = atmo_utils.calcHG(self.mu, g)
+            if particle_params.phase == 'isotropic':
+                P_aerosols = 1/4/np.pi
+            elif particle_params.phase == 'HG':
+                P_aerosols = atmo_utils.calcHG(self.mu, g)
+            else:
+                raise Exception('Unsupported phase function %s' % particle_params.phase)
+            
             scatter_aerosols =  w * k * ((self.H_cart2polar * A_aerosols_) * P_aerosols)
             exp_aerosols = np.exp(-k * exp_aerosols_pre)
             
@@ -301,105 +317,6 @@ class Camera(object):
         return fig
 
 
-def test_camera():
-
-    import pickle
-    from atmo_utils import calcHG, L_SUN_RGB, RGB_WAVELENGTH
-
-    atmosphere_params = amitibo.attrClass(
-        cartesian_grids=(
-            slice(0, 400, 80), # Y
-            slice(0, 400, 80), # X
-            slice(0, 80, 40)   # H
-            ),
-        earth_radius=4000,
-        L_SUN_RGB=L_SUN_RGB,
-        RGB_WAVELENGTH=RGB_WAVELENGTH,
-        air_typical_h=8,
-        aerosols_typical_h=1.2
-    )
-    
-    camera_params = amitibo.attrClass(
-        radius_res=20,
-        phi_res=40,
-        theta_res=40,
-        focal_ratio=0.15,
-        image_res=16,
-        theta_compensation=False
-    )
-    
-    CAMERA_CENTERS = (200, 200, 0.2)
-    SUN_ANGLE = np.pi/4
-
-    #
-    # Load the MISR database.
-    #
-    with open('misr.pkl', 'rb') as f:
-        misr = pickle.load(f)
-
-    #
-    # Set aerosol parameters
-    #
-    particles_list = misr.keys()
-    particle = misr[particles_list[0]]
-    particle_params = amitibo.attrClass(
-        k_RGB=np.array(particle['k']) / np.max(np.array(particle['k'])),#* 10**-12,
-        w_RGB=particle['w'],
-        g_RGB=(particle['g']),
-        visibility=10
-        )
-    
-    #
-    # Create the atmosphere
-    #
-    Y, X, H = np.mgrid[atmosphere_params.cartesian_grids]
-    width = atmosphere_params.cartesian_grids[0].stop
-    height = atmosphere_params.cartesian_grids[2].stop
-    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
-
-    #
-    # Create the camera
-    #
-    cam = Camera(
-        SUN_ANGLE,
-        atmosphere_params=atmosphere_params,
-        camera_params=camera_params,
-        camera_position=CAMERA_CENTERS
-        )
-    
-    cam.setA_air(A_air)
-    
-    ref_img = cam.calcImage(
-        A_aerosols=A_aerosols,
-        particle_params=particle_params
-    )
-
-    #
-    # Change a bit the aerosols distribution
-    #
-    A_aerosols = 2 * A_aerosols
-    A_aerosols[A_aerosols>1] = 1.0
-    
-    #
-    # Calculate the gradient
-    #
-    img = cam.calcImage(
-        A_aerosols=A_aerosols,
-        particle_params=particle_params
-    )
-    
-    gimg = cam.calcImageGradient(
-        A_aerosols=A_aerosols,
-        particle_params=particle_params
-    )
-
-    temp = [-2*(gimg[i]*(ref_img[:, :, i] - img[:, :, i]).reshape((-1, 1))) for i in range(3)]
-    
-    grad = np.sum(np.hstack(temp), axis=1)
-    
-    
 def test_scatter_angle():
     """Check that the scatter angle calculation works correctly. The rotation should cause
     the scatter angle to align with the nidar."""
