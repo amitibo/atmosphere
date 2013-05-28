@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  all_l_p
+#PBS -q  general_ld
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=8:ncpus=12:mpiprocs=12
+#PBS -l select=4:ncpus=12:mpiprocs=12
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -64,7 +64,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 96  python $HOME/.local/bin/simulateAtmo3D.py --parallel /u/amitibo/data/configurations/two_clouds_low_density/configuration.ini --job_id $PBS_JOBID
+mpirun -np 48  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_mc $HOME/data/New_Low_Density --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 24  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_images /u/amitibo/data/20Images_single_voxel --no_air
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

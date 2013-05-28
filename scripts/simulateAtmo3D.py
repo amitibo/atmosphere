@@ -19,7 +19,7 @@ import argparse
 import glob
 
 
-def parallel(params_path, add_noise, job_id=None):
+def parallel(params_path, add_noise, job_id=None, ref_mc=None):
     
     #import wingdbstub
 
@@ -42,6 +42,13 @@ def parallel(params_path, add_noise, job_id=None):
     #
     atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
+    #
+    # Load the reference mc camera positions
+    #
+    if ref_mc != None:
+        closed_grids = atmosphere_params.cartesian_grids.closed
+        dump, cameras = atmotomo.loadVadimData(os.path.abspath(ref_mc), offset=(closed_grids[0][-1]/2, closed_grids[1][-1]/2))
+        
     #
     # Create the results path
     #
@@ -141,6 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('--profile', action='store_true', help='run the profiler (will use serial mode)')
     parser.add_argument('--noise', action='store_true', help='Add noise to the image creation')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
+    parser.add_argument('--ref_mc', help='path to reference mc images. Used only for getting the camera position (this option should be removed once we start using the unified configuration files).')
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
     
@@ -150,6 +158,6 @@ if __name__ == '__main__':
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
         if args.parallel:
-            parallel(args.params_path, args.noise, args.job_id)
+            parallel(args.params_path, args.noise, args.job_id, args.ref_mc)
         else:
             serial(args.params_path, args.noise)
