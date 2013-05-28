@@ -4,7 +4,6 @@
 from __future__ import division
 import numpy as np
 from atmotomo import L_SUN_RGB, RGB_WAVELENGTH
-import sparse_transforms as spt
 import amitibo
 import os
 
@@ -19,17 +18,6 @@ __all__ = [
 ]
 
 SIMULATION_TEMPLATE_FILE_NAME = 'simulation.jinja'
-
-clouds_atmosphere = amitibo.attrClass(
-    cartesian_grids=spt.Grids(
-        np.arange(0, 50000, 1000.0), # Y
-        np.arange(0, 50000, 1000.0), # X
-        np.arange(0, 10000, 100.0)   # H
-        ),
-    earth_radius=4000000,
-    air_typical_h=8000,
-    aerosols_typical_h=2000
-)
 
 
 def density_front(atmosphere_params):
@@ -59,12 +47,13 @@ def density_front(atmosphere_params):
 
 
 def clouds_simulation(
-    atmosphere_params=clouds_atmosphere,
+    atmosphere_params,
     particle_name='spherical_nonabsorbing_2.80',
     particle_phase='HG',
     camera_resolution=(128, 128),
     camera_type='linear',
-    sun_angle=(0, -np.pi/4),
+    sun_angle_phi=0,
+    sun_angle_theta=-np.pi/4,
     visibility=100000
     ):
 
@@ -97,14 +86,27 @@ def clouds_simulation(
     #
     # Create the cameras
     #
+    dy = derivs[0].ravel()[0]
+    dx = derivs[1].ravel()[0]
+    dz = derivs[2].ravel()[0]
     camera_X, camera_Y = np.meshgrid(
         np.linspace(0, width, 12)[1:-1],
         np.linspace(0, width, 12)[1:-1]
         )
+    camera_Y = camera_Y.ravel()
+    camera_X = camera_X.ravel()
     
+    np.random.seed(0)
+    camera_Y += (2*np.random.rand(camera_X.size)-1) * 10
+    camera_X += (2*np.random.rand(camera_X.size)-1) * 10
+    camera_Z = np.random.rand(camera_X.size) * 10
+    
+    #
+    # Store the data
+    #
     data = {
-        'dy':derivs[0].ravel()[0],
-        'dx':derivs[1].ravel()[0],
+        'dy':dy,
+        'dx':dx,
         'ny':Y.shape[0],
         'nx':Y.shape[1],
         'nz':Y.shape[2],
@@ -114,10 +116,11 @@ def clouds_simulation(
         'camera_resolution':camera_resolution,
         'camera_type':camera_type,
         'cameras_num':100,
-        'camera_ypos':camera_Y.ravel(),
-        'camera_xpos':camera_X.ravel(),
-        'camera_zpos':np.ones(camera_X.size),
-        'sun_angle':sun_angle,
+        'camera_ypos':camera_Y,
+        'camera_xpos':camera_X,
+        'camera_zpos':camera_Z,
+        'sun_angle_phi':sun_angle_phi,
+        'sun_angle_theta':sun_angle_theta,
         'sun_intensities':L_SUN_RGB,
         'sun_wavelengths':RGB_WAVELENGTH
     }
@@ -239,6 +242,15 @@ def prepareSimulation(path, func, *params, **kwrds):
     BaseData._tpl_env = tpl_env
     simulation = BaseData(template_path=SIMULATION_TEMPLATE_FILE_NAME)
     
+    #
+    # Create the path if necessary
+    #
+    if not os.path.isdir(path):
+        os.makedirs(path)
+        
+    #
+    # Create the simulation data using the func function.
+    #
     data, air_dist, aerosols_dist = func(*params, **kwrds)
     
     sio.savemat(
@@ -246,14 +258,14 @@ def prepareSimulation(path, func, *params, **kwrds):
         {'distribution': air_dist},
         do_compression=True
     )
-    simulation.addData(air_dist_path=os.path.join(path, 'air_dist.mat'))
+    simulation.addData(air_dist_path='./air_dist.mat')
     
     sio.savemat(
         os.path.join(path, 'aerosols_dist.mat'),
         {'distribution': aerosols_dist},
         do_compression=True
     )
-    simulation.addData(aerosols_dist_path=os.path.join(path, 'aerosols_dist.mat'))
+    simulation.addData(aerosols_dist_path='./aerosols_dist.mat')
     
     simulation.addData(**data)
     

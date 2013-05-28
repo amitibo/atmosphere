@@ -5,6 +5,7 @@ Calculate the ratio between two sets of images.
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
+import atmotomo
 import argparse
 import glob
 import scipy.io as sio
@@ -14,21 +15,8 @@ import skimage.morphology as morph
 
 
 def getMcMatList(path):
-    
-    folder_list = glob.glob(os.path.join(path, "*"))
-    if not folder_list:
-        raise Exception("No img found in the folder")
-    
-    img_list = []
-    for folder in folder_list:
-        print folder
-        img_path = os.path.join(folder, "RGB_MATRIX.mat")
-        try:
-            data = sio.loadmat(img_path)
-        except:
-            continue
-        
-        img_list.append(data['Detector'])
+
+    img_list, cameras = atmotomo.loadVadimData(path, remove_sunspot=False)
     
     return img_list
 
@@ -38,9 +26,11 @@ def getSingleMatList(path):
     path = os.path.abspath(path)
     files_list = glob.glob(os.path.join(path, "*.mat"))
     
+    file_pattern = re.search(r'(.*?)\d+.mat', files_list[0]).groups()[0]
+    
     img_list = []
-    for img_path in files_list:
-        print img_path
+    for i in range(0, len(files_list)+1):
+        img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
         try:
             data = sio.loadmat(img_path)
         except:
@@ -54,8 +44,7 @@ def getSingleMatList(path):
 def findMatched(ref_img, single_imgs):
 
     mask_results = []
-    masks = []
-    
+
     if (ref_img>0).sum() > (ref_img.size*3/4):
         #
         # The mcarats ref images have values all over the sky
@@ -76,16 +65,34 @@ def findMatched(ref_img, single_imgs):
         
         temp = single_img[mask]
         mask_results.append(temp.sum())
-        masks.append(mask)
     
     ind = np.argmax(mask_results)
+        
     print ind
-    return single_imgs[ind], masks[ind]
+    return single_imgs[ind]
+
+
+def calcRatio(ref_img, single_img, erode):
+    #
+    # Calc a joint mask
+    #
+    mask = (ref_img > 0) * (single_img > 0)
+    if erode:
+        for i in range(3):
+            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
+        mask = mask>0
+    
+    ratio = ref_img[mask].mean() / single_img[mask].mean()
+
+    return ratio
 
 
 def main(ref_path, single_path, vadim_ref):
     """Main doc """
     
+    #
+    # Load the reference images and single scattering images
+    #
     if vadim_ref:
         ref_imgs = getMcMatList(ref_path)
     else:
@@ -93,40 +100,44 @@ def main(ref_path, single_path, vadim_ref):
         
     single_imgs = getSingleMatList(single_path)
 
-    matched_single_imgs = []
-    matched_masks = []
-    for ref_img in ref_imgs:
-        single_img, mask = findMatched(ref_img, single_imgs)
-        matched_single_imgs.append(single_img)
-        matched_masks.append(mask)
-        
+    #
+    # Match the images.
+    #
+    #matched_single_imgs = []
+    #for ref_img in ref_imgs:
+        #single_img = findMatched(ref_img, single_imgs)
+        #matched_single_imgs.append(single_img)
+    if vadim_ref:
+        matched_single_imgs = single_imgs[:]
+    else:
+        matched_single_imgs = single_imgs[:]
+    
     means = []
-    for ref_img, single_img, mask in zip(ref_imgs, matched_single_imgs, matched_masks):
-        ratio = ref_img[mask].mean() / single_img[mask].mean()
-        
-        means.append(ratio)
-        
-        showImages(ref_img, single_img, mask, ratio)
+    for ref_img, single_img in zip(ref_imgs, matched_single_imgs):
+        means.append(calcRatio(ref_img, single_img, not vadim_ref))
+        showImages(ref_img, single_img)
         
     print 'Mean: %g (=10^%g)' % (np.mean(means[7:]), np.log10(np.mean(means[7:])))
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     rects1 = ax.bar(np.arange(len(means)), means, color='r')
+    if vadim_ref:
+        plt.title('Ratio Between Single Scattering and Vadim MC (isotropic phase)')
+    else:
+        plt.title('Ratio Between Single Scattering and MCARATS')
+        
     plt.show()
     
 
-def showImages(ref_img, single_img, mask, ratio):
+def showImages(ref_img, single_img):
     plt.figure()
-    plt.subplot(131)
+    plt.subplot(121)
     plt.imshow(ref_img/ref_img.max())
     plt.title('Reference')
-    plt.subplot(132)
+    plt.subplot(122)
     plt.imshow(single_img/single_img.max())
     plt.title('Single')
-    plt.subplot(133)
-    plt.imshow(mask)
-    plt.title('Mask')
 
 
 if __name__ == '__main__':

@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import scipy.io as sio
 import scipy.ndimage as ndimage
+from atmotomo import loadVadimData
 import numpy as np
 import amitibo
 import glob
@@ -294,21 +295,7 @@ class resultAnalayzer(HasTraits):
         path = self.tr_DND_vadim[0].absolute_path
          
         path, folder_name =  os.path.split(path)
-        folder_list = glob.glob(os.path.join(path, "*"))
-        if not folder_list:
-            warning(info.ui.control, "No img found in the folder", "Warning")
-            return
-        
-        self._images_vadim = []
-        for folder in folder_list:
-            img_path = os.path.join(folder, "RGB_MATRIX.mat")
-            try:
-                data = sio.loadmat(img_path)
-            except:
-                continue
-            
-            self._images_vadim.append(data['Detector'])
-
+        self._images_vadim, dumb = loadVadimData(path)        
         self.tr_vadim_len = len(self._images_vadim) - 1
         
         self._updateImg()

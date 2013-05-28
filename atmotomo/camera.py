@@ -26,7 +26,8 @@ class Camera(object):
         atmosphere_params,
         camera_params,
         camera_position,
-        camera_orientation=None
+        camera_orientation=None,
+        radius_resolution=RADIUS_RESOLUTION
         ):
         """"""
         
@@ -43,8 +44,8 @@ class Camera(object):
         print 'Distances from sun'
         H_distances_from_sun = spt.directionTransform(
             in_grids=grids,
-            direction_phi=sun_params.angle[0],
-            direction_theta=-sun_params.angle[1]
+            direction_phi=sun_params.angle_phi,
+            direction_theta=-sun_params.angle_theta
             )
         timer.tock()
         
@@ -54,7 +55,7 @@ class Camera(object):
             grids,
             camera_position,
             camera_params.resolution,
-            RADIUS_RESOLUTION,
+            radius_resolution,
             samples_num=8000,
             replicate=40
         )
@@ -91,7 +92,7 @@ class Camera(object):
         #
         # Calculated the scattering cosinus angle
         #
-        self.mu = atmo_utils.calcScatterMu(H_cart2polar.inv_grids, sun_params.angle).reshape((-1, 1))
+        self.mu = atmo_utils.calcScatterMu(H_cart2polar.inv_grids, sun_params.angle_phi, sun_params.angle_theta).reshape((-1, 1))
         
         #
         # Store simulation parameters
@@ -140,7 +141,7 @@ class Camera(object):
         """Store the air distribution"""
         
         self.A_air_ = A_air.reshape((-1, 1))
-        air_ext_coef = [1.09e-3 * lambda_**-4.05 * self.A_air_ for lambda_ in self.sun_params.wavelengths]
+        air_ext_coef = [1.09e-6 * lambda_**-4.05 * self.A_air_ for lambda_ in self.sun_params.wavelengths]
         self.preCalcAir(air_ext_coef)
         
     def set_air_extinction(self, air_exts):

@@ -92,7 +92,7 @@ def calcHG_other(mu, g):
     return HG
 
 
-def calcScatterMu(grids, sun_angle):
+def calcScatterMu(grids, sun_angle_phi, sun_angle_theta):
     """
     Calclculate the cosine of the scattering angle at each voxel.
     """
@@ -100,7 +100,7 @@ def calcScatterMu(grids, sun_angle):
     #
     # Rotate the grids so that the Z axis will point in the direction of the sun
     #
-    grids_rotated = grids.rotate(-sun_angle[1], sun_angle[0], 0)
+    grids_rotated = grids.rotate(-sun_angle_theta, sun_angle_phi, 0)
     
     Z_rotated = grids_rotated[2]
     R_rotated = np.sqrt(grids_rotated[0]**2 + grids_rotated[1]**2 + grids_rotated[2]**2)
@@ -146,7 +146,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
     
     img_list = []
     cameras_list = []
-    for folder in folder_list:
+    for i, folder in enumerate(folder_list):
         #
         # Load the image data
         #
@@ -161,8 +161,8 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
 
         if remove_sunspot:
             R, G, B = img[:, :, 0], img[:, :, 1], img[:, :, 2]
-            Rmax = Mcarats.calcRmax(R, FACMIN=FACMIN)
-            ys, xs = np.nonzero(R>Rmax)
+            Rmax = R.max()#Mcarats.calcRmax(R, FACMIN=FACMIN)
+            ys, xs = np.nonzero(R>(Rmax*0.9))
             R, G, B = [Mcarats.removeSunSpot(ch, ys, xs, MARGIN=1) for ch in (R, G, B)]
             img = np.dstack((R, G, B))
         
@@ -189,6 +189,12 @@ def readConfiguration(path):
     import sparse_transforms as spt
     import scipy.io as sio
     
+    if os.path.isdir(path):
+        base_path = path
+        path = os.path.join(path, 'configuration.ini')
+    else:
+        base_path, dump = os.path.split(path)
+        
     config = ConfigObj(path)
     
     #
@@ -215,7 +221,8 @@ def readConfiguration(path):
     sun_section = config['sun']
 
     sun_params = amitibo.attrClass(
-        angle=[float(i) for i in sun_section.as_list('angle')],
+        angle_phi=sun_section.as_float('angle_phi'),
+        angle_theta=sun_section.as_float('angle_theta'),
         intensities=[float(i) for i in sun_section['intensities']],
         wavelengths=[float(i) for i in sun_section['wavelengths']]
     )
@@ -225,8 +232,8 @@ def readConfiguration(path):
     #
     try:
         distributions_section = config['distributions']
-        air_dist_path = os.path.join(os.path.abspath(distributions_section['air_dist_path']))
-        aerosols_dist_path = os.path.join(os.path.abspath(distributions_section['aerosols_dist_path']))
+        air_dist_path = os.path.join(base_path, distributions_section['air_dist_path'])
+        aerosols_dist_path = os.path.join(base_path, distributions_section['aerosols_dist_path'])
     except KeyError, e:
         air_dist_path = os.path.join(os.path.abspath('.'))
         aerosols_dist_path = os.path.join(os.path.abspath('.'))
@@ -261,7 +268,8 @@ def readConfiguration(path):
     camera_z =  np.array([float(i) for i in camera_section.as_list('z')])
 
     camera_params = amitibo.attrClass(
-        resolution=[int(i) for i in camera_section['resolution']]
+        resolution=[int(i) for i in camera_section['resolution']],
+        type=camera_section['type']
         )
     
     cameras=[(camera_y[i], camera_x[i], camera_z[i]) for i in range(camera_section.as_int('cameras_num'))]

@@ -13,7 +13,7 @@ class Test(unittest.TestCase):
         
     def testHG(self):
         
-        g = 0.4
+        g = -1.0
         angle = np.linspace(0, np.pi, 200)
         hg1 = calcHG(np.cos(angle), g)
         hg2 = calcHG_other(np.cos(angle), g)
@@ -23,6 +23,7 @@ class Test(unittest.TestCase):
         plt.figure()
         plt.plot(angle, hg1)
         plt.plot(angle, hg2)
+        plt.legend(('standard', 'double'))
         plt.show()
     
 
