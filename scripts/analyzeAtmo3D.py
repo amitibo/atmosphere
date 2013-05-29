@@ -56,6 +56,20 @@ def abortrun(type, value, tb):
 sys.excepthook = abortrun
 
 
+def split_lists(items, n):
+    """"""
+    
+    k = len(items) % n
+    p = int(len(items) / n)
+
+    indices = np.zeros(n+1, dtype=np.int)
+    indices[1:] = p
+    indices[:k] += 1
+    indices = indices.cumsum()
+    
+    return [items[s:e] for s, e in zip(indices[:-1], indices[1:])]
+
+
 class RadianceProblem(object):
     def __init__(self, A_aerosols, A_air, results_path):
 
@@ -265,21 +279,28 @@ def slave(
     particle_params,
     sun_params,
     camera_params,
-    camera_position,
-    ref_img
+    camera_positions,
+    ref_imgs
     ):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
+    assert len(camera_positions) == len(ref_imgs), 'The number of cameras positions and reference images should be equal'
+    camera_num = len(camera_positions)
+    
     #
     # Instatiate the camera slave
     #
-    cam = Camera()
-    cam.create(
-        sun_params=sun_params,
-        atmosphere_params=atmosphere_params,
-        camera_params=camera_params,
-        camera_position=camera_position
-    )
+    cams = []
+    for camera_position in camera_positions:
+        cam = Camera()
+        cam.create(
+            sun_params=sun_params,
+            atmosphere_params=atmosphere_params,
+            camera_params=camera_params,
+            camera_position=camera_position
+        )
+        
+        cams.append(cam)
     
     sts = MPI.Status()
 
@@ -296,21 +317,22 @@ def slave(
     A_aerosols = data[1]
     results_path = data[2]
     
-    cam.setA_air(A_air)
+    for i, (cam, ref_img) in enumerate(zip(cams, ref_imgs)):
+        cam.setA_air(A_air)
 
-    if ref_img is None:
-        ref_img = cam.calcImage(
-            A_aerosols=A_aerosols,
-            particle_params=particle_params,
-            add_noise=True
-        )
-
-    sio.savemat(
-        os.path.join(results_path, 'ref_img%d.mat' % mpi_rank),
-        {'img': ref_img},
-        do_compression=True
-    )
-
+        if ref_img is None:
+            ref_img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params,
+                add_noise=True
+            )
+            
+            sio.savemat(
+                os.path.join(results_path, 'ref_img%d%d.mat' % (mpi_rank, i)),
+                {'img': ref_img},
+                do_compression=True
+            )
+            
     #
     # Loop the messages of the master
     #
@@ -322,45 +344,54 @@ def slave(
             break
 
         if tag == OBJTAG:
-            img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-            
-            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
-            obj = np.dot(temp.T, temp)
-            
-            comm.Send(np.array(obj), dest=0)
+            obj_total = 0
+            for cam, ref_img in zip(cams, ref_imgs):
+                img = cam.calcImage(
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
+                
+                temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
+                obj_total += np.dot(temp.T, temp)
+                
+            comm.Send(np.array(obj_total), dest=0)
             
         elif tag == GRADTAG:
-            img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-            
-            grad = cam.calcImageGradient(
-                        img_err=ref_img-img,
-                        A_aerosols=A_aerosols,
-                        particle_params=particle_params
-                    )
-            
-            comm.Send(grad, dest=0)
+            grads_total = None
+            for cam, ref_img in zip(cams, ref_imgs):
+                img = cam.calcImage(
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
+
+                grad = cam.calcImageGradient(
+                    img_err=ref_img-img,
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
+                if grads_total == None:
+                    grads_total = grads
+                else:
+                    grads_total += grads
+                    
+            comm.Send(grads_total, dest=0)
         else:
             raise Exception('Unexpected tag %d' % tag)
 
     #
     # Save the image the relates to the calculated aerosol distribution
     #
-    final_img = cam.calcImage(
-        A_aerosols=A_aerosols,
-        particle_params=particle_params
-    )
-
-    sio.savemat(
-        os.path.join(results_path, 'final_img%d.mat' % mpi_rank),
-        {'img': final_img},
-        do_compression=True
-    )
+    for i, cam in enumerate(cams):
+        final_img = cam.calcImage(
+            A_aerosols=A_aerosols,
+            particle_params=particle_params
+        )
+        
+        sio.savemat(
+            os.path.join(results_path, 'final_img%d%d.mat' % (mpi_rank, i)),
+            {'img': final_img},
+            do_compression=True
+        )
 
 
 def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot):
@@ -368,8 +399,6 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
     
     global mpi_size
     
-    ref_img = ()
-    camera_position = ()
     if mcarats:
         raise NotImplemented('The mcarats code is not yet adapted to the new configuration files')
     
@@ -394,7 +423,7 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         # Load the reference images
         #
         closed_grids = atmosphere_params.cartesian_grids.closed
-        ref_images_list, cameras_list = atmotomo.loadVadimData(
+        ref_images_list, camera_positions_list = atmotomo.loadVadimData(
             ref_images,
             (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
             remove_sunspot=remove_sunspot
@@ -403,28 +432,26 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         #
         # Limit the number of mpi processes used.
         #
-        mpi_size = min(mpi_size, len(cameras_list)+1)
+        mpi_size = min(mpi_size, len(camera_positions_list)+1)
         
         if mpi_rank >= mpi_size:
             sys.exit()
         
         #
-        # Select the reference image/camera according to the rank
+        # Smooth the reference images if necessary
         #
-        if mpi_rank > 0:
-            ref_img = ref_images_list[mpi_rank-1] / VADIM_IMG_SCALE
-        
+        for ref_img in ref_images_list:
             if sigma > 0.0:
                 for channel in range(ref_img.shape[2]):
                     ref_img[:, :, channel] = \
                         ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
-                
-            camera_position = cameras_list[mpi_rank-1]
+            
             
     else:
         raise Exception('No reference images given')
 
-    return ref_img, camera_position
+    return ref_images_list, camera_positions_list
+
     
 
 def main(
@@ -447,7 +474,7 @@ def main(
     # but it also calculated the mpi_size which important for the master
     # also)
     #
-    ref_img, camera_position = loadSlaveData(
+    ref_images_list, camera_positions_list = loadSlaveData(
         atmosphere_params,
         ref_mc,
         mcarats,
@@ -456,7 +483,7 @@ def main(
     )
     
     if simulate:
-        ref_img = None
+        raise NotImplemented('Not impelmented yet the simulation mode in multiple cameras per slave')
         
     if mpi_rank == 0:
         #
@@ -473,7 +500,18 @@ def main(
         #
         master(air_dist, aerosols_dist, results_path, solver='bfgs', job_id=job_id)
     else:
-        slave(atmosphere_params, particle_params, sun_params, camera_params, camera_position, ref_img)
+        for ref_images, camera_positions in zip(
+            split_lists(ref_images_list, mpi_size-1),
+            split_lists(camera_positions_list, mpi_size-1)
+            ):
+            slave(
+                atmosphere_params,
+                particle_params,
+                sun_params,
+                camera_params,
+                camera_positions,
+                ref_images
+            )
 
 
 if __name__ == '__main__':    
