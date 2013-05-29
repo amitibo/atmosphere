@@ -178,8 +178,14 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
 
     #
     # Initial distribution for optimization
+    # Note:
+    # I don't use zeros_like because the dtype of aerosols_dist
+    # is '<d' (probably because it originates in a matlab matrix)
+    # and mpi4py doesn't like to comm.Send it (produces KeyError).
+    # Using np.zeros produces byteorder '=' which stands for
+    # native ('<' means little endian).
     #
-    x0 = np.zeros_like(aerosols_dist)
+    x0 = np.zeros(aerosols_dist.shape)
 
     #
     # Create the optimization problem object
@@ -254,7 +260,14 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     )
 
 
-def slave(atmosphere_params, particle_params, sun_params, camera_params, camera_position, ref_img):
+def slave(
+    atmosphere_params,
+    particle_params,
+    sun_params,
+    camera_params,
+    camera_position,
+    ref_img
+    ):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
     #
