@@ -85,7 +85,9 @@ class Camera(object):
         # Store the transforms
         #
         self.H_cart2polar = H_cart2polar
-        self.H_distances = H_distances_to_sensor * H_cart2polar + H_cart2polar * H_distances_from_sun
+        self.H_distances_to_sensor = H_distances_to_sensor
+        self.H_distances_from_sun = H_distances_from_sun
+        self.calcHDistances()
         self.H_sensor = H_sensor
         
         #
@@ -102,10 +104,14 @@ class Camera(object):
         self.A_air_ = np.empty(1)
         self._air_exts = ()
         
+    def calcHDistances(self):
+        self.H_distances = self.H_distances_to_sensor * self.H_cart2polar + self.H_cart2polar * self.H_distances_from_sun
+        
     def save(self, path):
         import pickle
         
-        self.H_distances.save(os.path.join(path, 'H_distances'))
+        self.H_distances_to_sensor.save(os.path.join(path, 'H_distances_to_sensor'))
+        self.H_distances_from_sun.save(os.path.join(path, 'H_distances_from_sun'))
         self.H_cart2polar.save(os.path.join(path, 'H_cart2polar'))
         self.H_sensor.save(os.path.join(path, 'H_sensor'))
         np.save(os.path.join(path, 'mu'), self.mu)
@@ -119,9 +125,11 @@ class Camera(object):
     def load(self, path):
         import pickle
         
-        self.H_distances = spt.loadTransform(os.path.join(path, 'H_distances'))
+        self.H_distances_to_sensor = spt.loadTransform(os.path.join(path, 'H_distances_to_sensor'))
+        self.H_distances_from_sun = spt.loadTransform(os.path.join(path, 'H_distances_from_sun'))
         self.H_cart2polar = spt.loadTransform(os.path.join(path, 'H_cart2polar'))
         self.H_sensor = spt.loadTransform(os.path.join(path, 'H_sensor'))
+        self.calcHDistances()
         
         self.mu = np.load(os.path.join(path, 'mu.npy'))
         
