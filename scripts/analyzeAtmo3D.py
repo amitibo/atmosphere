@@ -16,7 +16,8 @@ import os
 import sys
 import argparse
 import glob
-
+import tempfile
+import shutil
 
 #
 # Set logging level
@@ -280,7 +281,8 @@ def slave(
     sun_params,
     camera_params,
     camera_positions,
-    ref_imgs
+    ref_imgs,
+    switch_cams_period=10
     ):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
@@ -290,8 +292,9 @@ def slave(
     #
     # Instatiate the camera slave
     #
-    cams = []
+    cam_paths = []
     for camera_position in camera_positions:
+        
         cam = Camera()
         cam.create(
             sun_params=sun_params,
@@ -300,7 +303,12 @@ def slave(
             camera_position=camera_position
         )
         
-        cams.append(cam)
+        cam_path = tempfile.mkdtemp()
+        cam.save(cam_path)
+        cam_paths.append(cam_path)
+    
+    camera_index = camera_num-1
+    switch_counter = 0
     
     sts = MPI.Status()
 
@@ -317,22 +325,19 @@ def slave(
     A_aerosols = data[1]
     results_path = data[2]
     
-    for i, (cam, ref_img) in enumerate(zip(cams, ref_imgs)):
-        cam.setA_air(A_air)
+    cam.setA_air(A_air)
 
-        if ref_img is None:
-            ref_img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params,
-                add_noise=True
-            )
-            
-            sio.savemat(
-                os.path.join(results_path, 'ref_img%d%d.mat' % (mpi_rank, i)),
-                {'img': ref_img},
-                do_compression=True
-            )
-            
+    for i, ref_img in enumerate(ref_imgs):
+
+        sio.savemat(
+            os.path.join(results_path, 'ref_img%d%d.mat' % (mpi_rank, i)),
+            {'img': ref_img},
+            do_compression=True
+        )
+        
+    ref_img = ref_imgs[camera_index]
+    
+    
     #
     # Loop the messages of the master
     #
@@ -344,44 +349,52 @@ def slave(
             break
 
         if tag == OBJTAG:
-            obj_total = 0
-            for cam, ref_img in zip(cams, ref_imgs):
-                img = cam.calcImage(
-                    A_aerosols=A_aerosols,
-                    particle_params=particle_params
-                )
-                
-                temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
-                obj_total += np.dot(temp.T, temp)
-                
-            comm.Send(np.array(obj_total), dest=0)
+            img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
             
-        elif tag == GRADTAG:
-            grads_total = None
-            for cam, ref_img in zip(cams, ref_imgs):
-                img = cam.calcImage(
-                    A_aerosols=A_aerosols,
-                    particle_params=particle_params
-                )
+            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
+            obj = np.dot(temp.T, temp)
+            
+            comm.Send(np.array(obj), dest=0)
+            
+            #
+            # Check if there is a need to switch the cams
+            #
+            switch_counter += 1
+            if switch_counter % camera_num == 0:
+                camera_index = (camera_index + 1) % camera_num
+                
+                cam.load(cam_paths[camera_index])        
+                cam.setA_air(A_air)
 
-                grad = cam.calcImageGradient(
-                    img_err=ref_img-img,
-                    A_aerosols=A_aerosols,
-                    particle_params=particle_params
-                )
-                if grads_total == None:
-                    grads_total = grads
-                else:
-                    grads_total += grads
+                ref_img = ref_imgs[camera_index]
+                
+        elif tag == GRADTAG:
+            img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
+
+            grad = cam.calcImageGradient(
+                img_err=ref_img-img,
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
                     
-            comm.Send(grads_total, dest=0)
+            comm.Send(grad, dest=0)
+            
         else:
             raise Exception('Unexpected tag %d' % tag)
 
     #
     # Save the image the relates to the calculated aerosol distribution
     #
-    for i, cam in enumerate(cams):
+    for i, cam_path in enumerate(cam_paths):
+        cam.load(cam_path)        
+        cam.setA_air(A_air)
+
         final_img = cam.calcImage(
             A_aerosols=A_aerosols,
             particle_params=particle_params
@@ -392,7 +405,12 @@ def slave(
             {'img': final_img},
             do_compression=True
         )
-
+        
+        try:
+            shutil.rmtree(cam_path)
+        except Exception, e:
+            print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
+        
 
 def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot):
     """"""

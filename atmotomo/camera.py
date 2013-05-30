@@ -87,7 +87,6 @@ class Camera(object):
         self.H_cart2polar = H_cart2polar
         self.H_distances = H_distances_to_sensor * H_cart2polar + H_cart2polar * H_distances_from_sun
         self.H_sensor = H_sensor
-        self.R_derivatives = (spt.Grids(*H_cart2polar.out_grids.derivatives).expanded)[0].reshape((-1, 1))
         
         #
         # Calculated the scattering cosinus angle
@@ -98,44 +97,36 @@ class Camera(object):
         # Store simulation parameters
         #
         self.camera_params = camera_params
-        self.atmosphere_params = atmosphere_params
         self.sun_params = sun_params
         
         self.A_air_ = np.empty(1)
         self._air_exts = ()
         
     def save(self, path):
-        import scipy.io as sio
         import pickle
-        sio.savemat(
-            os.path.join(path, 'camera.mat'),
-            {
-                'H_distances': self.H_distances,
-                'H_sensor': self.H_sensor,
-                'mu': self.mu,
-                'A_air_': self.A_air_
-            },
-            do_compression=True
-        )
+        
+        self.H_distances.save(os.path.join(path, 'H_distances'))
+        self.H_cart2polar.save(os.path.join(path, 'H_cart2polar'))
+        self.H_sensor.save(os.path.join(path, 'H_sensor'))
+        np.save(os.path.join(path, 'mu'), self.mu)
         
         with open(os.path.join(path, 'camera.pkl'), 'w') as f:
             pickle.dump(
-                (self.camera_params, self.atmosphere_params),
+                (self.camera_params, self.sun_params),
                 f
             )
     
     def load(self, path):
-        import scipy.io as sio
         import pickle
         
-        cam = sio.loadmat(os.path.join(path, 'camera.mat'))
-        self.H_distances = cam['H_distances']
-        self.H_sensor = cam['H_sensor']
-        self.mu = cam['mu']
-        self.A_air_ = cam['A_air_']
+        self.H_distances = spt.loadTransform(os.path.join(path, 'H_distances'))
+        self.H_cart2polar = spt.loadTransform(os.path.join(path, 'H_cart2polar'))
+        self.H_sensor = spt.loadTransform(os.path.join(path, 'H_sensor'))
+        
+        self.mu = np.load(os.path.join(path, 'mu.npy'))
         
         with open(os.path.join(path, 'camera.pkl'), 'r') as f:
-            self.camera_params, self.atmosphere_params = pickle.load(f)
+            self.camera_params, self.sun_params = pickle.load(f)
         
     def setA_air(self, A_air):
         """Store the air distribution"""
