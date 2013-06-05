@@ -279,12 +279,13 @@ def slave(
     sun_params,
     camera_params,
     camera_positions,
-    ref_imgs,
-    switch_cams_period=10
+    ref_images,
+    switch_cams_period=10,
+    simulate_imgs=False
     ):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
-    assert len(camera_positions) == len(ref_imgs), 'The number of cameras positions and reference images should be equal'
+    assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
     camera_num = len(camera_positions)
     
     #
@@ -327,9 +328,23 @@ def slave(
     A_aerosols = data[1]
     results_path = data[2]
     
-    cam.setA_air(A_air)
+    if simulate_imgs:
+        for i, cam_path in enumerate(cam_paths):
+            cam.load(cam_path)        
+            cam.setA_air(A_air)
+    
+            sim_img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
+            
+            sio.savemat(
+                os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+                {'img': sim_img},
+                do_compression=True
+            )
 
-    for i, ref_img in enumerate(ref_imgs):
+    for i, ref_img in enumerate(ref_images):
 
         sio.savemat(
             os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
@@ -337,7 +352,9 @@ def slave(
             do_compression=True
         )
         
-    ref_img = ref_imgs[camera_index]
+    cam.setA_air(A_air)
+
+    ref_img = ref_images[camera_index]
     
     
     #
@@ -375,7 +392,7 @@ def slave(
                 cam.load(cam_paths[camera_index])        
                 cam.setA_air(A_air)
 
-                ref_img = ref_imgs[camera_index]
+                ref_img = ref_images[camera_index]
                 print 'slave %d successfully created camera' % mpi_rank
                 
                 
@@ -512,9 +529,6 @@ def main(
         remove_sunspot
     )
     
-    if simulate:
-        raise NotImplemented('Not impelmented yet the simulation mode in multiple cameras per slave')
-        
     if mpi_rank == 0:
         #
         # Create the results path
@@ -528,17 +542,24 @@ def main(
         #
         # Set up the solver server.
         #
-        master(air_dist, aerosols_dist, results_path, solver='bfgs', job_id=job_id)
+        master(
+            air_dist=air_dist,
+            aerosols_dist=aerosols_dist,
+            results_path=results_path,
+            solver='bfgs',
+            job_id=job_id
+        )
     else:
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
         camera_positions = split_lists(camera_positions_list, mpi_size-1)[mpi_rank-1]
         slave(
-            atmosphere_params,
-            particle_params,
-            sun_params,
-            camera_params,
-            camera_positions,
-            ref_images
+            atmosphere_params=atmosphere_params,
+            particle_params=particle_params,
+            sun_params=sun_params,
+            camera_params=camera_params,
+            camera_positions=camera_positions,
+            ref_images=ref_images,
+            simulate_imgs=simulate
         )
 
 
@@ -550,18 +571,18 @@ if __name__ == '__main__':
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_mc', help='path to reference images of vadims code')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
-    parser.add_argument('--simulate', action='store_true', help='Use simulated images (overrides previous flags like mcarats and ref_mc).')
+    parser.add_argument('--simulate', action='store_true', help='Simulate images from given distributions (useful for debug).')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
 
     main(
-        args.params_path,
-        args.ref_mc,
-        args.mcarats,
-        args.simulate,
-        args.sigma,
-        args.remove_sunspot,
-        args.job_id
+        params_path=args.params_path,
+        ref_mc=args.ref_mc,
+        mcarats=args.mcarats,
+        simulate=args.simulate,
+        sigma=args.sigma,
+        remove_sunspot=args.remove_sunspot,
+        job_id=args.job_id
     )
