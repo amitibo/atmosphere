@@ -45,7 +45,7 @@ class Camera(object):
         H_distances_from_sun = spt.directionTransform(
             in_grids=grids,
             direction_phi=sun_params.angle_phi,
-            direction_theta=-sun_params.angle_theta
+            direction_theta=sun_params.angle_theta
             )
         timer.tock()
         

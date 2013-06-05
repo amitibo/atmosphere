@@ -184,8 +184,6 @@ class RadianceProblem(object):
 def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
-    #import wingdbstub
-
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
         level=logging.DEBUG
@@ -303,10 +301,14 @@ def slave(
             camera_position=camera_position
         )
         
-        cam_path = tempfile.mkdtemp()
+        cam_path = tempfile.mkdtemp(prefix='/gtmp/')
         cam.save(cam_path)
         cam_paths.append(cam_path)
     
+    #
+    # Set the camera_index to point to the last camera created
+    # which is the currently loaded camera.
+    #
     camera_index = camera_num-1
     switch_counter = 0
     
@@ -330,7 +332,7 @@ def slave(
     for i, ref_img in enumerate(ref_imgs):
 
         sio.savemat(
-            os.path.join(results_path, 'ref_img%d%d.mat' % (mpi_rank, i)),
+            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': ref_img},
             do_compression=True
         )
@@ -349,6 +351,8 @@ def slave(
             break
 
         if tag == OBJTAG:
+            print 'slave %d calculating objective' % mpi_rank
+            
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
@@ -366,12 +370,18 @@ def slave(
             if switch_counter % camera_num == 0:
                 camera_index = (camera_index + 1) % camera_num
                 
+                print 'slave %d switching to camera index %d' % (mpi_rank, camera_index)
+                
                 cam.load(cam_paths[camera_index])        
                 cam.setA_air(A_air)
 
                 ref_img = ref_imgs[camera_index]
+                print 'slave %d successfully created camera' % mpi_rank
+                
                 
         elif tag == GRADTAG:
+            print 'slave %d calculating gradient' % mpi_rank
+            
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
@@ -401,7 +411,7 @@ def slave(
         )
         
         sio.savemat(
-            os.path.join(results_path, 'final_img%d%d.mat' % (mpi_rank, i)),
+            os.path.join(results_path, 'final_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': final_img},
             do_compression=True
         )
@@ -482,6 +492,8 @@ def main(
     job_id=None
     ):
     
+    #import wingdbstub
+
     #
     # Load the simulation params
     #
@@ -518,18 +530,16 @@ def main(
         #
         master(air_dist, aerosols_dist, results_path, solver='bfgs', job_id=job_id)
     else:
-        for ref_images, camera_positions in zip(
-            split_lists(ref_images_list, mpi_size-1),
-            split_lists(camera_positions_list, mpi_size-1)
-            ):
-            slave(
-                atmosphere_params,
-                particle_params,
-                sun_params,
-                camera_params,
-                camera_positions,
-                ref_images
-            )
+        ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
+        camera_positions = split_lists(camera_positions_list, mpi_size-1)[mpi_rank-1]
+        slave(
+            atmosphere_params,
+            particle_params,
+            sun_params,
+            camera_params,
+            camera_positions,
+            ref_images
+        )
 
 
 if __name__ == '__main__':    

@@ -100,7 +100,7 @@ def calcScatterMu(grids, sun_angle_phi, sun_angle_theta):
     #
     # Rotate the grids so that the Z axis will point in the direction of the sun
     #
-    grids_rotated = grids.rotate(-sun_angle_theta, sun_angle_phi, 0)
+    grids_rotated = grids.rotate(sun_angle_theta, sun_angle_phi, 0)
     
     Z_rotated = grids_rotated[2]
     R_rotated = np.sqrt(grids_rotated[0]**2 + grids_rotated[1]**2 + grids_rotated[2]**2)

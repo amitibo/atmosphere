@@ -53,7 +53,7 @@ def clouds_simulation(
     camera_resolution=(128, 128),
     camera_type='linear',
     sun_angle_phi=0,
-    sun_angle_theta=-np.pi/4,
+    sun_angle_theta=np.pi/4,
     visibility=100000
     ):
 

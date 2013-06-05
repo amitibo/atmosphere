@@ -64,7 +64,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 48  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_mc $HOME/data/New_Low_Density --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+mpirun -np 48  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 24  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_images /u/amitibo/data/20Images_single_voxel --no_air
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

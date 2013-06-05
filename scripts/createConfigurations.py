@@ -53,10 +53,18 @@ def main(output_path):
         visibility=10000
     )
     atmotomo.prepareSimulation(
+        path=os.path.join(output_path, 'two_clouds_low_density_low_resolution'),
+        func=atmotomo.clouds_simulation,
+        atmosphere_params=clouds_atmosphere_low_resolution,
+        visibility=100000,
+        camera_resolution=(64, 64)
+    )
+    atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density_low_resolution'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=clouds_atmosphere_low_resolution,
-        visibility=10000
+        visibility=10000,
+        camera_resolution=(64, 64)
     )
 
 
