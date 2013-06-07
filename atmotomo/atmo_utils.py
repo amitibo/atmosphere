@@ -110,7 +110,7 @@ def calcScatterMu(grids, sun_angle_phi, sun_angle_theta):
     return mu
 
 
-def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
+def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.0):
     """
     Load the simulation data from the format used by Vadim: A list of folders.
     
@@ -166,6 +166,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
             R, G, B = [Mcarats.removeSunSpot(ch, ys, xs, MARGIN=1) for ch in (R, G, B)]
             img = np.dstack((R, G, B))
         
+        img *= scale
         
         img_list.append(img)
     

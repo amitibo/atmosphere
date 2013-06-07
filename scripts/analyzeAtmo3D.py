@@ -3,9 +3,7 @@ Reconstruct a general distribution of aerosols in the atmosphere.
 """
 from __future__ import division
 import numpy as np
-from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH
-from atmotomo import Camera
-from atmotomo import calcAirMcarats, getMisrDB, Mcarats, single_voxel_atmosphere, density_clouds_vadim
+from atmotomo import Camera, Mcarats
 import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
@@ -18,6 +16,7 @@ import argparse
 import glob
 import tempfile
 import shutil
+import time
 
 #
 # Set logging level
@@ -37,11 +36,12 @@ IMGTAG = 1
 OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
+READYTAG = 5
 
 
 MAX_ITERATIONS = 1000
 MCARATS_IMG_SCALE = 10.0**9.7
-VADIM_IMG_SCALE = 503.166
+VADIM_IMG_SCALE = 504.941
 
 profile = False
 
@@ -74,6 +74,18 @@ def split_lists(items, n):
 class RadianceProblem(object):
     def __init__(self, A_aerosols, A_air, results_path):
 
+        #
+        # Wait for all slaves to send ready message
+        #
+        time.sleep(1800)
+        dumb = np.empty(1)
+        requests = []
+        for i in range(1, mpi_size):
+            req = comm.Irecv(dumb, source=i, tag=READYTAG)
+            requests.append(req)
+        
+        MPI.Request.waitall(requests)
+        
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
@@ -294,17 +306,25 @@ def slave(
     cam_paths = []
     for camera_position in camera_positions:
         
+        cam_path = tempfile.mkdtemp(prefix='/gtmp/')
         cam = Camera()
         cam.create(
             sun_params=sun_params,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=camera_position
+            camera_position=camera_position,
+            save_path=cam_path
         )
         
-        cam_path = tempfile.mkdtemp(prefix='/gtmp/')
-        cam.save(cam_path)
         cam_paths.append(cam_path)
+        
+    #
+    # Notify the master that finished calculating the cameras. I do this
+    # becuase I have a feeling that the 'other' MPI crashes are due to
+    # master waiting for too long when sending the first data.
+    #
+    dumb = np.empty(1)
+    comm.Send(dumb, dest=0, tag=READYTAG)
     
     #
     # Set the camera_index to point to the last camera created
@@ -471,7 +491,8 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         ref_images_list, camera_positions_list = atmotomo.loadVadimData(
             ref_images,
             (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
-            remove_sunspot=remove_sunspot
+            remove_sunspot=remove_sunspot,
+            scale=1/VADIM_IMG_SCALE
         )
         
         #

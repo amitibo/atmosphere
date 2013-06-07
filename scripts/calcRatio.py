@@ -24,13 +24,11 @@ def getMcMatList(path):
 def getSingleMatList(path):
     
     path = os.path.abspath(path)
-    files_list = glob.glob(os.path.join(path, "*.mat"))
-    
-    file_pattern = re.search(r'(.*?)\d+.mat', files_list[0]).groups()[0]
+    files_list = glob.glob(os.path.join(path, "sim*.mat"))
+    files_list.sort()
     
     img_list = []
-    for i in range(0, len(files_list)+1):
-        img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
+    for img_path in files_list:
         try:
             data = sio.loadmat(img_path)
         except:
@@ -113,9 +111,10 @@ def main(ref_path, single_path, vadim_ref):
         matched_single_imgs = single_imgs[:]
     
     means = []
-    for ref_img, single_img in zip(ref_imgs, matched_single_imgs):
+    for i, (ref_img, single_img) in enumerate(zip(ref_imgs, matched_single_imgs)):
         means.append(calcRatio(ref_img, single_img, not vadim_ref))
-        showImages(ref_img, single_img)
+        if i % 15 == 0:
+            showImages(ref_img, single_img)
         
     print 'Mean: %g (=10^%g)' % (np.mean(means[7:]), np.log10(np.mean(means[7:])))
 
