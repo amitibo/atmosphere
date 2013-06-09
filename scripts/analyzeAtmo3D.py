@@ -317,7 +317,15 @@ def slave(
         )
         
         cam_paths.append(cam_path)
-        
+    
+    #
+    # Create a mask around the sun center.
+    #
+    X, Y = np.meshgrid(np.arange(128)-96, np.arange(128)-64)
+    R = np.sqrt(X**2 + Y**2)
+    mask = R>10
+    mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+    
     #
     # Notify the master that finished calculating the cameras. I do this
     # becuase I have a feeling that the 'other' MPI crashes are due to
@@ -395,7 +403,7 @@ def slave(
                 particle_params=particle_params
             )
             
-            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
+            temp = ((ref_img - img) * mask).reshape((-1, 1))
             obj = np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)
@@ -425,7 +433,7 @@ def slave(
             )
 
             grad = cam.calcImageGradient(
-                img_err=ref_img-img,
+                img_err=(ref_img-img)*mask,
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
             )
@@ -518,7 +526,6 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
 
     return ref_images_list, camera_positions_list
 
-    
 
 def main(
     params_path,
