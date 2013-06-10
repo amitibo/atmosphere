@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  all_l_p
+#PBS -q  general_ld
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -68,7 +68,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 48 python $HOME/.local/bin/analyzeAtmo3D.py --simulate --ref_mc /u/amitibo/data/New_Low_Density --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+mpirun -np 48 python $HOME/.local/bin/analyzeAtmo3D.py --use_simulated --ref_mc /u/amitibo/data/New_Low_Density --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --mcarats /u/amitibo/data/mcarats/3
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_mc_limited --no_air
 

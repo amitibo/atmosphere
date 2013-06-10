@@ -293,7 +293,9 @@ def slave(
     camera_positions,
     ref_images,
     switch_cams_period=10,
-    simulate_imgs=False
+    simulate=False,
+    use_simulated=False,
+    mask_sun=False
     ):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
 
@@ -321,10 +323,13 @@ def slave(
     #
     # Create a mask around the sun center.
     #
-    X, Y = np.meshgrid(np.arange(128)-96, np.arange(128)-64)
-    R = np.sqrt(X**2 + Y**2)
-    mask = R>10
-    mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+    if mask_sun:
+        X, Y = np.meshgrid(np.arange(128)-96, np.arange(128)-64)
+        R = np.sqrt(X**2 + Y**2)
+        mask = R>10
+        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+    else:
+        mask = 1
     
     #
     # Notify the master that finished calculating the cameras. I do this
@@ -335,17 +340,9 @@ def slave(
     comm.Send(dumb, dest=0, tag=READYTAG)
     
     #
-    # Set the camera_index to point to the last camera created
-    # which is the currently loaded camera.
-    #
-    camera_index = camera_num-1
-    switch_counter = 0
-    
-    sts = MPI.Status()
-
-    #
     # The first data should be for creating the measured images.
     #
+    sts = MPI.Status()
     data = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
 
     tag = sts.Get_tag()
@@ -356,7 +353,24 @@ def slave(
     A_aerosols = data[1]
     results_path = data[2]
     
-    if simulate_imgs:
+    #
+    # Save the ref images
+    #
+    for i, ref_img in enumerate(ref_images):
+
+        sio.savemat(
+            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+            {'img': ref_img},
+            do_compression=True
+        )
+    
+    #
+    # Save simulated images and possiblity use them as reference
+    #
+    if simulate or use_simulated:
+        if use_simulated:
+            ref_images = []
+            
         for i, cam_path in enumerate(cam_paths):
             cam.load(cam_path)        
             cam.setA_air(A_air)
@@ -371,17 +385,18 @@ def slave(
                 {'img': sim_img},
                 do_compression=True
             )
+            
+            if use_simulated:
+                ref_images.append(sim_img)
 
-    for i, ref_img in enumerate(ref_images):
-
-        sio.savemat(
-            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
-            {'img': ref_img},
-            do_compression=True
-        )
-        
+    #
+    # Set the camera_index to point to the last camera created
+    # which is the currently loaded camera.
+    #
+    camera_index = camera_num-1
+    switch_counter = 0
+                
     cam.setA_air(A_air)
-
     ref_img = ref_images[camera_index]
     
     
@@ -412,7 +427,7 @@ def slave(
             # Check if there is a need to switch the cams
             #
             switch_counter += 1
-            if switch_counter % camera_num == 0:
+            if (camera_num > 1) and (switch_counter % switch_cams_period == 0):
                 camera_index = (camera_index + 1) % camera_num
                 
                 print 'slave %d switching to camera index %d' % (mpi_rank, camera_index)
@@ -532,6 +547,8 @@ def main(
     ref_mc=None,
     mcarats=None,
     simulate=False,
+    use_simulated=False,
+    mask_sun=False,
     sigma=0.0,
     remove_sunspot=False,
     job_id=None
@@ -587,7 +604,9 @@ def main(
             camera_params=camera_params,
             camera_positions=camera_positions,
             ref_images=ref_images,
-            simulate_imgs=simulate
+            simulate=simulate,
+            use_simulated=use_simulated,
+            mask_sun=mask_sun
         )
 
 
@@ -600,7 +619,9 @@ if __name__ == '__main__':
     parser.add_argument('--ref_mc', help='path to reference images of vadims code')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--simulate', action='store_true', help='Simulate images from given distributions (useful for debug).')
+    parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
+    parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
@@ -610,6 +631,8 @@ if __name__ == '__main__':
         ref_mc=args.ref_mc,
         mcarats=args.mcarats,
         simulate=args.simulate,
+        use_simulated=args.use_simulated,
+        mask_sun=args.mask_sun,
         sigma=args.sigma,
         remove_sunspot=args.remove_sunspot,
         job_id=args.job_id
