@@ -237,7 +237,6 @@ class resultAnalayzer(HasTraits):
                                       font = "swiss 16",
                                       overlay_position="top"))        
         
-        
     @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_index')
     def _updateImg(self):
         
@@ -265,18 +264,18 @@ class resultAnalayzer(HasTraits):
         path = self.tr_DND[0].absolute_path
          
         path, file_name =  os.path.split(path)
-        image_list = glob.glob(os.path.join(path, "ref_img*.mat"))
-        if not image_list:
+        ref_list = glob.glob(os.path.join(path, "ref_img*.mat"))
+        if not ref_list:
             warning(info.ui.control, "No img found in the folder", "Warning")
             return
-        
+        final_list = glob.glob(os.path.join(path, "final_img*.mat"))
         self._ref_images = []
         self._final_images = []
-        for i in range(0, len(image_list)):
-            for pattern, img_list, step in zip(('ref_img', 'final_img'), (self._ref_images, self._final_images), (1, 1)):
-                img_path = os.path.join(path, "%s%d.mat" % (pattern, i+1))
-                data = sio.loadmat(img_path)
-                img_list.append(data['img'][::step, ::step, :])
+        for ref_path, final_path in zip(sorted(ref_list), sorted(final_list)):
+            data = sio.loadmat(ref_path)
+            self._ref_images.append(data['img'])
+            data = sio.loadmat(final_path)
+            self._final_images.append(data['img'])
 
         self.tr_len = len(self._ref_images) - 1
 

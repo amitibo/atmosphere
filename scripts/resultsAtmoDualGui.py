@@ -312,8 +312,7 @@ class resultAnalayzer(HasTraits):
             return
         
         self._images_amit = []
-        for i in range(0, len(image_list)+1):
-            img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
+        for img_path in sorted(image_list):
             try:
                 data = sio.loadmat(img_path)
             except:
