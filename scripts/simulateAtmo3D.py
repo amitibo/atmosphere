@@ -38,7 +38,7 @@ atmosphere_params = amitibo.attrClass(
 
 camera_params = amitibo.attrClass(
     image_res=128,
-    subgrid_res=(800, 800, 80),
+    subgrid_res=(400, 400, 40),
     grid_noise=1.,
     photons_per_pixel=40000
 )
