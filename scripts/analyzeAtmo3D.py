@@ -83,6 +83,7 @@ CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
+VISIBILITY = 100000
 
 profile = False
 
@@ -218,6 +219,7 @@ def master(particle_params, solver='ipopt'):
     # Create the distributions
     #
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    A_aerosols = A_aerosols / VISIBILITY
     
     z_coords = H[0, 0, :]
     air_exts = calcAirMcarats(z_coords)

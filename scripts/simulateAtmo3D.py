@@ -6,7 +6,7 @@ from __future__ import division
 import numpy as np
 from atmotomo import calcHG, L_SUN_RGB, RGB_WAVELENGTH, getResourcePath, getMisrDB
 from atmotomo import Camera
-from atmotomo import density_clouds1, density_clouds_vadim, calcAirMcarats
+from atmotomo import density_clouds1, calcAirMcarats, density_clouds_vadim, calcAirMcarats
 import atmotomo
 import amitibo
 import scipy.io as sio
@@ -111,6 +111,9 @@ def serial(particle_params):
     #
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     A_aerosols = A_aerosols / VISIBILITY
+    z_coords = H[0, 0, :]
+    air_exts = calcAirMcarats(z_coords)
+    
     
     for i, sun_angle in enumerate([-np.pi/4]):#np.linspace(0, np.pi/2, 12)):
         #
@@ -123,7 +126,7 @@ def serial(particle_params):
             camera_params=camera_params,
             camera_position=camera_position
         )
-        cam.setA_air(A_air)
+        cam.set_air_extinction(air_exts)
         #camera_path = amitibo.createResultFolder(base_path='d:/amit/tmp')
         #cam.save(camera_path)
         
