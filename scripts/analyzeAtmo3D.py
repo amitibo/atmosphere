@@ -100,13 +100,13 @@ sys.excepthook = abortrun
 
 
 class RadianceProblem(object):
-    def __init__(self, A_aerosols, air_exts, results_path):
+    def __init__(self, A_aerosols, A_air, results_path):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
-            comm.send([air_exts, A_aerosols, results_path], dest=i, tag=IMGTAG)
+            comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
         self._objective_values = []
         self._intermediate_values = []
@@ -221,9 +221,6 @@ def master(particle_params, solver='ipopt'):
     A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
     A_aerosols = A_aerosols / VISIBILITY
     
-    z_coords = H[0, 0, :]
-    air_exts = calcAirMcarats(z_coords)
-    
     #
     # Initial distribution for optimization
     #
@@ -234,7 +231,7 @@ def master(particle_params, solver='ipopt'):
     #
     radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
-        air_exts=air_exts,
+        A_air=A_air,
         results_path=results_path
     )
 
@@ -328,11 +325,11 @@ def slave(particle_params, camera_position, ref_img, scaling=1):
     if tag != IMGTAG:
         raise Exception('The first data transaction should be for calculting the meeasure images')
 
-    air_exts = data[0]
+    A_air = data[0]
     A_aerosols = data[1]
     results_path = data[2]
     
-    cam.set_air_extinction(air_exts)
+    cam.setA_air(A_air)
 
     if ref_img is None:
         ref_img = cam.calcImage(
@@ -363,7 +360,7 @@ def slave(particle_params, camera_position, ref_img, scaling=1):
                 particle_params=particle_params
             )
             
-            temp = ref_img.reshape((-1, 1)) - scaling * img.reshape((-1, 1))
+            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
             obj = np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)
@@ -375,10 +372,10 @@ def slave(particle_params, camera_position, ref_img, scaling=1):
             )
             
             grad = cam.calcImageGradient(
-                        img_err=ref_img-scaling*img,
+                        img_err=ref_img-img,
                         A_aerosols=A_aerosols,
                         particle_params=particle_params
-                    ) * scaling
+                    )
             
             comm.Send(grad, dest=0)
         else:
