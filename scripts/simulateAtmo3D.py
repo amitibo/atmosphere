@@ -26,28 +26,28 @@ import glob
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=spt.Grids(
-        np.arange(0, 50000, 1000.0), # Y
-        np.arange(0, 50000, 1000.0), # X
-        np.arange(0, 10000, 100.0)   # H
+        np.arange(0, 50, 1.0), # Y
+        np.arange(0, 50, 1.0), # X
+        np.arange(0, 10, .1)   # H
         ),
-    earth_radius=4000000,
+    earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
-    air_typical_h=8000,
-    aerosols_typical_h=2000
+    air_typical_h=8,
+    aerosols_typical_h=2
 )
 
 camera_params = amitibo.attrClass(
-    image_res=128,
+    image_res=[128, 128],
     radius_res=100,
     photons_per_pixel=40000
 )
 
-camera_position = np.array((9507, 22815.9, 84.431))
+camera_position = np.array((9.507, 22.8159,0.084431))
 SUN_ANGLE = -np.pi/4
 CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5000., 45000, 5), np.linspace(5000., 45000, 5))]
 
-VISIBILITY = 10000
+VISIBILITY = 100
 KM_TO_METER = 1000
 profile = False
     
@@ -196,4 +196,4 @@ if __name__ == '__main__':
         if args.parallel:
             parallel(particle_params, cameras, args.noise)
         else:
-            serial(particle_params, args.noise, args.noise)
+            serial(particle_params, args.noise)
