@@ -37,8 +37,6 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 
-VISIBILITY = 10000
-
 MAX_ITERATIONS = 4000
 KM_TO_METER = 1000
 
@@ -47,19 +45,19 @@ KM_TO_METER = 1000
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=spt.Grids(
-        np.arange(0, 50000, 1000.0), # Y
-        np.arange(0, 50000, 1000.0), # X
-        np.arange(0, 10000, 100.0)   # H
+        np.arange(0, 50, 1.0), # Y
+        np.arange(0, 50, 1.0), # X
+        np.arange(0, 10, .1)   # H
         ),
-    earth_radius=4000000,
+    earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
-    air_typical_h=8000,
-    aerosols_typical_h=2000
+    air_typical_h=8,
+    aerosols_typical_h=2
 )
 
 camera_params = amitibo.attrClass(
-    image_res=128,
+    image_res=[128, 128],
     radius_res=100,
     photons_per_pixel=40000
 )
@@ -85,6 +83,7 @@ CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
+VISIBILITY = 100
 
 #VADIM_IMG_SCALE = 9.75122
 #VADIM_IMG_SCALE = 2493.67
@@ -104,13 +103,13 @@ sys.excepthook = abortrun
 
 
 class RadianceProblem(object):
-    def __init__(self, A_aerosols, air_exts, results_path):
+    def __init__(self, A_aerosols, A_air, results_path):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
         for i in range(1, mpi_size):
-            comm.send([air_exts, A_aerosols, results_path], dest=i, tag=IMGTAG)
+            comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
         self._objective_values = []
         self._intermediate_values = []
@@ -224,12 +223,8 @@ def master(particle_params, solver='ipopt'):
     #
     # Create the distributions
     #
-    #A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
-    A_aerosols, Y, X, H = single_voxel_atmosphere(atmosphere_params, indices_list=[(24, 24, 19)], density=1/VISIBILITY, decay=False)
-    A_aerosols = A_aerosols[0]
-    
-    z_coords = H[0, 0, :]
-    air_exts = calcAirMcarats(z_coords)
+    A_air, A_aerosols, Y, X, H, h = density_clouds1(atmosphere_params)
+    A_aerosols = A_aerosols / VISIBILITY
     
     #
     # Initial distribution for optimization
@@ -241,7 +236,7 @@ def master(particle_params, solver='ipopt'):
     #
     radiance_problem = RadianceProblem(
         A_aerosols=A_aerosols,
-        air_exts=air_exts,
+        A_air=A_air,
         results_path=results_path
     )
 
@@ -334,14 +329,11 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
     if tag != IMGTAG:
         raise Exception('The first data transaction should be for calculting the meeasure images')
 
-    air_exts = data[0]
+    A_air = data[0]
     A_aerosols = data[1]
     results_path = data[2]
     
-    if no_air:
-        cam.setA_air(np.zeros_like(A_aerosols))
-    else:
-        cam.set_air_extinction(air_exts)
+    cam.setA_air(A_air)
 
     if ref_img is None:
         ref_img = cam.calcImage(
@@ -372,7 +364,7 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
                 particle_params=particle_params
             )
             
-            temp = ref_img.reshape((-1, 1)) - scaling * img.reshape((-1, 1))
+            temp = ref_img.reshape((-1, 1)) - img.reshape((-1, 1))
             obj = np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)
@@ -384,10 +376,10 @@ def slave(particle_params, camera_position, ref_img, scaling=1, no_air=False):
             )
             
             grad = cam.calcImageGradient(
-                        img_err=ref_img-scaling*img,
+                        img_err=ref_img-img,
                         A_aerosols=A_aerosols,
                         particle_params=particle_params
-                    ) * scaling
+                    )
             
             comm.Send(grad, dest=0)
         else:

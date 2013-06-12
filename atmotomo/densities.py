@@ -54,8 +54,8 @@ def density_clouds1(atmosphere_params):
     A_mask = np.zeros_like(A_aerosols)
     Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
     Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z1<3000**2] = 1
-    A_mask[Z2<4000**2] = 1
+    A_mask[Z1<3**2] = 1
+    A_mask[Z2<4**2] = 1
     A_aerosols *= A_mask
 
     return A_air, A_aerosols, Y, X, H, h

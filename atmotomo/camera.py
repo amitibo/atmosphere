@@ -197,7 +197,7 @@ class Camera(object):
                 temp_img += noise
                 temp_img[temp_img<0] = 0
             
-            img.append(temp_img.reshape(self.camera_params.image_res, self.camera_params.image_res))
+            img.append(temp_img.reshape(self.camera_params.image_res[0], self.camera_params.image_res[1]))
             
         img = np.transpose(np.array(img), (1, 2, 0))
         
