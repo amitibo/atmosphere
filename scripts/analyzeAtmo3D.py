@@ -44,15 +44,15 @@ KM_TO_METER = 1000
 #
 atmosphere_params = amitibo.attrClass(
     cartesian_grids=(
-        slice(0, 50000., 1000.), # Y
-        slice(0, 50000., 1000.), # X
-        slice(0, 10000., 100.)  # H
+        slice(0, 50., 1.), # Y
+        slice(0, 50., 1.), # X
+        slice(0, 10., 0.1)  # H
         ),
-    earth_radius=4000000,
+    earth_radius=4000,
     L_SUN_RGB=L_SUN_RGB,
     RGB_WAVELENGTH=RGB_WAVELENGTH,
-    air_typical_h=8000,
-    aerosols_typical_h=2000
+    air_typical_h=8,
+    aerosols_typical_h=2
 )
 
 camera_params = amitibo.attrClass(
@@ -77,13 +77,13 @@ camera_params = amitibo.attrClass(
 #
 # node*cores = 8*12 = 96 = 10*10 - 5 (cameras) + 1 (master)
 #
-CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5000., 45000, 10), np.linspace(5000., 45000, 10))]
+CAMERA_CENTERS = [np.array((i, j, 0.)) + 0.1*np.random.rand(3) for i, j in itertools.product(np.linspace(5., 45, 10), np.linspace(5., 45, 10))]
 CAMERA_CENTERS = CAMERA_CENTERS[:-5]
 
 SUN_ANGLE = -np.pi/4
 REF_IMG_SCALE = 10.0**4
 MCARATS_IMG_SCALE = 10.0**9.7
-VISIBILITY = 100000
+VISIBILITY = 100
 
 profile = False
 
