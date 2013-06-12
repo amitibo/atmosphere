@@ -39,7 +39,7 @@ DIETAG = 4
 READYTAG = 5
 
 
-MAX_ITERATIONS = 1000
+MAX_ITERATIONS = 4000
 MCARATS_IMG_SCALE = 10.0**9.7
 VADIM_IMG_SCALE = 504.941
 
@@ -293,7 +293,7 @@ def slave(
     camera_positions,
     ref_images,
     switch_cams_period=10,
-    simulate=False,
+    save_simulated=False,
     use_simulated=False,
     mask_sun=False
     ):
@@ -354,6 +354,23 @@ def slave(
     results_path = data[2]
     
     #
+    # Use simulated images as reference
+    #
+    if use_simulated:
+        ref_images = []
+            
+        for i, cam_path in enumerate(cam_paths):
+            cam.load(cam_path)        
+            cam.setA_air(A_air)
+    
+            sim_img = cam.calcImage(
+                A_aerosols=A_aerosols,
+                particle_params=particle_params
+            )
+            
+            ref_images.append(sim_img)
+
+    #
     # Save the ref images
     #
     for i, ref_img in enumerate(ref_images):
@@ -365,12 +382,9 @@ def slave(
         )
     
     #
-    # Save simulated images and possiblity use them as reference
+    # Save simulated images (useful for debugging)
     #
-    if simulate or use_simulated:
-        if use_simulated:
-            ref_images = []
-            
+    if save_simulated:
         for i, cam_path in enumerate(cam_paths):
             cam.load(cam_path)        
             cam.setA_air(A_air)
@@ -386,9 +400,6 @@ def slave(
                 do_compression=True
             )
             
-            if use_simulated:
-                ref_images.append(sim_img)
-
     #
     # Set the camera_index to point to the last camera created
     # which is the currently loaded camera.
@@ -546,7 +557,7 @@ def main(
     params_path,
     ref_mc=None,
     mcarats=None,
-    simulate=False,
+    save_simulated=False,
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
@@ -554,25 +565,38 @@ def main(
     job_id=None
     ):
     
+    global mpi_size
+    
     #import wingdbstub
 
     #
     # Load the simulation params
     #
-    atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
+    atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
         
     #
     # Calculate the camera position (this is relevant only for the slave
-    # but it also calculated the mpi_size which important for the master
+    # but it also calculates the mpi_size which important for the master
     # also)
     #
-    ref_images_list, camera_positions_list = loadSlaveData(
-        atmosphere_params,
-        ref_mc,
-        mcarats,
-        sigma,
-        remove_sunspot
-    )
+    if use_simulated:
+        #
+        # Limit the number of mpi processes used.
+        #
+        mpi_size = min(mpi_size, len(camera_positions_list)+1)
+        
+        if mpi_rank >= mpi_size:
+            sys.exit()
+            
+        ref_images_list = [None] * len(camera_positions_list)
+    else:
+        ref_images_list, camera_positions_list = loadSlaveData(
+            atmosphere_params,
+            ref_mc,
+            mcarats,
+            sigma,
+            remove_sunspot
+        )
     
     if mpi_rank == 0:
         #
@@ -604,7 +628,7 @@ def main(
             camera_params=camera_params,
             camera_positions=camera_positions,
             ref_images=ref_images,
-            simulate=simulate,
+            save_simulated=save_simulated,
             use_simulated=use_simulated,
             mask_sun=mask_sun
         )
@@ -618,7 +642,7 @@ if __name__ == '__main__':
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_mc', help='path to reference images of vadims code')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
-    parser.add_argument('--simulate', action='store_true', help='Simulate images from given distributions (useful for debug).')
+    parser.add_argument('--save_simulated', action='store_true', help='Save simulated images from given distributions (useful for debug).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
@@ -626,11 +650,13 @@ if __name__ == '__main__':
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
 
+    assert not args.save_simulated or not args.use_simulated, "There is no point in using both the 'use_simulated' and 'save_simulated' at the same time"
+
     main(
         params_path=args.params_path,
         ref_mc=args.ref_mc,
         mcarats=args.mcarats,
-        simulate=args.simulate,
+        save_simulated=args.save_simulated,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,

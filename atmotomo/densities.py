@@ -54,7 +54,9 @@ def clouds_simulation(
     camera_type='linear',
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
-    visibility=100000
+    visibility=100000,
+    cloud1_radius=3000,
+    cloud2_radius=4000
     ):
 
     #
@@ -78,8 +80,8 @@ def clouds_simulation(
     mask = np.zeros_like(aerosols_dist)
     Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
     Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    mask[Z1<3000**2] = 1
-    mask[Z2<4000**2] = 1
+    mask[Z1<cloud1_radius**2] = 1
+    mask[Z2<cloud2_radius**2] = 1
     aerosols_dist *= mask
     aerosols_dist /= visibility
     
@@ -97,9 +99,9 @@ def clouds_simulation(
     camera_X = camera_X.ravel()
     
     np.random.seed(0)
-    camera_Y += (2*np.random.rand(camera_X.size)-1) * 10
-    camera_X += (2*np.random.rand(camera_X.size)-1) * 10
-    camera_Z = np.random.rand(camera_X.size) * 10
+    camera_Y += (2*np.random.rand(camera_X.size)-1) * dy/2
+    camera_X += (2*np.random.rand(camera_X.size)-1) * dx/2
+    camera_Z = np.random.rand(camera_X.size) * dz/2
     
     #
     # Store the data
