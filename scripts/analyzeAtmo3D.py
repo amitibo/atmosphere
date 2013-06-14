@@ -292,7 +292,7 @@ def slave(
     camera_params,
     camera_positions,
     ref_images,
-    switch_cams_period=10,
+    switch_cams_period=5,
     save_simulated=False,
     use_simulated=False,
     mask_sun=False
@@ -363,12 +363,13 @@ def slave(
             cam.load(cam_path)        
             cam.setA_air(A_air)
     
-            sim_img = cam.calcImage(
+            ref_img = cam.calcImage(
                 A_aerosols=A_aerosols,
-                particle_params=particle_params
+                particle_params=particle_params,
+                add_noise=True
             )
             
-            ref_images.append(sim_img)
+            ref_images.append(ref_img)
 
     #
     # Save the ref images

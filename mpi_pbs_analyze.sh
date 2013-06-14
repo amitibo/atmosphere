@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=9:ncpus=12:mpiprocs=12
+#PBS -l select=5:ncpus=12:mpiprocs=12
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -68,7 +68,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 108 python $HOME/.local/bin/analyzeAtmo3D.py --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_km_low_density/configuration.ini
+mpirun -np 60 python $HOME/.local/bin/analyzeAtmo3D.py --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_km_low_density/configuration.ini
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --use_simulated --ref_mc /u/amitibo/data/New_Low_Density --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --mcarats /u/amitibo/data/mcarats/3
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_mc_limited --no_air
