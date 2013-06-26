@@ -269,7 +269,8 @@ def readConfiguration(path):
 
     camera_params = amitibo.attrClass(
         resolution=[int(i) for i in camera_section['resolution']],
-        type=camera_section['type']
+        type=camera_section['type'],
+        photons_per_pixel=40000      
         )
     
     cameras=[(camera_y[i], camera_x[i], camera_z[i]) for i in range(camera_section.as_int('cameras_num'))]

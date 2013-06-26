@@ -38,7 +38,7 @@ GRADTAG = 3
 DIETAG = 4
 
 
-MAX_ITERATIONS = 1000
+MAX_ITERATIONS = 20
 MCARATS_IMG_SCALE = 10.0**9.7
 VADIM_IMG_SCALE = 503.166
 
@@ -69,6 +69,7 @@ class RadianceProblem(object):
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
         self._results_path = results_path
+        self._objective_cnt = 0
         
     def objective(self, x):
         """Calculate the objective"""
@@ -82,17 +83,6 @@ class RadianceProblem(object):
             comm.Send(x, dest=i, tag=OBJTAG)
 
         #
-        # Store temporary x in case the simulation is stoped in the middle.
-        #
-        sio.savemat(
-            os.path.join(self._results_path, 'temp_rad.mat'),
-            {
-                'estimated': x.reshape(self._atmo_shape),
-            },
-            do_compression=True
-        )
-        
-        #
         # Query the slaves for the calculate objective.
         #
         sts = MPI.Status()
@@ -103,19 +93,33 @@ class RadianceProblem(object):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             obj += temp[0]
         
-        self._objective_values.append(obj)
+        if self._objective_cnt % 1000 == 0:
+            self._objective_values.append(obj)
 
-        #
-        # Save temporary objective values in case the simulation is stopped
-        # in the middle.
-        #
-        sio.savemat(
-            os.path.join(self._results_path, 'temp_obj.mat'),
-            {
-                'objective': np.array(self.obj_values)
-            },
-            do_compression=True
-        )
+            #
+            # Store temporary x in case the simulation is stoped in the middle.
+            #
+            sio.savemat(
+                os.path.join(self._results_path, 'temp_rad.mat'),
+                {
+                    'estimated': x.reshape(self._atmo_shape),
+                },
+                do_compression=True
+            )
+            
+            #
+            # Save temporary objective values in case the simulation is stopped
+            # in the middle.
+            #
+            sio.savemat(
+                os.path.join(self._results_path, 'temp_obj.mat'),
+                {
+                    'objective': np.array(self.obj_values)
+                },
+                do_compression=True
+            )
+        
+        self._objective_cnt += 1
         
         return obj
     
@@ -169,7 +173,7 @@ class RadianceProblem(object):
 def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
-    #import wingdbstub
+    import wingdbstub
 
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
@@ -232,10 +236,10 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     else:
         import scipy.optimize as sop
         
-        x, obj, d = sop.fmin_l_bfgs_b(
+        x, obj, info = sop.fmin_l_bfgs_b(
             func=radiance_problem.objective,
             x0=x0,
-            fprime=radiance_problem.gradient,
+            approx_grad=True,
             bounds=[(0, None)]*x0.size,
             maxfun=MAX_ITERATIONS
         )
@@ -258,6 +262,13 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
         },
         do_compression=True
     )
+    
+    #
+    # store optimization info
+    #
+    import pickle
+    with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
+        pickle.dump(info, f)
 
 
 def slave(
@@ -306,7 +317,7 @@ def slave(
         )
 
     sio.savemat(
-        os.path.join(results_path, 'ref_img%d.mat' % mpi_rank),
+        os.path.join(results_path, 'ref_img' + ('0000%d.mat' % mpi_rank)[-8:]),
         {'img': ref_img},
         do_compression=True
     )
@@ -357,7 +368,7 @@ def slave(
     )
 
     sio.savemat(
-        os.path.join(results_path, 'final_img%d.mat' % mpi_rank),
+        os.path.join(results_path, 'final_img' + ('0000%d.mat' % mpi_rank)[-8:]),
         {'img': final_img},
         do_compression=True
     )
@@ -437,6 +448,8 @@ def main(
     job_id=None
     ):
     
+    global mpi_size
+    
     #
     # Load the simulation params
     #
@@ -447,16 +460,23 @@ def main(
     # but it also calculated the mpi_size which important for the master
     # also)
     #
-    ref_img, camera_position = loadSlaveData(
-        atmosphere_params,
-        ref_mc,
-        mcarats,
-        sigma,
-        remove_sunspot
-    )
-    
     if simulate:
+        mpi_size = min(mpi_size, len(cameras)+1)
+        
+        if mpi_rank >= mpi_size:
+            sys.exit()
+        
         ref_img = None
+        camera_position = cameras[mpi_rank]
+    else:
+        ref_img, camera_position = loadSlaveData(
+            atmosphere_params,
+            ref_mc,
+            mcarats,
+            sigma,
+            remove_sunspot
+        )
+    
         
     if mpi_rank == 0:
         #

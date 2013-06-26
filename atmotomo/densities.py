@@ -98,9 +98,9 @@ def clouds_simulation(
     camera_X = camera_X.ravel()
     
     np.random.seed(0)
-    camera_Y += (2*np.random.rand(camera_X.size)-1) * 10
-    camera_X += (2*np.random.rand(camera_X.size)-1) * 10
-    camera_Z = np.random.rand(camera_X.size) * 10
+    camera_Y += (2*np.random.rand(camera_X.size)-1) * dy/2
+    camera_X += (2*np.random.rand(camera_X.size)-1) * dz/2
+    camera_Z = np.random.rand(camera_X.size) * dz/2
     
     #
     # Store the data
