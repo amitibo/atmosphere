@@ -45,10 +45,8 @@ class Visualization(HasTraits):
     def _updatePlot(self):
         ratio = 1e15 / 50 / 0.00072 / 1e15 
         radiance = self.radiance * ratio
-        #radiance[radiance > 16] = 16
-        #x, y, z, t = curve(self.meridional, self.transverse)
-        #self.plot.mlab_source.set(x=x, y=y, z=z, scalars=t)
-        X, Y, Z = np.mgrid[0:50:1.0, 0:50:1.0, 0:10.0:0.1]
+        shape= radiance.shape
+        X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
         src = self.scene.mlab.pipeline.scalar_field(X, Y, Z, radiance)
         src.spacing = [1, 1, 1]
         src.update_image_data = True    

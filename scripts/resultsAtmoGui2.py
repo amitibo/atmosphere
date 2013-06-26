@@ -184,8 +184,8 @@ class resultAnalayzer(HasTraits):
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._ref_images = [np.zeros((128, 128, 3), dtype=np.uint8)]
-        self._final_images = [np.zeros((128, 128, 3), dtype=np.uint8)]
+        self._ref_images = [np.zeros((32, 32, 3), dtype=np.uint8)]
+        self._final_images = [np.zeros((32, 32, 3), dtype=np.uint8)]
         
         self.plotdata = ArrayPlotData(result_img1=self._ref_images[0], results_img2=self._final_images[0])
         
