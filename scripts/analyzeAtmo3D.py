@@ -16,6 +16,7 @@ import os
 import sys
 import argparse
 import glob
+from scipy.optimize import approx_fprime
 
 
 #
@@ -38,7 +39,7 @@ GRADTAG = 3
 DIETAG = 4
 
 
-MAX_ITERATIONS = 20
+MAX_ITERATIONS = 200
 MCARATS_IMG_SCALE = 10.0**9.7
 VADIM_IMG_SCALE = 503.166
 
@@ -93,7 +94,7 @@ class RadianceProblem(object):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             obj += temp[0]
         
-        if self._objective_cnt % 1000 == 0:
+        if self._objective_cnt % 1 == 0:
             self._objective_values.append(obj)
 
             #
@@ -138,7 +139,11 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             grad += temp
-            
+        
+        #grad_numerical = approx_fprime(x.ravel(), self.objective, epsilon=1e-8)
+        #np.save('grad.npy', grad)
+        #np.save('grad_numerical.npy', grad_numerical)
+        grad = np.transpose(grad.reshape(self._atmo_shape))
         return grad.flatten()
 
     def intermediate(
@@ -173,7 +178,7 @@ class RadianceProblem(object):
 def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
-    import wingdbstub
+    #import wingdbstub
 
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
@@ -239,7 +244,7 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
         x, obj, info = sop.fmin_l_bfgs_b(
             func=radiance_problem.objective,
             x0=x0,
-            approx_grad=True,
+            fprime=radiance_problem.gradient,
             bounds=[(0, None)]*x0.size,
             maxfun=MAX_ITERATIONS
         )
