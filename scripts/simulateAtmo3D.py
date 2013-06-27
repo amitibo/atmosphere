@@ -116,7 +116,7 @@ def serial(params_path, add_noise):
         sun_params=sun_params,
         atmosphere_params=atmosphere_params,
         camera_params=camera_params,
-        camera_position=cameras[0],
+        camera_position=cameras[43],
         radius_resolution=100
     )
     

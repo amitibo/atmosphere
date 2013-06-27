@@ -44,7 +44,7 @@ def main(output_path):
         path=os.path.join(output_path, 'two_clouds_low_density'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=clouds_atmosphere,
-        visibility=100
+        visibility=10000
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density'),

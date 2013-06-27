@@ -34,63 +34,59 @@ class TC_Handler(Handler):
         
         sun_angle = results_object.tr_sun_angle
         
-        path, file_name =  os.path.split(results_object.tr_img_name)
-        figure_name, dump = os.path.splitext(file_name)
-        figure_name += '.svg'
+        path = 'C:/Users/amitibo/Desktop'
         
-        img = results_object._img * 10**results_object.tr_scaling
-        if results_object.tr_gamma_correction:
-            img**=0.4
-        
-        img[img<0] = 0
-        img[img>255] = 255
+        for i in (1, 2):
+            figure_name = '%d.svg' % i
+            
+            img = results_object.plotdata.get_data('result_img%d' % i)
     
-        #
-        # Draw the image
-        #
-        fig = plt.figure()
-        ax = plt.axes([0, 0, 1, 1]) 
-        plt.imshow(img.astype(np.uint8))
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
-        
-        img_center = img.shape[0]/2
-
-        #
-        # Draw sun
-        #
-        sun_x = img_center * (1 + sun_angle * 2)
-        sun_patch = mpatches.Circle((sun_x, img_center), 2, ec='y', fc='y')
-        ax.add_patch(sun_patch)
-
-        #
-        # Draw angle arcs
-        #
-        for arc_angle in range(0, 90, 30)[1:]:
-            d = img_center * arc_angle / 90
-            arc_patch = mpatches.Arc(
-                (img_center, img_center),
-                2*d,
-                2*d,
-                90,
-                25,
-                335,
-                ec='w',
-                ls='dashed',
-                lw=4
-            )
-            ax.add_patch(arc_patch)
-            plt.text(
-                img_center,
-                img_center+d,
-                "$%s^{\circ}$" % str(arc_angle),
-                ha="center",
-                va="center",
-                size=30,
-                color='w'
-            )
+            #
+            # Draw the image
+            #
+            fig = plt.figure()
+            ax = plt.axes([0, 0, 1, 1]) 
+            plt.imshow(img.astype(np.uint8))
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+            
+            img_center = img.shape[0]/2
     
-        amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
+            #
+            # Draw sun
+            #
+            sun_x = img_center * (1 + sun_angle * 2)
+            sun_patch = mpatches.Circle((sun_x, img_center), 2, ec='y', fc='y')
+            ax.add_patch(sun_patch)
+    
+            #
+            # Draw angle arcs
+            #
+            for arc_angle in range(0, 90, 30)[1:]:
+                d = img_center * arc_angle / 90
+                arc_patch = mpatches.Arc(
+                    (img_center, img_center),
+                    2*d,
+                    2*d,
+                    90,
+                    25,
+                    335,
+                    ec='w',
+                    ls='dashed',
+                    lw=4
+                )
+                ax.add_patch(arc_patch)
+                plt.text(
+                    img_center,
+                    img_center+d,
+                    "$%s^{\circ}$" % str(arc_angle),
+                    ha="center",
+                    va="center",
+                    size=30,
+                    color='w'
+                )
+        
+            amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
 
     def do_makemovie(self, info):
 

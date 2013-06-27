@@ -1,0 +1,39 @@
+* comment <2013-06-14 יום ו>
+** Status
+   - The most updated version fail to reconstruct the atmosphere.
+   - I am testing the reconstruction on simulated images. This should work on any version but it doesn't.
+   - I am working on several bookmarks.
+     - The bookmark of the most updated version is called version_236
+     - The bookmark of the last version that I found that works is called version_217
+   - The difference between this versions are two:
+     - version_236 uses configuration files
+     - version_236 supports several cameras on one core
+     - version_236 supports mask over the sun
+   - Convergence
+     - version_217 converges slowly (good results after ~4000 iterations) to a reasonable solution.
+     - version_236 stops after ~30 iterations because the objective doesn't improve.
+     - version_217 and version_236 objective start at the same value. But version_217 objective
+       jumps up and then decreases. version_236 stays flat most of the time.
+** Things that I tried
+   - I run the simulations on my local computer and made two comparision (these are located
+     in 'd:/debug_version_236')
+     - copmared temporary values in the calc_image. Looks the same
+     - compared the cameras. Again the same up to small changes in the cart2polar which can be attributed to the randomness in the rays.
+   - I run the reconstruction on 9 nodes this should eliminate the several multiple cameras per core difference
+   - I compared the images created and they look the same. This in general should eliminate the configuration files difference.
+   - I diff the files between versions several times and didn't find a difference other then the mentioned above.
+   - I changed back from meters to km this solved the problem originaly in version_217 but
+     didn't solve in version_236
+** Possible directions
+*** TODO use seed to force exactly the same cart2polar matrices and repeat the test.
+*** TODO Simplify the problem:
+**** TODO use much lower atmospheres 10x10x10
+**** TODO less cameras preferably 12 (so they fit one core)
+*** TODO Log the values of the grad calculations for comparision between versions (should probably be done in the small atmosphere)
+*** TODO Implement the differences (configuration files/several cameras per core) in steps each time checking the reconstruction, i.e. recreate version 236 from 217.
+** Notes
+   - The Hg version numbers differ between my local computer and the cluster.
+   - I use shelf to store some modifications on my local computer (paths for saving cameras)
+   - I am not sure that the conversion between cart2polar or that the radiance/scattering shouldn't
+     take into account the size of the voxels (these are not uniform in the polar). I should put some
+     effort into this once I get version_236 to reconstruct the simulated images correctly.

@@ -39,17 +39,13 @@ class Visualization(HasTraits):
     def __init__(self):
         super(Visualization, self).__init__()
         
+        #x, y, z, t = curve(self.meridional, self.transverse)
+        #self.plot = self.scene.mlab.plot3d(x, y, z, t, colormap='Spectral')
+
     def _updatePlot(self):
-        #
-        # The ratio is calculated as 1 / visibility / k_aerosols = 1 / 50[km] / 0.00072 [um**2]
-        # This comes from out use of A:
-        # exp(-A / visibility * length) = exp(-k * N * length)
-        #
-        #ratio = 1e15 / 50 / 0.00072 / 1e15
-        ratio = 1
+        ratio = 1e15 / 50 / 0.00072 / 1e15 
         radiance = self.radiance * ratio
-        shape = self.radiance.shape
-        
+        shape= radiance.shape
         X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
         src = self.scene.mlab.pipeline.scalar_field(X, Y, Z, radiance)
         src.spacing = [1, 1, 1]
@@ -82,7 +78,12 @@ class Visualization(HasTraits):
         if len(data_keys) == 0:
             raise Exception('No matrix found in data. Available keys: %d', data.keys())
         
-        self.radiance = data[data_keys[0]]
+        #
+        # The ratio is calculated as 1 / visibility / k_aerosols = 1 / 50[km] / 0.00072 [um**2]
+        # This comes from out use of A:
+        # exp(-A / visibility * length) = exp(-k * N * length)
+        #
+        self.radiance = data['estimated']
 
         self._updatePlot()
         
