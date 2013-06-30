@@ -65,7 +65,7 @@ def split_lists(items, n):
 
     indices = np.zeros(n+1, dtype=np.int)
     indices[1:] = p
-    indices[:k] += 1
+    indices[1:k+1] += 1
     indices = indices.cumsum()
     
     return [items[s:e] for s, e in zip(indices[:-1], indices[1:])]
@@ -74,18 +74,6 @@ def split_lists(items, n):
 class RadianceProblem(object):
     def __init__(self, A_aerosols, A_air, results_path):
 
-        #
-        # Wait for all slaves to send ready message
-        #
-        time.sleep(1800)
-        dumb = np.empty(1)
-        requests = []
-        for i in range(1, mpi_size):
-            req = comm.Irecv(dumb, source=i, tag=READYTAG)
-            requests.append(req)
-        
-        MPI.Request.waitall(requests)
-        
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
         #
@@ -354,14 +342,6 @@ def slave(
         mask = 1
     
     #
-    # Notify the master that finished calculating the cameras. I do this
-    # becuase I have a feeling that the 'other' MPI crashes are due to
-    # master waiting for too long when sending the first data.
-    #
-    dumb = np.empty(1)
-    comm.Send(dumb, dest=0, tag=READYTAG)
-    
-    #
     # The first data should be for creating the measured images.
     #
     sts = MPI.Status()
@@ -590,13 +570,11 @@ def main(
     
     global mpi_size
     
-    #import wingdbstub
-
     #
     # Load the simulation params
     #
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
-        
+    
     #
     # Calculate the camera position (this is relevant only for the slave
     # but it also calculates the mpi_size which important for the master
@@ -642,6 +620,8 @@ def main(
             job_id=job_id
         )
     else:
+        import wingdbstub
+
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
         camera_positions = split_lists(camera_positions_list, mpi_size-1)[mpi_rank-1]
         slave(

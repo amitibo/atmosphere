@@ -56,8 +56,8 @@ def clouds_simulation(
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
     visibility=100000,
-    cloud1_radius=3000,
-    cloud2_radius=4000
+    cloud1_radius=3,
+    cloud2_radius=4
     ):
 
     #

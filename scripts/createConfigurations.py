@@ -22,17 +22,6 @@ clouds_atmosphere = amitibo.attrClass(
     aerosols_typical_h=2
 )
 
-clouds_atmosphere_km = amitibo.attrClass(
-    cartesian_grids=spt.Grids(
-        np.arange(0, 50, 1.0), # Y
-        np.arange(0, 50, 1.0), # X
-        np.arange(0, 10, 0.1)   # H
-        ),
-    earth_radius=4000,
-    air_typical_h=8,
-    aerosols_typical_h=2
-)
-
 clouds_atmosphere_low_resolution = amitibo.attrClass(
     cartesian_grids=spt.Grids(
         np.arange(0, 50, 10.0), # Y
@@ -67,8 +56,9 @@ def main(output_path):
         path=os.path.join(output_path, 'two_clouds_low_density_low_resolution'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=clouds_atmosphere_low_resolution,
-        visibility=100000,
-        camera_resolution=(64, 64)
+        camera_resolution=(32, 32),
+        camera_grid_size=(4, 3),
+        visibility=100000
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density_low_resolution'),
@@ -77,14 +67,6 @@ def main(output_path):
         camera_resolution=(32, 32),
         camera_grid_size=(4, 3),
         visibility=10000
-    )
-    atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'two_clouds_km_low_density'),
-        func=atmotomo.clouds_simulation,
-        atmosphere_params=clouds_atmosphere_km,
-        visibility=100,
-        cloud1_radius=3,
-        cloud2_radius=4
     )
 
 

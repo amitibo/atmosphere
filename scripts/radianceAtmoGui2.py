@@ -53,12 +53,9 @@ class Visualization(HasTraits):
         shape=self.radiance1.shape
         X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
         
-        for radiance, scene, trans_flag in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2), (False, True)):
+        for radiance, scene, trans_flag in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2), (False, False)):
             print scene
             mlab.clf(figure=scene.mayavi_scene)
-
-            #x, y, z, s = np.random.random((4, 100))
-            #mlab.points3d(x, y, z, s, figure=scene.mayavi_scene)
 
             if trans_flag:
                 radiance = np.transpose(radiance)
