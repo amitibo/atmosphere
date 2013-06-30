@@ -37,8 +37,6 @@ class TC_Handler(Handler):
         
         sun_angle = results_object.tr_sun_angle
         
-        #path, file_name =  os.path.split(results_object.tr_img_name)
-        #figure_name, dump = os.path.splitext(file_name)
         path = 'C:/Users/amitibo/Desktop'
         
         for i in (1, 2):

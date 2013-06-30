@@ -152,7 +152,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
         #
         img_path = os.path.join(folder, "RGB_MATRIX.mat")
         try:
-            data = sio.loadmat(img_path)
+            data = np.array(sio.loadmat(img_path), copy=True, order='C')
         except:
             print 'No image data in folder:', folder
             continue
@@ -239,8 +239,8 @@ def readConfiguration(path):
         air_dist_path = os.path.join(os.path.abspath('.'))
         aerosols_dist_path = os.path.join(os.path.abspath('.'))
         
-    air_dist = sio.loadmat(air_dist_path)['distribution']
-    aerosols_dist = sio.loadmat(aerosols_dist_path)['distribution']
+    air_dist = np.array(sio.loadmat(air_dist_path)['distribution'], copy=True, order='C')
+    aerosols_dist = np.array(sio.loadmat(aerosols_dist_path)['distribution'], copy=True, order='C')
     
     #
     # Load particle
@@ -271,7 +271,7 @@ def readConfiguration(path):
     camera_params = amitibo.attrClass(
         resolution=[int(i) for i in camera_section['resolution']],
         type=camera_section['type'],
-        photons_per_pixel=40000        
+        photons_per_pixel=40000      
         )
     
     cameras=[(camera_y[i], camera_x[i], camera_z[i]) for i in range(camera_section.as_int('cameras_num'))]

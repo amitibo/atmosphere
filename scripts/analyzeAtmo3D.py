@@ -96,6 +96,7 @@ class RadianceProblem(object):
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
         self._results_path = results_path
+        self._objective_cnt = 0
         
     def objective(self, x):
         """Calculate the objective"""
@@ -109,17 +110,6 @@ class RadianceProblem(object):
             comm.Send(x, dest=i, tag=OBJTAG)
 
         #
-        # Store temporary x in case the simulation is stoped in the middle.
-        #
-        sio.savemat(
-            os.path.join(self._results_path, 'temp_rad.mat'),
-            {
-                'estimated': x.reshape(self._atmo_shape),
-            },
-            do_compression=True
-        )
-        
-        #
         # Query the slaves for the calculate objective.
         #
         sts = MPI.Status()
@@ -130,19 +120,33 @@ class RadianceProblem(object):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             obj += temp[0]
         
-        self._objective_values.append(obj)
+        if self._objective_cnt % 1 == 0:
+            self._objective_values.append(obj)
 
-        #
-        # Save temporary objective values in case the simulation is stopped
-        # in the middle.
-        #
-        sio.savemat(
-            os.path.join(self._results_path, 'temp_obj.mat'),
-            {
-                'objective': np.array(self.obj_values)
-            },
-            do_compression=True
-        )
+            #
+            # Store temporary x in case the simulation is stoped in the middle.
+            #
+            sio.savemat(
+                os.path.join(self._results_path, 'temp_rad.mat'),
+                {
+                    'estimated': x.reshape(self._atmo_shape),
+                },
+                do_compression=True
+            )
+            
+            #
+            # Save temporary objective values in case the simulation is stopped
+            # in the middle.
+            #
+            sio.savemat(
+                os.path.join(self._results_path, 'temp_obj.mat'),
+                {
+                    'objective': np.array(self.obj_values)
+                },
+                do_compression=True
+            )
+        
+        self._objective_cnt += 1
         
         return obj
     
@@ -161,7 +165,18 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             grad += temp
-            
+        
+        #grad_numerical = approx_fprime(x.ravel(), self.objective, epsilon=1e-8)
+        #np.save('grad.npy', grad)
+        #np.save('grad_numerical.npy', grad_numerical)
+        
+        #
+        # For some reason the gradient is transposed. I found it out by comparing
+        # with the numberical gradient. A possible reason is a mismatch between
+        # Fortran and C order representation possibly due to loading of the configuration
+        # files.
+        #
+        #grad = np.transpose(grad.reshape(self._atmo_shape))
         return grad.flatten()
 
     def intermediate(
@@ -257,7 +272,7 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     else:
         import scipy.optimize as sop
         
-        x, obj, d = sop.fmin_l_bfgs_b(
+        x, obj, info = sop.fmin_l_bfgs_b(
             func=radiance_problem.objective,
             x0=x0,
             fprime=radiance_problem.gradient,
@@ -283,6 +298,13 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
         },
         do_compression=True
     )
+    
+    #
+    # store optimization info
+    #
+    import pickle
+    with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
+        pickle.dump(info, f)
 
 
 def slave(

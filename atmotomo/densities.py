@@ -51,6 +51,7 @@ def clouds_simulation(
     particle_name='spherical_nonabsorbing_2.80',
     particle_phase='HG',
     camera_resolution=(128, 128),
+    camera_grid_size=(10, 10),
     camera_type='linear',
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
@@ -92,8 +93,8 @@ def clouds_simulation(
     dx = derivs[1].ravel()[0]
     dz = derivs[2].ravel()[0]
     camera_X, camera_Y = np.meshgrid(
-        np.linspace(0, width, 12)[1:-1],
-        np.linspace(0, width, 12)[1:-1]
+        np.linspace(0, width, camera_grid_size[0]+2)[1:-1],
+        np.linspace(0, width, camera_grid_size[1]+2)[1:-1]
         )
     camera_Y = camera_Y.ravel()
     camera_X = camera_X.ravel()
@@ -117,7 +118,7 @@ def clouds_simulation(
         'particle_phase':particle_phase,
         'camera_resolution':camera_resolution,
         'camera_type':camera_type,
-        'cameras_num':100,
+        'cameras_num':camera_grid_size[0]*camera_grid_size[1],
         'camera_ypos':camera_Y,
         'camera_xpos':camera_X,
         'camera_zpos':camera_Z,
