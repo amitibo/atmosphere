@@ -140,9 +140,9 @@ class RadianceProblem(object):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             grad += temp
         
-        grad_numerical = approx_fprime(x.ravel(), self.objective, epsilon=1e-8)
-        np.save('grad.npy', grad)
-        np.save('grad_numerical.npy', grad_numerical)
+        #grad_numerical = approx_fprime(x.ravel(), self.objective, epsilon=1e-8)
+        #np.save('grad.npy', grad)
+        #np.save('grad_numerical.npy', grad_numerical)
         
         #
         # For some reason the gradient is transposed. I found it out by comparing
@@ -150,7 +150,7 @@ class RadianceProblem(object):
         # Fortran and C order representation possibly due to loading of the configuration
         # files.
         #
-        grad = np.transpose(grad.reshape(self._atmo_shape))
+        #grad = np.transpose(grad.reshape(self._atmo_shape))
         return grad.flatten()
 
     def intermediate(
@@ -185,7 +185,7 @@ class RadianceProblem(object):
 def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
-    import wingdbstub
+    #import wingdbstub
 
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),

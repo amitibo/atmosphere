@@ -152,7 +152,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20):
         #
         img_path = os.path.join(folder, "RGB_MATRIX.mat")
         try:
-            data = sio.loadmat(img_path)
+            data = np.array(sio.loadmat(img_path), copy=True, order='C')
         except:
             print 'No image data in folder:', folder
             continue
@@ -238,8 +238,8 @@ def readConfiguration(path):
         air_dist_path = os.path.join(os.path.abspath('.'))
         aerosols_dist_path = os.path.join(os.path.abspath('.'))
         
-    air_dist = sio.loadmat(air_dist_path)['distribution']
-    aerosols_dist = sio.loadmat(aerosols_dist_path)['distribution']
+    air_dist = np.array(sio.loadmat(air_dist_path)['distribution'], copy=True, order='C')
+    aerosols_dist = np.array(sio.loadmat(aerosols_dist_path)['distribution'], copy=True, order='C')
     
     #
     # Load particle
