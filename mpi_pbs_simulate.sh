@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=2:ncpus=12:mpiprocs=12
+#PBS -l select=1:ncpus=12:mpiprocs=12
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -64,7 +64,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 24  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_low_resolution/configuration.ini
 #mpirun -np 24  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_images /u/amitibo/data/20Images_single_voxel --no_air
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

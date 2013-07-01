@@ -58,7 +58,7 @@ def main(output_path):
         atmosphere_params=clouds_atmosphere_low_resolution,
         camera_resolution=(32, 32),
         camera_grid_size=(4, 3),
-        visibility=100000
+        visibility=100
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density_low_resolution'),
@@ -66,7 +66,7 @@ def main(output_path):
         atmosphere_params=clouds_atmosphere_low_resolution,
         camera_resolution=(32, 32),
         camera_grid_size=(4, 3),
-        visibility=10000
+        visibility=10
     )
 
 
