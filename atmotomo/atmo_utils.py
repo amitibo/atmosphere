@@ -152,12 +152,12 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
         #
         img_path = os.path.join(folder, "RGB_MATRIX.mat")
         try:
-            data = np.array(sio.loadmat(img_path), copy=True, order='C')
+            data = sio.loadmat(img_path)
         except:
             print 'No image data in folder:', folder
             continue
 
-        img = data['Detector']
+        img = np.array(data['Detector'], copy=True, order='C')
 
         if remove_sunspot:
             R, G, B = img[:, :, 0], img[:, :, 1], img[:, :, 2]
@@ -178,7 +178,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
             for line in lines:
                 parts = line.strip().split()
                 if parts[0] == 'CameraPosition':
-                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3]))))
+                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3])))/1000)
                     break
 
     return img_list, cameras_list

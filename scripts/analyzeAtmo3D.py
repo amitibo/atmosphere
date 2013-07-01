@@ -527,7 +527,7 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         closed_grids = atmosphere_params.cartesian_grids.closed
         ref_images_list, camera_positions_list = atmotomo.loadVadimData(
             ref_images,
-            (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
+            (closed_grids[0][-1]*500, closed_grids[1][-1]*500),
             remove_sunspot=remove_sunspot,
             scale=1/VADIM_IMG_SCALE
         )
@@ -570,6 +570,8 @@ def main(
     
     global mpi_size
     
+    #import wingdbstub
+
     #
     # Load the simulation params
     #
@@ -620,8 +622,6 @@ def main(
             job_id=job_id
         )
     else:
-        import wingdbstub
-
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
         camera_positions = split_lists(camera_positions_list, mpi_size-1)[mpi_rank-1]
         slave(
