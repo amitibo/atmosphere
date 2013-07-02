@@ -253,7 +253,7 @@ def readConfiguration(path):
             setattr(particle, attr, particle[attr])
             
     particle_params = amitibo.attrClass(
-        k=np.array(particle['k']) / np.max(np.array(particle['k'])),
+        k=np.array(particle['k']) * 10**-12,
         w=particle['w'],
         g=particle['g'],
         phase=particle_section['phase']

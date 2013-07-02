@@ -55,9 +55,9 @@ def clouds_simulation(
     camera_type='linear',
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
-    visibility=100000,
-    cloud1_radius=3,
-    cloud2_radius=4
+    aerosols_typical_density=10**12,
+    cloud1_radius=3000,
+    cloud2_radius=4000
     ):
 
     #
@@ -77,14 +77,13 @@ def clouds_simulation(
     #
     # Create the distributions of aerosols
     #
-    aerosols_dist = np.exp(-h/atmosphere_params.aerosols_typical_h)
+    aerosols_dist = aerosols_typical_density*np.exp(-h/atmosphere_params.aerosols_typical_h)
     mask = np.zeros_like(aerosols_dist)
     Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
     Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
     mask[Z1<cloud1_radius**2] = 1
     mask[Z2<cloud2_radius**2] = 1
     aerosols_dist *= mask
-    aerosols_dist /= visibility
     
     #
     # Create the cameras

@@ -19,7 +19,7 @@ import argparse
 import glob
 
 
-def parallel(params_path, add_noise, job_id=None, ref_mc=None):
+def parallel(params_path, add_noise, run_arguments, ref_mc=None):
     
     #import wingdbstub
 
@@ -54,9 +54,8 @@ def parallel(params_path, add_noise, job_id=None, ref_mc=None):
     #
     if comm.rank == 0:
         results_path = amitibo.createResultFolder(
-            params=[atmosphere_params, particle_params, sun_params, camera_params],
-            src_path=atmotomo.__src_path__,
-            job_id=job_id
+            params=[atmosphere_params, particle_params, sun_params, camera_params, run_arguments],
+            src_path=atmotomo.__src_path__
         )
         
     #
@@ -90,13 +89,13 @@ def parallel(params_path, add_noise, job_id=None, ref_mc=None):
         for i, img in enumerate(result):
             if img != []:
                 sio.savemat(
-                    os.path.join(results_path, 'img%d.mat' % i),
+                    os.path.join(results_path, 'img' + ('0000%d.mat' % i)[-8:]),
                     {'img':img},
                     do_compression=True
                 )
     
     
-def serial(params_path, add_noise):
+def serial(params_path, add_noise, run_arguments):
     
     #
     # Load the simulation params
@@ -104,7 +103,7 @@ def serial(params_path, add_noise):
     atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
     results_path = amitibo.createResultFolder(
-        params=[atmosphere_params, particle_params, sun_params, camera_params],
+        params=[atmosphere_params, particle_params, sun_params, camera_params, run_arguments],
         src_path=atmotomo.__src_path__
     )
    
@@ -158,6 +157,6 @@ if __name__ == '__main__':
         cProfile.runctx(cmd, globals(), locals(), filename="atmosphere_camera.profile")
     else:
         if args.parallel:
-            parallel(args.params_path, args.noise, args.job_id, args.ref_mc)
+            parallel(args.params_path, add_noise=args.noise, ref_mc=args.ref_mc, run_arguments=args)
         else:
-            serial(args.params_path, args.noise)
+            serial(args.params_path, args.noise, run_arguments=args)

@@ -196,7 +196,7 @@ class RadianceProblem(object):
             return self._objective_values
         
 
-def master(air_dist, aerosols_dist, results_path, solver='ipopt', job_id=None):
+def master(air_dist, aerosols_dist, results_path, solver='ipopt'):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     logging.basicConfig(
@@ -565,7 +565,7 @@ def main(
     mask_sun=False,
     sigma=0.0,
     remove_sunspot=False,
-    job_id=None
+    run_arguments=None
     ):
     
     global mpi_size
@@ -606,9 +606,8 @@ def main(
         # Create the results path
         #
         results_path = amitibo.createResultFolder(
-            params=[atmosphere_params, particle_params, sun_params, camera_params],
-            src_path=atmotomo.__src_path__,
-            job_id=job_id
+            params=[atmosphere_params, particle_params, sun_params, camera_params, run_arguments],
+            src_path=atmotomo.__src_path__
         )
         
         #
@@ -618,8 +617,7 @@ def main(
             air_dist=air_dist,
             aerosols_dist=aerosols_dist,
             results_path=results_path,
-            solver='bfgs',
-            job_id=job_id
+            solver='bfgs'
         )
     else:
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
@@ -664,5 +662,5 @@ if __name__ == '__main__':
         mask_sun=args.mask_sun,
         sigma=args.sigma,
         remove_sunspot=args.remove_sunspot,
-        job_id=args.job_id
+        run_arguments=args
     )

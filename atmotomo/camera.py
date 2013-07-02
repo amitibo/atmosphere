@@ -157,7 +157,7 @@ class Camera(object):
         """Store the air distribution"""
         
         self.A_air_ = A_air.reshape((-1, 1))
-        air_ext_coef = [1.09e-3 * lambda_**-4.05 * self.A_air_ for lambda_ in self.sun_params.wavelengths]
+        air_ext_coef = [1.09e-6 * lambda_**-4.05 * self.A_air_ for lambda_ in self.sun_params.wavelengths]
         self.preCalcAir(air_ext_coef)
         
     def set_air_extinction(self, air_exts):

@@ -13,24 +13,24 @@ import amitibo
 
 clouds_atmosphere = amitibo.attrClass(
     cartesian_grids=spt.Grids(
-        np.arange(0, 50, 1.0), # Y
-        np.arange(0, 50, 1.0), # X
-        np.arange(0, 10, 0.1)   # H
+        np.arange(0, 50000, 1000.0), # Y
+        np.arange(0, 50000, 1000.0), # X
+        np.arange(0, 1000, 100.0)   # H
         ),
-    earth_radius=4000,
-    air_typical_h=8,
-    aerosols_typical_h=2
+    earth_radius=4000000,
+    air_typical_h=8000,
+    aerosols_typical_h=2000
 )
 
 clouds_atmosphere_low_resolution = amitibo.attrClass(
     cartesian_grids=spt.Grids(
-        np.arange(0, 50, 10.0), # Y
-        np.arange(0, 50, 10.0), # X
-        np.arange(0, 10, 2.0)   # H
+        np.arange(0, 50000, 10000.0), # Y
+        np.arange(0, 50000, 10000.0), # X
+        np.arange(0, 10000, 2000.0)   # H
         ),
-    earth_radius=4000,
-    air_typical_h=8,
-    aerosols_typical_h=2
+    earth_radius=4000000,
+    air_typical_h=8000,
+    aerosols_typical_h=2000
 )
 
 def main(output_path):
@@ -44,13 +44,13 @@ def main(output_path):
         path=os.path.join(output_path, 'two_clouds_low_density'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=clouds_atmosphere,
-        visibility=100
+        aerosols_typical_density=10**6
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=clouds_atmosphere,
-        visibility=10
+        aerosols_typical_density=10**7
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_low_density_low_resolution'),
@@ -58,7 +58,7 @@ def main(output_path):
         atmosphere_params=clouds_atmosphere_low_resolution,
         camera_resolution=(32, 32),
         camera_grid_size=(4, 3),
-        visibility=100
+        aerosols_typical_density=10**6
     )
     atmotomo.prepareSimulation(
         path=os.path.join(output_path, 'two_clouds_high_density_low_resolution'),
@@ -66,7 +66,7 @@ def main(output_path):
         atmosphere_params=clouds_atmosphere_low_resolution,
         camera_resolution=(32, 32),
         camera_grid_size=(4, 3),
-        visibility=10
+        aerosols_typical_density=10**7
     )
 
 
