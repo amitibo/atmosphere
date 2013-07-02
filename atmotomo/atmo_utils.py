@@ -178,7 +178,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
             for line in lines:
                 parts = line.strip().split()
                 if parts[0] == 'CameraPosition':
-                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3])))/1000)
+                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3]))))
                     break
 
     return img_list, cameras_list

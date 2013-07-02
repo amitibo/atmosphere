@@ -41,7 +41,7 @@ READYTAG = 5
 
 MAX_ITERATIONS = 4000
 MCARATS_IMG_SCALE = 10.0**9.7
-VADIM_IMG_SCALE = 504.941
+VADIM_IMG_SCALE = 39.6584
 
 profile = False
 
@@ -499,8 +499,6 @@ def slave(
 def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot):
     """"""
     
-    global mpi_size
-    
     if mcarats:
         raise NotImplemented('The mcarats code is not yet adapted to the new configuration files')
     
@@ -525,20 +523,12 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         # Load the reference images
         #
         closed_grids = atmosphere_params.cartesian_grids.closed
-        ref_images_list, camera_positions_list = atmotomo.loadVadimData(
+        ref_images_list, temp = atmotomo.loadVadimData(
             ref_images,
-            (closed_grids[0][-1]*500, closed_grids[1][-1]*500),
+            (closed_grids[0][-1], closed_grids[1][-1]),
             remove_sunspot=remove_sunspot,
             scale=1/VADIM_IMG_SCALE
         )
-        
-        #
-        # Limit the number of mpi processes used.
-        #
-        mpi_size = min(mpi_size, len(camera_positions_list)+1)
-        
-        if mpi_rank >= mpi_size:
-            sys.exit()
         
         #
         # Smooth the reference images if necessary
@@ -553,7 +543,7 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
     else:
         raise Exception('No reference images given')
 
-    return ref_images_list, camera_positions_list
+    return ref_images_list
 
 
 def main(
@@ -578,22 +568,17 @@ def main(
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
     #
-    # Calculate the camera position (this is relevant only for the slave
-    # but it also calculates the mpi_size which important for the master
-    # also)
+    # Limit the number of mpi processes used.
     #
-    if use_simulated:
-        #
-        # Limit the number of mpi processes used.
-        #
-        mpi_size = min(mpi_size, len(camera_positions_list)+1)
+    mpi_size = min(mpi_size, len(camera_positions_list)+1)
+    
+    if mpi_rank >= mpi_size:
+        sys.exit()
         
-        if mpi_rank >= mpi_size:
-            sys.exit()
-            
+    if use_simulated:
         ref_images_list = [None] * len(camera_positions_list)
     else:
-        ref_images_list, camera_positions_list = loadSlaveData(
+        ref_images_list = loadSlaveData(
             atmosphere_params,
             ref_mc,
             mcarats,
