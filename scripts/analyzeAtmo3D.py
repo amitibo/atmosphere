@@ -42,7 +42,6 @@ READYTAG = 5
 
 MAX_ITERATIONS = 4000
 MCARATS_IMG_SCALE = 10.0**9.7
-VADIM_IMG_SCALE = 39.6584
 
 profile = False
 
@@ -512,7 +511,7 @@ def slave(
             print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
         
 
-def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot):
+def loadSlaveData(atmosphere_params, ref_images, ref_ratio, mcarats, sigma, remove_sunspot):
     """"""
     
     if mcarats:
@@ -539,11 +538,11 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
         # Load the reference images
         #
         closed_grids = atmosphere_params.cartesian_grids.closed
-        ref_images_list, temp = atmotomo.loadVadimData(
+        ref_images_list, camera_positions_list = atmotomo.loadVadimData(
             ref_images,
-            (closed_grids[0][-1], closed_grids[1][-1]),
+            (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
             remove_sunspot=remove_sunspot,
-            scale=1/VADIM_IMG_SCALE
+            scale=1/ref_ratio
         )
         
         #
@@ -559,12 +558,14 @@ def loadSlaveData(atmosphere_params, ref_images, mcarats, sigma, remove_sunspot)
     else:
         raise Exception('No reference images given')
 
-    return ref_images_list
+    return ref_images_list, camera_positions_list
 
 
 def main(
     params_path,
     ref_mc=None,
+    ref_ratio=1.0,
+    use_ref_mc_position=False,
     mcarats=None,
     save_simulated=False,
     use_simulated=False,
@@ -595,13 +596,17 @@ def main(
     if use_simulated:
         ref_images_list = [None] * len(camera_positions_list)
     else:
-        ref_images_list = loadSlaveData(
+        ref_images_list, camera_positions_list_temp = loadSlaveData(
             atmosphere_params,
             ref_mc,
+            ref_ratio,
             mcarats,
             sigma,
             remove_sunspot
         )
+        
+        if use_ref_mc_position:
+            camera_positions_list_temp = camera_positions_list
     
     if mpi_rank == 0:
         #
@@ -645,6 +650,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Analyze atmosphere')
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_mc', help='path to reference images of vadims code')
+    parser.add_argument('--ref_ratio', type=float, default=1.0, help='intensity ratio between reference images and the images of the single algorithm.')
+    parser.add_argument('--use_ref_mc_position', action='store_true', help='Use the position of the cameras from Vadims files')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--save_simulated', action='store_true', help='Save simulated images from given distributions (useful for debug).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
@@ -660,6 +667,8 @@ if __name__ == '__main__':
     main(
         params_path=args.params_path,
         ref_mc=args.ref_mc,
+        ref_ratio=args.ref_ratio,
+        use_ref_mc_position=args.use_ref_mc_position,
         mcarats=args.mcarats,
         save_simulated=args.save_simulated,
         use_simulated=args.use_simulated,

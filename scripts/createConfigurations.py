@@ -15,7 +15,7 @@ clouds_atmosphere = amitibo.attrClass(
     cartesian_grids=spt.Grids(
         np.arange(0, 50000, 1000.0), # Y
         np.arange(0, 50000, 1000.0), # X
-        np.arange(0, 1000, 100.0)   # H
+        np.arange(0, 10000, 100.0)   # H
         ),
     earth_radius=4000000,
     air_typical_h=8000,
