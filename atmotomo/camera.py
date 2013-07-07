@@ -198,7 +198,7 @@ class Camera(object):
             if particle_params.phase == 'isotropic':
                 scatter_aerosols *= 1/4/np.pi
             elif particle_params.phase == 'HG':
-                scatter_aerosols *= atmo_utils.calcHG(self.mu, g)
+                scatter_aerosols *= atmo_utils.calcHG_other(self.mu, g)
             else:
                 raise Exception('Unsupported phase function %s' % particle_params.phase)
                                 
@@ -255,7 +255,7 @@ class Camera(object):
             if particle_params.phase == 'isotropic':
                 P_aerosols = 1/4/np.pi
             elif particle_params.phase == 'HG':
-                P_aerosols = atmo_utils.calcHG(self.mu, g)
+                P_aerosols = atmo_utils.calcHG_other(self.mu, g)
             else:
                 raise Exception('Unsupported phase function %s' % particle_params.phase)
             

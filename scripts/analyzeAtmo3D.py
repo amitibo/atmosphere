@@ -8,6 +8,7 @@ import sparse_transforms as spt
 import atmotomo
 import scipy.io as sio
 import scipy.ndimage as ndimage
+import scipy.ndimage.filters as filters
 import amitibo
 import itertools
 import os
@@ -72,7 +73,7 @@ def split_lists(items, n):
 
 
 class RadianceProblem(object):
-    def __init__(self, A_aerosols, A_air, results_path):
+    def __init__(self, A_aerosols, A_air, results_path, tau=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -85,6 +86,7 @@ class RadianceProblem(object):
         self._atmo_shape = A_aerosols.shape
         self._results_path = results_path
         self._objective_cnt = 0
+        self._tau = tau
         
     def objective(self, x):
         """Calculate the objective"""
@@ -107,6 +109,12 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             obj += temp[0]
+        
+        #
+        # Add regularization
+        #
+        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
+        obj += self._tau * np.linalg.norm(x_laplace)**2
         
         if self._objective_cnt % 1 == 0:
             self._objective_values.append(obj)
@@ -153,7 +161,7 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
             grad += temp
-        
+            
         #grad_numerical = approx_fprime(x.ravel(), self.objective, epsilon=1e-8)
         #np.save('grad.npy', grad)
         #np.save('grad_numerical.npy', grad_numerical)
@@ -165,7 +173,14 @@ class RadianceProblem(object):
         # files.
         #
         #grad = np.transpose(grad.reshape(self._atmo_shape))
-        return grad.flatten()
+
+        #
+        # Add regularization
+        #
+        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
+        grad_x_laplace = filters.laplace(x_laplace)
+        
+        return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
 
     def intermediate(
             self,
@@ -196,7 +211,7 @@ class RadianceProblem(object):
             return self._objective_values
         
 
-def master(air_dist, aerosols_dist, results_path, solver='ipopt'):
+def master(air_dist, aerosols_dist, results_path, tau=0.0, solver='ipopt'):
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     logging.basicConfig(
@@ -221,7 +236,8 @@ def master(air_dist, aerosols_dist, results_path, solver='ipopt'):
     radiance_problem = RadianceProblem(
         A_aerosols=aerosols_dist,
         A_air=air_dist,
-        results_path=results_path
+        results_path=results_path,
+        tau=tau
     )
 
     if solver == 'ipopt':
@@ -334,9 +350,9 @@ def slave(
     # Create a mask around the sun center.
     #
     if mask_sun:
-        X, Y = np.meshgrid(np.arange(128)-96, np.arange(128)-64)
+        X, Y = np.meshgrid(np.arange(32)-24, np.arange(32)-16)
         R = np.sqrt(X**2 + Y**2)
-        mask = R>10
+        mask = R>5
         mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
     else:
         mask = 1
@@ -554,6 +570,7 @@ def main(
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
+    tau=0.0,
     remove_sunspot=False,
     run_arguments=None
     ):
@@ -602,6 +619,7 @@ def main(
             air_dist=air_dist,
             aerosols_dist=aerosols_dist,
             results_path=results_path,
+            tau=tau,
             solver='bfgs'
         )
     else:
@@ -633,6 +651,7 @@ if __name__ == '__main__':
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
+    parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
 
@@ -646,6 +665,7 @@ if __name__ == '__main__':
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
+        tau=args.tau,
         remove_sunspot=args.remove_sunspot,
         run_arguments=args
     )
