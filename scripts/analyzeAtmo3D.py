@@ -210,7 +210,29 @@ class RadianceProblem(object):
             return self._objective_values
         
 
-def master(air_dist, aerosols_dist, results_path, tau=0.0, solver='ipopt'):
+class ParametericRadianceProblem(RadianceProblem):
+    
+    def __init__(self, model, *params, **kwds):
+        
+        super(ParametericRadianceProblem, self).__init__(*params, **kwds)
+        self._model = model
+        
+    def objective(self, x, userdata):
+        
+        _x = self._model(x)
+        
+        return super(ParametericRadianceProblem, self).objective(_x)
+
+        
+def master(
+    atmosphere_params,
+    air_dist,
+    aerosols_dist,
+    results_path,
+    tau=0.0,
+    solver='ipopt'
+    ):
+    
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     
     logging.basicConfig(
@@ -272,6 +294,44 @@ def master(air_dist, aerosols_dist, results_path, tau=0.0, solver='ipopt'):
         # Solve the problem
         #
         x, info = problem.solve(x0)
+        
+    elif solver == 'global':
+        
+        import DIRECT
+        
+        #
+        # Create the model
+        #
+        model = atmotomo.SphereCloudsModel(
+            atmosphere_params,
+            clouds_num=2
+        )
+        
+        #
+        # Create the optimization problem object
+        #
+        radiance_problem = ParametericRadianceProblem(
+            model=model,
+            A_aerosols=aerosols_dist,
+            A_air=air_dist,
+            results_path=results_path,
+            tau=tau
+        )
+
+        #
+        # Solve the problem
+        #
+        x, fmin, ierror = DIRECT.solve(
+            objective=radiance_problem.objective,
+            l=model.lower_bounds,
+            u=model.upper_bounds
+        )
+        
+        #
+        # Calculate the 
+        #
+        x = model(x)
+        
     else:
         import scipy.optimize as sop
         
@@ -571,6 +631,7 @@ def main(
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
+    solver='bfgs',
     tau=0.0,
     remove_sunspot=False,
     run_arguments=None
@@ -621,11 +682,12 @@ def main(
         # Set up the solver server.
         #
         master(
+            atmosphere_params=atmosphere_params,
             air_dist=air_dist,
             aerosols_dist=aerosols_dist,
             results_path=results_path,
             tau=tau,
-            solver='bfgs'
+            solver=solver
         )
     else:
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
@@ -658,6 +720,7 @@ if __name__ == '__main__':
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
+    parser.add_argument('--solver', default='bfgs', help='type of solver to use [bfgs (default), global (DIRECT algorithm), ipopt]')
     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
@@ -674,6 +737,7 @@ if __name__ == '__main__':
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
+        solver=args.solver,
         tau=args.tau,
         remove_sunspot=args.remove_sunspot,
         run_arguments=args
