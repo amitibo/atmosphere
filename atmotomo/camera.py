@@ -8,7 +8,6 @@ import amitibo
 import warnings
 import sparse_transforms as spt
 import numpy as np
-import grids
 import time
 import os
 

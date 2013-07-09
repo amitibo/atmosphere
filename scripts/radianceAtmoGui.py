@@ -16,6 +16,7 @@ from tvtk.pyface.scene_editor import SceneEditor
 from mayavi.tools.mlab_scene_model import MlabSceneModel
 from mayavi.core.ui.mayavi_scene import MayaviScene
 from enthought.io.api import File
+from mayavi import mlab
 
 
 class Visualization(HasTraits):
@@ -47,6 +48,8 @@ class Visualization(HasTraits):
         radiance = self.radiance * ratio
         shape= radiance.shape
         X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
+        
+        mlab.clf(figure=self.scene.mayavi_scene)
         src = self.scene.mlab.pipeline.scalar_field(X, Y, Z, radiance)
         src.spacing = [1, 1, 1]
         src.update_image_data = True    

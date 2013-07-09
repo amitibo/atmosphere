@@ -13,8 +13,10 @@ import scipy.io as sio
 from traits.api import HasTraits, Range, List, Instance, on_trait_change
 from traitsui.api import View, Item, HGroup, VGroup, DropEditor
 from tvtk.pyface.scene_editor import SceneEditor
+from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
 from mayavi.tools.mlab_scene_model import MlabSceneModel
 from mayavi.core.ui.mayavi_scene import MayaviScene
+from enthought.enable.component_editor import ComponentEditor
 from enthought.io.api import File
 from mayavi import mlab
 
@@ -22,6 +24,7 @@ from mayavi import mlab
 class Visualization(HasTraits):
     scene1 = Instance(MlabSceneModel, ())
     scene2 = Instance(MlabSceneModel, ())
+    objective_plot = Instance(Plot)
     tr_DND = List(Instance(File))
 
     # the layout of the dialog created
@@ -40,6 +43,7 @@ class Visualization(HasTraits):
                      width=300,
                      show_label=False
                      ),
+                Item('objective_plot', editor=ComponentEditor(), show_label=False),
                 ),
             '_',
             Item('tr_DND', label='Drag radiance mat here', editor=DropEditor()),
@@ -49,9 +53,20 @@ class Visualization(HasTraits):
     def __init__(self):
         super(Visualization, self).__init__()
         
+        self.plotdata = ArrayPlotData(x=np.arange(100), y=np.zeros(100))
+        self.objective_plot = Plot(self.plotdata, resizable="h")
+        plot = self.objective_plot.plot(("x", "y"))
+        self.objective_plot.overlays.append(PlotLabel("Log of Objective",
+                                      component=self.objective_plot,
+                                      font = "swiss 16",
+                                      overlay_position="top"))        
+        
     def _updatePlot(self):
         shape=self.radiance1.shape
         X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
+        
+        self.plotdata.set_data('x', np.arange(self.objective.size))
+        self.plotdata.set_data('y', np.log(self.objective))
         
         for radiance, scene, trans_flag in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2), (False, False)):
             print scene
@@ -98,7 +113,8 @@ class Visualization(HasTraits):
         #
         self.radiance1 = data['true']
         self.radiance2 = data['estimated']
-
+        self.objective = data['objective'].ravel()
+        
         self._updatePlot()
         
 

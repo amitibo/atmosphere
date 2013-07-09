@@ -30,7 +30,6 @@ from __future__ import division
 import numpy as np
 import itertools
 import pkg_resources
-import grids
 import amitibo
 import os
 
