@@ -96,7 +96,7 @@ class RadianceProblem(object):
         # Distribute 
         #
         for i in range(1, mpi_size):
-            comm.Send(x, dest=i, tag=OBJTAG)
+            comm.Send([x, x.dtype.char], dest=i, tag=OBJTAG)
 
         #
         # Query the slaves for the calculate objective.
@@ -151,7 +151,7 @@ class RadianceProblem(object):
         x = x.reshape((-1, 1))
 
         for i in range(1, mpi_size):
-            comm.Send(x, dest=i, tag=GRADTAG)
+            comm.Send([x, x.dtype.char], dest=i, tag=GRADTAG)
 
         sts = MPI.Status()
 
@@ -230,7 +230,8 @@ def master(
     aerosols_dist,
     results_path,
     tau=0.0,
-    solver='ipopt'
+    solver='ipopt',
+    init_with_solution=False
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
@@ -249,7 +250,10 @@ def master(
     # Using np.zeros produces byteorder '=' which stands for
     # native ('<' means little endian).
     #
-    x0 = np.zeros(aerosols_dist.shape)
+    if init_with_solution:
+        x0 = aerosols_dist.copy()
+    else:
+        x0 = np.zeros(aerosols_dist.shape)
 
     #
     # Create the optimization problem object
@@ -347,7 +351,7 @@ def master(
     # Kill all slaves
     #
     for i in range(1, mpi_size):
-        comm.Send(x, dest=i, tag=DIETAG)
+        comm.Send([x, x.dtype.char], dest=i, tag=DIETAG)
     
     #
     # Store the estimated distribution
@@ -542,7 +546,7 @@ def slave(
                 particle_params=particle_params
             )
                     
-            comm.Send(grad, dest=0)
+            comm.Send([grad, grad.dtype.char], dest=0)
             
         else:
             raise Exception('Unexpected tag %d' % tag)
@@ -631,6 +635,7 @@ def main(
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
+    init_with_solution=False,
     solver='bfgs',
     tau=0.0,
     remove_sunspot=False,
@@ -687,7 +692,8 @@ def main(
             aerosols_dist=aerosols_dist,
             results_path=results_path,
             tau=tau,
-            solver=solver
+            solver=solver,
+            init_with_solution=init_with_solution
         )
     else:
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
@@ -719,6 +725,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
+    parser.add_argument('--init_with_solution', action='store_true', help='Initialize the solver with the correct solution.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     parser.add_argument('--solver', default='bfgs', help='type of solver to use [bfgs (default), global (DIRECT algorithm), ipopt]')
     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
@@ -737,6 +744,7 @@ if __name__ == '__main__':
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
+        init_with_solution=args.init_with_solution,
         solver=args.solver,
         tau=args.tau,
         remove_sunspot=args.remove_sunspot,

@@ -73,7 +73,7 @@ cd $PBS_O_WORKDIR
 #mpirun -np 96 python $HOME/.local/bin/analyzeAtmo3D.py --mcarats /u/amitibo/data/mcarats/3
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --ref_images /u/amitibo/data/20Images_single_voxel --no_air
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --ref_mc /u/amitibo/data/high_density_medium_resolution --ref_mc_ratio 39.6584 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
-mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --solver global --ref_mc /u/amitibo/data/high_density_medium_resolution --ref_ratio 39.6584 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
+mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --init_with_solution --ref_mc /u/amitibo/data/high_density_medium_resolution --ref_ratio 39.6584 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
 #mpirun -np 108 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-8 --ref_mc /u/amitibo/data/New_Low_Density --ref_mc_ratio 503.166 --use_ref_mc_position --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
 

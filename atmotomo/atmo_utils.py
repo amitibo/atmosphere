@@ -57,6 +57,12 @@ SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
 
 
+def fixmat(mat):
+    
+    mat = np.array(mat, copy=True, order='C', dtype=mat.dtype.char)
+    return mat
+
+
 def getMisrDB():
     """
     Return a dict with the records of the MISR particles.
@@ -157,7 +163,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
             print 'No image data in folder:', folder
             continue
 
-        img = np.array(data['Detector'], copy=True, order='C')
+        img = fixmat(data['Detector'])
 
         if remove_sunspot:
             R, G, B = img[:, :, 0], img[:, :, 1], img[:, :, 2]
@@ -239,8 +245,8 @@ def readConfiguration(path):
         air_dist_path = os.path.join(os.path.abspath('.'))
         aerosols_dist_path = os.path.join(os.path.abspath('.'))
         
-    air_dist = np.array(sio.loadmat(air_dist_path)['distribution'], copy=True, order='C')
-    aerosols_dist = np.array(sio.loadmat(aerosols_dist_path)['distribution'], copy=True, order='C')
+    air_dist = fixmat(sio.loadmat(air_dist_path)['distribution'])
+    aerosols_dist = fixmat(sio.loadmat(aerosols_dist_path)['distribution'])
     
     #
     # Load particle
