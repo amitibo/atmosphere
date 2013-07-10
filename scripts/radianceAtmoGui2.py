@@ -62,21 +62,16 @@ class Visualization(HasTraits):
                                       overlay_position="top"))        
         
     def _updatePlot(self):
-        shape=self.radiance1.shape
-        X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
-        
         self.plotdata.set_data('x', np.arange(self.objective.size))
         self.plotdata.set_data('y', np.log(self.objective))
         
         for radiance, scene, trans_flag in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2), (False, False)):
-            print scene
             mlab.clf(figure=scene.mayavi_scene)
 
             if trans_flag:
                 radiance = np.transpose(radiance)
                 
-            src = scene.mlab.pipeline.scalar_field(X, Y, Z, radiance, figure=scene.mayavi_scene)
-            src.spacing = [1, 1, 1]
+            src = scene.mlab.pipeline.scalar_field(self.Y, self.X, self.Z, radiance, figure=scene.mayavi_scene)
             src.update_image_data = True    
             ipw_x = scene.mlab.pipeline.image_plane_widget(src, plane_orientation='x_axes', figure=scene.mayavi_scene)
             ipw_x.ipw.reslice_interpolate = 'linear'
@@ -91,7 +86,7 @@ class Visualization(HasTraits):
             scene.mlab.outline()
     
             limits = []
-            for grid in (X, Y, Z):
+            for grid in (self.Y, self.X, self.Z):
                 limits += [grid.min()]
                 limits += [grid.max()]
             scene.mlab.axes(ranges=limits)
@@ -111,6 +106,9 @@ class Visualization(HasTraits):
         # This comes from out use of A:
         # exp(-A / visibility * length) = exp(-k * N * length)
         #
+        self.Y = data['Y']
+        self.X = data['X']
+        self.Z = data['Z']
         self.radiance1 = data['true']
         self.radiance2 = data['estimated']
         self.objective = data['objective'].ravel()

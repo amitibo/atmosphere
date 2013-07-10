@@ -47,11 +47,9 @@ class Visualization(HasTraits):
         ratio = 1e15 / 50 / 0.00072 / 1e15 
         radiance = self.radiance * ratio
         shape= radiance.shape
-        X, Y, Z = np.mgrid[0:shape[0], 0:shape[1], 0:shape[2]]
         
         mlab.clf(figure=self.scene.mayavi_scene)
-        src = self.scene.mlab.pipeline.scalar_field(X, Y, Z, radiance)
-        src.spacing = [1, 1, 1]
+        src = self.scene.mlab.pipeline.scalar_field(self.Y, self.X, self.Z, radiance)
         src.update_image_data = True    
         ipw_x = self.scene.mlab.pipeline.image_plane_widget(src, plane_orientation='x_axes')
         ipw_x.ipw.reslice_interpolate = 'linear'
@@ -66,7 +64,7 @@ class Visualization(HasTraits):
         self.scene.mlab.outline()
 
         limits = []
-        for grid in (X, Y, Z):
+        for grid in (self.Y, self.X, self.Z):
             limits += [grid.min()]
             limits += [grid.max()]
         self.scene.mlab.axes(ranges=limits)
@@ -86,6 +84,9 @@ class Visualization(HasTraits):
         # This comes from out use of A:
         # exp(-A / visibility * length) = exp(-k * N * length)
         #
+        self.Y = data['Y']
+        self.X = data['X']
+        self.Z = data['Z']
         self.radiance = data['estimated']
 
         self._updatePlot()

@@ -10,8 +10,7 @@ import os
 __all__ = [
     "density_front",
     "two_layer_clouds_simulation",
-    "density_clouds_vadim",
-    "single_cloud_vadim",
+    "single_cloud_simulation",
     "calcAirMcarats",
     "single_voxel_atmosphere",
     "prepareSimulation",
@@ -148,6 +147,50 @@ def base_data(
     return data
 
 
+def single_cloud_simulation(
+    atmosphere_params,
+    particle_name='spherical_nonabsorbing_2.80',
+    particle_phase='HG',
+    camera_resolution=(128, 128),
+    camera_grid_size=(10, 10),
+    camera_type='linear',
+    sun_angle_phi=0,
+    sun_angle_theta=np.pi/4,
+    aerosols_typical_density=10**12,
+    cloud_radius=4000
+    ):
+
+    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
+    
+    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
+    
+    data = base_data(
+        atmosphere_params,
+        particle_name,
+        particle_phase,
+        camera_resolution,
+        camera_coords,
+        camera_type,
+        sun_angle_phi,
+        sun_angle_theta
+    )
+
+    #
+    # Create the aerosols dist.
+    #
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
+    
+    mask = np.zeros_like(aerosols_dist)
+    Z = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
+    mask[Z<cloud_radius**2] = 1
+    
+    aerosols_dist *= mask
+    
+    return data, air_dist, aerosols_dist
+
+
 def two_layer_clouds_simulation(
     atmosphere_params,
     particle_name='spherical_nonabsorbing_2.80',
@@ -238,60 +281,6 @@ def front_simulation(
     aerosols_dist *= mask
     
     return data, air_dist, aerosols_dist
-
-
-def density_clouds_vadim(atmosphere_params):
-    #
-    # Create the sky
-    #
-    Y, X, H = atmosphere_params.cartesian_grids.expanded
-    width = atmosphere_params.cartesian_grids.closed[0][-1]
-    height = atmosphere_params.cartesian_grids.closed[2][-1]
-    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-
-    #
-    # Create the distributions of air
-    #
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
-    
-    #
-    # Create the distributions of aerosols
-    #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_mask = np.zeros_like(A_aerosols)
-    Z1 = (-Y+width*2/3)**2/16 + (X-width/3)**2/16 + (H-height/2)**2*8
-    Z2 = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z1<3000**2] = 1
-    A_mask[Z2<4000**2] = 1
-    A_aerosols *= A_mask
-
-    return A_air, A_aerosols, Y, X, H, h
-
-
-def single_cloud_vadim(atmosphere_params):
-    #
-    # Create the sky
-    #
-    Y, X, H = atmosphere_params.cartesian_grids.expanded
-    width = atmosphere_params.cartesian_grids.closed[0][-1]
-    height = atmosphere_params.cartesian_grids.closed[2][-1]
-    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-
-    #
-    # Create the distributions of air
-    #
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
-    
-    #
-    # Create the distributions of aerosols
-    #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_mask = np.zeros_like(A_aerosols)
-    Z = (-Y+width/3)**2/16 + (X-width*2/3)**2/16 + (H-height/4)**2*8
-    A_mask[Z<4000**2] = 1
-    A_aerosols *= A_mask
-
-    return A_air, A_aerosols, Y, X, H, h
 
 
 def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density=0.001, decay=False):
