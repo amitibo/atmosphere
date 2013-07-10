@@ -72,7 +72,7 @@ def split_lists(items, n):
 
 
 class RadianceProblem(object):
-    def __init__(self, A_aerosols, A_air, results_path, tau=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, tau=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -80,6 +80,7 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
+        self.atmosphere_params = atmosphere_params
         self._objective_values = []
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
@@ -121,9 +122,14 @@ class RadianceProblem(object):
             #
             # Store temporary x in case the simulation is stoped in the middle.
             #
+            Y, X, Z = self.atmosphere_params.cartesian_grids.expanded
+            
             sio.savemat(
                 os.path.join(self._results_path, 'temp_rad.mat'),
                 {
+                    'Y': Y,
+                    'X': X,
+                    'Z': Z,
                     'estimated': x.reshape(self._atmo_shape),
                 },
                 do_compression=True
@@ -259,6 +265,7 @@ def master(
     # Create the optimization problem object
     #
     radiance_problem = RadianceProblem(
+        atmosphere_params=atmosphere_params,
         A_aerosols=aerosols_dist,
         A_air=air_dist,
         results_path=results_path,
@@ -316,6 +323,7 @@ def master(
         #
         radiance_problem = ParametericRadianceProblem(
             model=model,
+            atmosphere_params=atmosphere_params,
             A_aerosols=aerosols_dist,
             A_air=air_dist,
             results_path=results_path,
@@ -356,9 +364,13 @@ def master(
     #
     # Store the estimated distribution
     #
+    Y, X, Z = atmosphere_params.cartesian_grids.expanded
     sio.savemat(
         os.path.join(results_path, 'radiance.mat'),
         {
+            'Y': Y,
+            'X': X,
+            'Z': Z,
             'true': aerosols_dist,
             'estimated': x.reshape(aerosols_dist.shape),
             'objective': np.array(radiance_problem.obj_values)
@@ -382,7 +394,6 @@ def slave(
     camera_positions,
     ref_images,
     switch_cams_period=5,
-    save_simulated=False,
     use_simulated=False,
     mask_sun=False
     ):
@@ -466,21 +477,20 @@ def slave(
     #
     # Save simulated images (useful for debugging)
     #
-    if save_simulated:
-        for i, cam_path in enumerate(cam_paths):
-            cam.load(cam_path)        
-            cam.setA_air(A_air)
-    
-            sim_img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-            
-            sio.savemat(
-                os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
-                {'img': sim_img},
-                do_compression=True
-            )
+    for i, cam_path in enumerate(cam_paths):
+        cam.load(cam_path)        
+        cam.setA_air(A_air)
+
+        sim_img = cam.calcImage(
+            A_aerosols=A_aerosols,
+            particle_params=particle_params
+        )
+        
+        sio.savemat(
+            os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+            {'img': sim_img},
+            do_compression=True
+        )
             
     #
     # Set the camera_index to point to the last camera created
@@ -631,7 +641,6 @@ def main(
     ref_ratio=1.0,
     use_ref_mc_position=False,
     mcarats=None,
-    save_simulated=False,
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
@@ -705,7 +714,6 @@ def main(
             camera_params=camera_params,
             camera_positions=camera_positions,
             ref_images=ref_images,
-            save_simulated=save_simulated,
             use_simulated=use_simulated,
             mask_sun=mask_sun
         )
@@ -721,7 +729,6 @@ if __name__ == '__main__':
     parser.add_argument('--ref_ratio', type=float, default=1.0, help='intensity ratio between reference images and the images of the single algorithm.')
     parser.add_argument('--use_ref_mc_position', action='store_true', help='Use the position of the cameras from Vadims files')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
-    parser.add_argument('--save_simulated', action='store_true', help='Save simulated images from given distributions (useful for debug).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
@@ -732,15 +739,12 @@ if __name__ == '__main__':
     parser.add_argument('params_path', help='Path to simulation parameters')
     args = parser.parse_args()
 
-    assert not args.save_simulated or not args.use_simulated, "There is no point in using both the 'use_simulated' and 'save_simulated' at the same time"
-
     main(
         params_path=args.params_path,
         ref_mc=args.ref_mc,
         ref_ratio=args.ref_ratio,
         use_ref_mc_position=args.use_ref_mc_position,
         mcarats=args.mcarats,
-        save_simulated=args.save_simulated,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
