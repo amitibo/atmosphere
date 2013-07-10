@@ -157,11 +157,12 @@ class resultAnalayzer(HasTraits):
             HGroup(
                 Item('img_container1', editor=ComponentEditor(), show_label=False),
                 Item('img_container2', editor=ComponentEditor(), show_label=False),
+                Item('img_container3', editor=ComponentEditor(), show_label=False),
                 ),
             HGroup(
                 Item('tr_cross_plot1', editor=ComponentEditor(), show_label=False),
                 Item('tr_cross_plot2', editor=ComponentEditor(), show_label=False),
-                ),
+                 ),
             Item('tr_scaling', label='Radiance Scaling'),
             Item('tr_relative_scaling', label='Relative Radiance Scaling'),
             Item('tr_sun_angle', label='Sun angle'),
@@ -185,12 +186,50 @@ class resultAnalayzer(HasTraits):
         # axes in a single screen region.
         #
         self._ref_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
+        self._sim_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
         self._final_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
         
-        self.plotdata = ArrayPlotData(result_img1=self._ref_images[0], results_img2=self._final_images[0])
+        self.plotdata = ArrayPlotData(result_img1=self._ref_images[0], result_img2=self._sim_images[0], result_img3=self._final_images[0])
         
+        #
+        # Create image containers
+        #
         self.img_container1 = Plot(self.plotdata)
         img_plot = self.img_container1.img_plot('result_img1')[0]
+        self.img_container1.overlays.append(
+            PlotLabel(
+                "Monte-Carlo",
+                component=self.img_container1,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
+
+        self.img_container2 = Plot(self.plotdata)
+        self.img_container2.img_plot('result_img2')
+        self.img_container2.overlays.append(
+            PlotLabel(
+                "Single-Scattering Simulation",
+                component=self.img_container2,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
+        
+        self.img_container3 = Plot(self.plotdata)
+        self.img_container3.img_plot('result_img3')
+        self.img_container3.overlays.append(
+            PlotLabel(
+                "Single-Scattering Reconstruction",
+                component=self.img_container3,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )        
+        
+        #
+        # Create the cursor
+        #
         self.tr_cursor1 = CursorTool(
             component=img_plot,
             drag_button='left',
@@ -199,42 +238,47 @@ class resultAnalayzer(HasTraits):
         )                
         img_plot.overlays.append(self.tr_cursor1)
         self.tr_cursor1.current_position = 1, 1
-        self.img_container1.overlays.append(PlotLabel("Monte-Carlo Simulations",
-                                      component=self.img_container1,
-                                      font = "swiss 16",
-                                      overlay_position="top"))        
-        
 
-        self.img_container2 = Plot(self.plotdata)
-        self.img_container2.img_plot('result_img2')
-        self.img_container2.overlays.append(PlotLabel("Single-Scattering",
-                                      component=self.img_container2,
-                                      font = "swiss 16",
-                                      overlay_position="top"))        
-        
+        #
+        # Initialize the images
+        #
         self._updateImg()
 
+        #
+        # Create the cross section plots
+        #
         self.tr_cross_plot1 = Plot(self.plotdata, resizable="h")
         self.tr_cross_plot1.height = 30
-        plots = self.tr_cross_plot1.plot(("basex", "img1_x", "img2_x"))
-        plots[1].line_style = 'dot'
+        plots = self.tr_cross_plot1.plot(("basex", "img1_x", "img2_x", "img3_x"))
         legend = Legend(component=self.tr_cross_plot1, padding=5, align="ur")
         legend.tools.append(LegendTool(legend, drag_button="right"))
-        legend.plots = dict(zip(('MC', 'Single'), plots))
+        legend.plots = dict(zip(('MC', 'Sim', 'Rec'), plots))
         self.tr_cross_plot1.overlays.append(legend)
-        self.tr_cross_plot1.overlays.append(PlotLabel("X section",
-                                      component=self.tr_cross_plot1,
-                                      font = "swiss 16",
-                                      overlay_position="top"))        
+        self.tr_cross_plot1.overlays.append(
+            PlotLabel(
+                "X section",
+                component=self.tr_cross_plot1,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
+        plots[1].line_style = 'dot'
+        plots[2].line_style = 'dash'
+        
         self.tr_cross_plot2 = Plot(self.plotdata, resizable="h")
         self.tr_cross_plot2.height = 30
-        plots = self.tr_cross_plot2.plot(("basey", "img1_y", "img2_y"))
+        plots = self.tr_cross_plot2.plot(("basey", "img1_y", "img2_y", "img3_y"))
+        self.tr_cross_plot2.overlays.append(
+            PlotLabel(
+                "Y section",
+                component=self.tr_cross_plot2,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
         plots[1].line_style = 'dot'
-        self.tr_cross_plot2.overlays.append(PlotLabel("Y section",
-                                      component=self.tr_cross_plot2,
-                                      font = "swiss 16",
-                                      overlay_position="top"))        
-        
+        plots[2].line_style = 'dash'
+          
     @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_index')
     def _updateImg(self):
         
@@ -244,8 +288,8 @@ class resultAnalayzer(HasTraits):
         self.plotdata.set_data('basex', np.arange(w))
         self.plotdata.set_data('basey', np.arange(h))
 
-        for i, img in enumerate((self._ref_images[self.tr_index], self._final_images[self.tr_index])):
-            img = img * 10**self.tr_scaling * 10**relative_scaling[i]
+        for i, img in enumerate((self._ref_images[self.tr_index], self._sim_images[self.tr_index], self._final_images[self.tr_index])):
+            img = img * 10**self.tr_scaling
             if self.tr_gamma_correction:
                 img**=0.4
                 
@@ -266,12 +310,18 @@ class resultAnalayzer(HasTraits):
         if not ref_list:
             warning(info.ui.control, "No img found in the folder", "Warning")
             return
+        sim_list = glob.glob(os.path.join(path, "sim_img*.mat"))
         final_list = glob.glob(os.path.join(path, "final_img*.mat"))
+        
         self._ref_images = []
+        self._sim_images = []
         self._final_images = []
-        for ref_path, final_path in zip(sorted(ref_list), sorted(final_list)):
+        
+        for ref_path, sim_path, final_path in zip(sorted(ref_list), sorted(sim_list), sorted(final_list)):
             data = sio.loadmat(ref_path)
             self._ref_images.append(data['img'])
+            data = sio.loadmat(sim_path)
+            self._sim_images.append(data['img'])
             data = sio.loadmat(final_path)
             self._final_images.append(data['img'])
 

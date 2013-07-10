@@ -9,12 +9,13 @@ import os
 
 __all__ = [
     "density_front",
-    "clouds_simulation",
+    "two_layer_clouds_simulation",
     "density_clouds_vadim",
     "single_cloud_vadim",
     "calcAirMcarats",
     "single_voxel_atmosphere",
-    "prepareSimulation"
+    "prepareSimulation",
+    "front_simulation"
 ]
 
 SIMULATION_TEMPLATE_FILE_NAME = 'simulation.jinja'
@@ -46,29 +47,18 @@ def density_front(atmosphere_params):
     return A_air, A_aerosols, Y, X, H, h
 
 
-def clouds_simulation(
+def base_dists(
     atmosphere_params,
-    particle_name='spherical_nonabsorbing_2.80',
-    particle_phase='HG',
-    camera_resolution=(128, 128),
-    camera_grid_size=(10, 10),
-    camera_type='linear',
-    sun_angle_phi=0,
-    sun_angle_theta=np.pi/4,
-    aerosols_typical_density=10**12,
-    cloud1_radius=3000,
-    cloud2_radius=4000
+    aerosols_typical_density
     ):
-
+    
     #
     # Create the sky
     #
     Y, X, H = atmosphere_params.cartesian_grids.expanded
     width = atmosphere_params.cartesian_grids.closed[0][-1]
-    height = atmosphere_params.cartesian_grids.closed[2][-1]
     h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-    derivs = atmosphere_params.cartesian_grids.derivatives
-    
+     
     #
     # Create the distributions of air
     #
@@ -78,16 +68,22 @@ def clouds_simulation(
     # Create the distributions of aerosols
     #
     aerosols_dist = aerosols_typical_density*np.exp(-h/atmosphere_params.aerosols_typical_h)
-    mask = np.zeros_like(aerosols_dist)
-    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
-    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    mask[Z1<cloud1_radius**2] = 1
-    mask[Z2<cloud2_radius**2] = 1
-    aerosols_dist *= mask
     
+    return air_dist, aerosols_dist
+
+
+def base_cameras(
+    atmosphere_params,
+    camera_grid_size
+    ):
+    
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+
     #
     # Create the cameras
     #
+    derivs = atmosphere_params.cartesian_grids.derivatives
     dy = derivs[0].ravel()[0]
     dx = derivs[1].ravel()[0]
     dz = derivs[2].ravel()[0]
@@ -103,6 +99,29 @@ def clouds_simulation(
     camera_X += (2*np.random.rand(camera_X.size)-1) * dx/2
     camera_Z = np.random.rand(camera_X.size) * dz/2
     
+    return camera_Y, camera_X, camera_Z
+
+
+def base_data(
+    atmosphere_params,
+    particle_name,
+    particle_phase,
+    camera_resolution,
+    camera_coords,
+    camera_type,
+    sun_angle_phi,
+    sun_angle_theta
+    ):
+    
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    derivs = atmosphere_params.cartesian_grids.derivatives
+    dy = derivs[0].ravel()[0]
+    dx = derivs[1].ravel()[0]
+    dz = derivs[2].ravel()[0]
+    
+    camera_Y, camera_X, camera_Z = camera_coords
+    
     #
     # Store the data
     #
@@ -117,7 +136,7 @@ def clouds_simulation(
         'particle_phase':particle_phase,
         'camera_resolution':camera_resolution,
         'camera_type':camera_type,
-        'cameras_num':camera_grid_size[0]*camera_grid_size[1],
+        'cameras_num':len(camera_Y),
         'camera_ypos':camera_Y,
         'camera_xpos':camera_X,
         'camera_zpos':camera_Z,
@@ -126,7 +145,98 @@ def clouds_simulation(
         'sun_intensities':L_SUN_RGB,
         'sun_wavelengths':RGB_WAVELENGTH
     }
+    return data
 
+
+def two_layer_clouds_simulation(
+    atmosphere_params,
+    particle_name='spherical_nonabsorbing_2.80',
+    particle_phase='HG',
+    camera_resolution=(128, 128),
+    camera_grid_size=(10, 10),
+    camera_type='linear',
+    sun_angle_phi=0,
+    sun_angle_theta=np.pi/4,
+    aerosols_typical_density=10**12,
+    cloud1_radius=3000,
+    cloud2_radius=4000
+    ):
+
+    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
+    
+    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
+    
+    data = base_data(
+        atmosphere_params,
+        particle_name,
+        particle_phase,
+        camera_resolution,
+        camera_coords,
+        camera_type,
+        sun_angle_phi,
+        sun_angle_theta
+    )
+
+    #
+    # Create the aerosols dist.
+    #
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
+    
+    mask = np.zeros_like(aerosols_dist)
+    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
+    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
+    mask[Z1<cloud1_radius**2] = 1
+    mask[Z2<cloud2_radius**2] = 1
+    
+    aerosols_dist *= mask
+    
+    return data, air_dist, aerosols_dist
+
+
+def front_simulation(
+    atmosphere_params,
+    particle_name='spherical_nonabsorbing_2.80',
+    particle_phase='HG',
+    camera_resolution=(128, 128),
+    camera_grid_size=(10, 10),
+    camera_type='linear',
+    sun_angle_phi=0,
+    sun_angle_theta=np.pi/4,
+    aerosols_typical_density=10**12,
+    cloud1_radius=3000,
+    cloud2_radius=4000
+    ):
+
+    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
+    
+    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
+    
+    data = base_data(
+        atmosphere_params,
+        particle_name,
+        particle_phase,
+        camera_resolution,
+        camera_coords,
+        camera_type,
+        sun_angle_phi,
+        sun_angle_theta
+    )
+
+    #
+    # Create the aerosols dist.
+    #
+    Y, X, H = atmosphere_params.cartesian_grids.expanded
+    width = atmosphere_params.cartesian_grids.closed[0][-1]
+    height = atmosphere_params.cartesian_grids.closed[2][-1]
+    
+    mask = np.zeros_like(aerosols_dist)
+    Z1 = X**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
+    mask[Z1<4000**2] = 1
+    
+    aerosols_dist *= mask
+    
     return data, air_dist, aerosols_dist
 
 
