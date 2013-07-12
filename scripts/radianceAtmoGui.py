@@ -11,7 +11,7 @@ from __future__ import division
 import numpy as np
 import scipy.io as sio
 from traits.api import HasTraits, Range, List, Instance, on_trait_change
-from traitsui.api import View, Item, HGroup, DropEditor
+from traitsui.api import View, Item, HGroup, DropEditor, EnumEditor
 from tvtk.pyface.scene_editor import SceneEditor
 from mayavi.tools.mlab_scene_model import MlabSceneModel
 from mayavi.core.ui.mayavi_scene import MayaviScene
@@ -21,6 +21,7 @@ from mayavi import mlab
 
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
+    visualization_mode = Enum('iso-surfaces', 'cross-planes')
     tr_DND = List(Instance(File))
 
     # the layout of the dialog created
@@ -34,6 +35,16 @@ class Visualization(HasTraits):
         HGroup(
             '_',
             Item('tr_DND', label='Drag radiance mat here', editor=DropEditor()),
+            Item(
+                name='visualization_mode',
+                style='custom',
+                editor=EnumEditor(
+                    values={
+                        'iso-surfaces' : '1:iso-surfaces',
+                        'cross-planes' : '2:cross-planes'
+                    }
+                )
+                ),
             ),
     )
 
@@ -43,6 +54,7 @@ class Visualization(HasTraits):
         #x, y, z, t = curve(self.meridional, self.transverse)
         #self.plot = self.scene.mlab.plot3d(x, y, z, t, colormap='Spectral')
 
+    @on_trait_change('visualization_mode')
     def _updatePlot(self):
         ratio = 1e15 / 50 / 0.00072 / 1e15 
         radiance = self.radiance * ratio
@@ -61,13 +73,8 @@ class Visualization(HasTraits):
         ipw_z.ipw.reslice_interpolate = 'linear'
         ipw_z.ipw.texture_interpolate = False
         self.scene.mlab.colorbar()
-        self.scene.mlab.outline()
-
-        limits = []
-        for grid in (self.Y, self.X, self.Z):
-            limits += [grid.min()]
-            limits += [grid.max()]
-        self.scene.mlab.axes(ranges=limits)
+        self.scene.mlab.outline(extent=self.limits)
+        self.scene.mlab.axes(ranges=self.limits, extent=self.limits)
 
     @on_trait_change('tr_DND')
     def _updateDragNDrop(self):
@@ -84,6 +91,7 @@ class Visualization(HasTraits):
         # This comes from out use of A:
         # exp(-A / visibility * length) = exp(-k * N * length)
         #
+        self.limits = data['limits'].ravel()
         self.Y = data['Y']
         self.X = data['X']
         self.Z = data['Z']
