@@ -38,6 +38,7 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 READYTAG = 5
+RATIOTAG = 6
 
 
 MAX_ITERATIONS = 4000
@@ -80,6 +81,27 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
+        #
+        # Recieve the ratio (between reference and simulated images)
+        #
+        sts = MPI.Status()
+
+        ratio = 0
+        temp = np.empty(1)
+        for i in range(1, mpi_size):
+            comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
+            ratio += temp[0]
+        
+        ratio = ratio / mpi_size
+        
+        print ratio
+        
+        #
+        # Send back the averaged calculated ratio
+        #
+        for i in range(1, mpi_size):
+            comm.send(ratio, dest=i, tag=RATIOTAG)
+        
         self.atmosphere_params = atmosphere_params
         self._objective_values = []
         self._intermediate_values = []
@@ -123,10 +145,12 @@ class RadianceProblem(object):
             # Store temporary x in case the simulation is stoped in the middle.
             #
             Y, X, Z = self.atmosphere_params.cartesian_grids.expanded
+            limits = np.array([int(l) for l in self.atmosphere_params.cartesian_grids.limits])
             
             sio.savemat(
                 os.path.join(self._results_path, 'temp_rad.mat'),
                 {
+                    'limits': limits,
                     'Y': Y,
                     'X': X,
                     'Z': Z,
@@ -365,9 +389,12 @@ def master(
     # Store the estimated distribution
     #
     Y, X, Z = atmosphere_params.cartesian_grids.expanded
+    limits = np.array([int(l) for l in atmosphere_params.cartesian_grids.limits])
+    
     sio.savemat(
         os.path.join(results_path, 'radiance.mat'),
         {
+            'limits': limits,
             'Y': Y,
             'X': X,
             'Z': Z,
@@ -384,6 +411,21 @@ def master(
     import pickle
     with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
         pickle.dump(info, f)
+
+
+def calcRatio(ref_img, single_img, erode):
+    #
+    # Calc a joint mask
+    #
+    mask = (ref_img > 0) * (single_img > 0)
+    if erode:
+        for i in range(3):
+            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
+        mask = mask>0
+    
+    ratio = ref_img[mask].mean() / single_img[mask].mean()
+
+    return ratio
 
 
 def slave(
@@ -464,34 +506,54 @@ def slave(
             ref_images.append(ref_img)
 
     #
-    # Save the ref images
-    #
-    for i, ref_img in enumerate(ref_images):
-
-        sio.savemat(
-            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
-            {'img': ref_img},
-            do_compression=True
-        )
-    
-    #
     # Save simulated images (useful for debugging)
+    # In the same time calculate the ratio
     #
-    for i, cam_path in enumerate(cam_paths):
+    ratio = 0
+    for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
         cam.load(cam_path)        
         cam.setA_air(A_air)
-
+        
         sim_img = cam.calcImage(
             A_aerosols=A_aerosols,
             particle_params=particle_params
         )
         
+        ratio += calcRatio(ref_img, sim_img, erode=False)
+
         sio.savemat(
             os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': sim_img},
             do_compression=True
         )
-            
+    
+    ratio /= len(ref_images)
+    
+    #
+    # Send back the ratio and receive the global ratio
+    #
+    comm.Send(np.array(ratio), dest=0)
+    ratio = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+
+    tag = sts.Get_tag()
+    assert tag == RATIOTAG, 'Expecting the RATIO tag'
+    
+    #
+    # Save the ref images
+    #
+    for i, ref_img in enumerate(ref_images):
+        #
+        # Note, I changeref_images in place so that ref_img is also effected.
+        #
+        ref_images[i] /= ratio
+        
+        sio.savemat(
+            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+            {'img': ref_img},
+            do_compression=True
+        )
+
+        
     #
     # Set the camera_index to point to the last camera created
     # which is the currently loaded camera.
@@ -644,6 +706,7 @@ def main(
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
+    transposexy=False,
     init_with_solution=False,
     solver='bfgs',
     tau=0.0,
@@ -660,6 +723,10 @@ def main(
     #
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
+    if transposexy:
+        air_dist = np.transpose(air_dist, [1, 0, 2])
+        aerosols_dist = np.transpose(aerosols_dist, [1, 0, 2])
+        
     #
     # Limit the number of mpi processes used.
     #
@@ -729,6 +796,7 @@ if __name__ == '__main__':
     parser.add_argument('--ref_ratio', type=float, default=1.0, help='intensity ratio between reference images and the images of the single algorithm.')
     parser.add_argument('--use_ref_mc_position', action='store_true', help='Use the position of the cameras from Vadims files')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+    parser.add_argument('--transposexy', action='store_true', help='Transpose the xy coordinates of the atmosphere (this is due to Vadims mismatch).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
@@ -748,6 +816,7 @@ if __name__ == '__main__':
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
+        transposexy=args.transposexy,
         init_with_solution=args.init_with_solution,
         solver=args.solver,
         tau=args.tau,
