@@ -9,8 +9,7 @@ import os
 
 __all__ = [
     "density_front",
-    "two_layer_clouds_simulation",
-    "single_cloud_simulation",
+    "clouds_simulation",
     "calcAirMcarats",
     "single_voxel_atmosphere",
     "prepareSimulation",
@@ -147,7 +146,7 @@ def base_data(
     return data
 
 
-def single_cloud_simulation(
+def clouds_simulation(
     atmosphere_params,
     particle_name='spherical_nonabsorbing_2.80',
     particle_phase='HG',
@@ -157,7 +156,8 @@ def single_cloud_simulation(
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
     aerosols_typical_density=10**12,
-    cloud_radius=4000
+    cloud_coords=((50000/3, 50000/3, 5000), (50000*2/3, 50000*2/3, 2500),),
+    cloud_radiuses=((12000, 12000, 1500/np.sqrt(2)),(16000, 16000, 2000/np.sqrt(2)),)
     ):
 
     air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
@@ -183,55 +183,9 @@ def single_cloud_simulation(
     height = atmosphere_params.cartesian_grids.closed[2][-1]
     
     mask = np.zeros_like(aerosols_dist)
-    Z = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    mask[Z<cloud_radius**2] = 1
-    
-    aerosols_dist *= mask
-    
-    return data, air_dist, aerosols_dist
-
-
-def two_layer_clouds_simulation(
-    atmosphere_params,
-    particle_name='spherical_nonabsorbing_2.80',
-    particle_phase='HG',
-    camera_resolution=(128, 128),
-    camera_grid_size=(10, 10),
-    camera_type='linear',
-    sun_angle_phi=0,
-    sun_angle_theta=np.pi/4,
-    aerosols_typical_density=10**12,
-    cloud1_radius=3000,
-    cloud2_radius=4000
-    ):
-
-    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
-    
-    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
-    
-    data = base_data(
-        atmosphere_params,
-        particle_name,
-        particle_phase,
-        camera_resolution,
-        camera_coords,
-        camera_type,
-        sun_angle_phi,
-        sun_angle_theta
-    )
-
-    #
-    # Create the aerosols dist.
-    #
-    Y, X, H = atmosphere_params.cartesian_grids.expanded
-    width = atmosphere_params.cartesian_grids.closed[0][-1]
-    height = atmosphere_params.cartesian_grids.closed[2][-1]
-    
-    mask = np.zeros_like(aerosols_dist)
-    Z1 = (X-width/3)**2/16 + (Y-width/3)**2/16 + (H-height/2)**2*8
-    Z2 = (X-width*2/3)**2/16 + (Y-width*2/3)**2/16 + (H-height/4)**2*8
-    mask[Z1<cloud1_radius**2] = 1
-    mask[Z2<cloud2_radius**2] = 1
+    for coords, radiuses in zip(cloud_coords, cloud_radiuses):
+        Z = ((Y-coords[0])/radiuses[0])**2 + ((X-coords[1])/radiuses[1])**2 + ((H-coords[2])/radiuses[2])**2
+        mask[Z<1] = 1
     
     aerosols_dist *= mask
     
