@@ -8,9 +8,12 @@ the MC and single scattering results.
 
 from __future__ import division
 
-from traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
-from traitsui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action, spring
-from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel, ColorBar
+from traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, \
+     Bool, Instance, DelegatesTo, Enum, Int, DelegatesTo, Array
+from traitsui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, \
+     DirectoryEditor, Action, spring, UItem, Group
+from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, HPlotContainer, \
+     Legend, PlotLabel, ColorBar
 from chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
 from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
 from enable.component_editor import ComponentEditor
@@ -28,111 +31,6 @@ import re
 IMG_SIZE = 32
 
 
-class TC_Handler(Handler):
-
-    def do_savefig(self, info):
-
-        results_object = info.object
-        
-        sun_angle = results_object.tr_sun_angle
-        
-        path = 'C:/Users/amitibo/Desktop'
-        
-        for i in (1, 2):
-            figure_name = '%d.svg' % i
-            
-            img = results_object.plotdata.get_data('result_img%d' % i)
-        
-            #
-            # Draw the image
-            #
-            fig = plt.figure()
-            ax = plt.axes([0, 0, 1, 1]) 
-            plt.imshow(img.astype(np.uint8))
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-            
-            img_center = img.shape[0]/2
-    
-            #
-            # Draw sun
-            #
-            sun_x = img_center * (1 + sun_angle * 2)
-            sun_patch = mpatches.Circle((sun_x, img_center), 2, ec='y', fc='y')
-            ax.add_patch(sun_patch)
-    
-            #
-            # Draw angle arcs
-            #
-            for arc_angle in range(0, 90, 30)[1:]:
-                d = img_center * arc_angle / 90
-                arc_patch = mpatches.Arc(
-                    (img_center, img_center),
-                    2*d,
-                    2*d,
-                    90,
-                    25,
-                    335,
-                    ec='w',
-                    ls='dashed',
-                    lw=4
-                )
-                ax.add_patch(arc_patch)
-                plt.text(
-                    img_center,
-                    img_center+d,
-                    "$%s^{\circ}$" % str(arc_angle),
-                    ha="center",
-                    va="center",
-                    size=30,
-                    color='w'
-                )
-        
-            amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
-
-    def do_makemovie(self, info):
-
-        results_object = info.object
-
-        path, file_name =  os.path.split(results_object.tr_img_name)
-        file_pattern = re.search(r'(.*?)\d+.mat', file_name).groups()[0]
-        image_list = glob.glob(os.path.join(path, "%s*.mat" % file_pattern))
-        if not image_list:
-            warning(info.ui.control, "No ref_img's found in the folder", "Warning")
-            return
-
-        import matplotlib.animation as manim
-        
-        FFMpegWriter = manim.writers['ffmpeg']
-        metadata = dict(title='Results Movie', artist='Matplotlib', comment='Movie support!')
-        writer = FFMpegWriter(fps=2, bitrate=-1, metadata=metadata)
-
-        fig = plt.figure()
-        with writer.saving(fig, os.path.join(path, "%s.mp4" % file_pattern), 100):
-            for i in range(0, len(image_list)+1):
-                img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
-                try:
-                    data = sio.loadmat(img_path)
-                except:
-                    continue
-                
-                if 'img' in data.keys():
-                    img = data['img']
-                else:
-                    img = data['rgb']
-                img = img * 10**results_object.tr_scaling
-                if results_object.tr_gamma_correction:
-                    img**=0.4
-                
-                img[img<0] = 0
-                img[img>255] = 255
-                
-                plt.imshow(img.astype(np.uint8))
-                plt.title('image %d' % i)
-                writer.grab_frame()            
-                fig.clear()
-                
-
 def calcRatio(ref_img, single_img, erode=False):
     #
     # Calc a joint mask
@@ -147,7 +45,93 @@ def calcRatio(ref_img, single_img, erode=False):
 
     return ratio
 
-                    
+
+class CrossPlots(HasTraits):
+
+    # container for all plots
+    container = Instance(HPlotContainer)
+    
+    # plot data
+    pd = Instance(ArrayPlotData)
+
+    cross_plot_X = Instance(Plot)
+    cross_plot_Y = Instance(Plot)
+
+    cursor = Instance(BaseCursorTool)
+    
+    traits_view = View(
+        Group(
+            UItem('container', editor=ComponentEditor(size=(800,600)))
+            ),
+        resizable=True
+    )
+    
+    img0 = Array()
+    img1 = Array()
+    
+    def __init__(self, *args, **kwargs):
+        super(CrossPlots, self).__init__(*args, **kwargs)
+        self.createCrossPlots()
+    
+    def createCrossPlots(self):
+
+        self.pd = ArrayPlotData(
+            basex=np.array([]),
+            img0_x=np.array([]),
+            img1_x=np.array([]),
+            basey=np.array([]),
+            img0_y=np.array([]),
+            img1_y=np.array([]),
+        )
+
+        #
+        # Create the cross section plots
+        #
+        self.cross_plot_X = Plot(self.pd, resizable="h")
+        self.cross_plot_X.height = 30
+        
+        plots = self.cross_plot_X.plot(("basex", "img0_x", "img1_x"))
+        plots[1].line_style = 'dot'
+        
+        legend = Legend(component=self.cross_plot_X, padding=5, align="ur")
+        legend.tools.append(LegendTool(legend, drag_button="right"))
+        legend.plots = dict(zip(('MC', 'Sim'), plots))
+        
+        self.cross_plot_X.overlays.append(legend)
+        self.cross_plot_X.overlays.append(
+            PlotLabel(
+                "X section",
+                component=self.cross_plot_X,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
+        
+        self.cross_plot_Y = Plot(self.pd, resizable="h")
+        self.cross_plot_Y.height = 30
+        
+        plots = self.cross_plot_Y.plot(("basey", "img0_y", "img1_y"))
+        plots[1].line_style = 'dot'
+        
+        self.cross_plot_Y.overlays.append(
+            PlotLabel(
+                "Y section",
+                component=self.cross_plot_Y,
+                font = "swiss 16",
+                overlay_position="top"
+            )
+        )
+
+    @on_trait_change('cursor, img0, img1')
+    def update_plots(self):
+        self.pd.set_data('basex', np.arange(self.img0.shape[1]))
+        self.pd.set_data('basey', np.arange(self.img0.shape[0]))
+        
+        for i, img in enumerate((self.img0, self.img1)):
+            self.pd.set_data('img%d_x' % i, img[self.cursor.current_index[1], :])
+            self.pd.set_data('img%d_y' % i, img[:, self.cursor.current_index[0]])
+    
+        
 class resultAnalayzer(HasTraits):
     """Gui Application"""
     
@@ -163,9 +147,8 @@ class resultAnalayzer(HasTraits):
     tr_index = Range('tr_min', 'tr_len', 0, desc='Index of image in amit list')
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
-    tr_cross_plot1 = Instance(Plot)
-    tr_cross_plot2 = Instance(Plot)
-    tr_cursor1 = Instance(BaseCursorTool)
+    cross_plots = Instance('cross_plots')
+    cursor = DelegatesTo(BaseCursorTool)
     tr_channel = Enum(0, 1, 2)
     
     traits_view  = View(
@@ -175,10 +158,7 @@ class resultAnalayzer(HasTraits):
                 Item('img_container2', editor=ComponentEditor(), show_label=False),
                 Item('img_container3', editor=ComponentEditor(), show_label=False),
                 ),
-            HGroup(
-                Item('tr_cross_plot1', editor=ComponentEditor(), show_label=False),
-                Item('tr_cross_plot2', editor=ComponentEditor(), show_label=False),
-                 ),
+            UItem('cross_plots'),
             Item('tr_scaling', label='Radiance Scaling'),
             HGroup(
                 Item('tr_relative_scaling', width=600, label='Relative Radiance Scaling'),
@@ -191,14 +171,14 @@ class resultAnalayzer(HasTraits):
             Item('tr_DND', label='Drag Image here', editor=DropEditor()),
             Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
-        handler=TC_Handler(),
-        buttons = [save_button, movie_button],
         resizable = True
     )
 
     def __init__(self):
         super(resultAnalayzer, self).__init__()
 
+        self.cross_plots = CrossPlots()
+        
         #
         # Prepare all the plots.
         # ArrayPlotData - A class that holds a list of numpy arrays.
@@ -208,7 +188,11 @@ class resultAnalayzer(HasTraits):
         self._ref_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
         self._sim_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
         
-        self.plotdata = ArrayPlotData(result_img0=self._ref_images[0], result_img1=self._sim_images[0], result_img2=np.zeros((IMG_SIZE, IMG_SIZE)))
+        self.plotdata = ArrayPlotData(
+            result_img0=self._ref_images[0],
+            result_img1=self._sim_images[0],
+            result_img2=np.zeros((IMG_SIZE, IMG_SIZE))
+        )
         
         #
         # Create image containers
@@ -249,61 +233,28 @@ class resultAnalayzer(HasTraits):
         #
         # Create the cursor
         #
-        self.tr_cursor1 = CursorTool(
+        self.cursor = CursorTool(
             component=img_plot,
             drag_button='left',
             color='white',
             line_width=1.0
         )                
-        img_plot.overlays.append(self.tr_cursor1)
-        self.tr_cursor1.current_position = 1, 1
+        img_plot.overlays.append(self.cursor)
+        self.cursor.current_position = 1, 1
 
         #
         # Initialize the images
         #
         self._updateImg()
 
-        #
-        # Create the cross section plots
-        #
-        self.tr_cross_plot1 = Plot(self.plotdata, resizable="h")
-        self.tr_cross_plot1.height = 30
-        plots = self.tr_cross_plot1.plot(("basex", "img0_x", "img1_x"))
-        legend = Legend(component=self.tr_cross_plot1, padding=5, align="ur")
-        legend.tools.append(LegendTool(legend, drag_button="right"))
-        legend.plots = dict(zip(('MC', 'Sim'), plots))
-        self.tr_cross_plot1.overlays.append(legend)
-        self.tr_cross_plot1.overlays.append(
-            PlotLabel(
-                "X section",
-                component=self.tr_cross_plot1,
-                font = "swiss 16",
-                overlay_position="top"
-            )
-        )
-        plots[1].line_style = 'dot'
-        
-        self.tr_cross_plot2 = Plot(self.plotdata, resizable="h")
-        self.tr_cross_plot2.height = 30
-        plots = self.tr_cross_plot2.plot(("basey", "img0_y", "img1_y"))
-        self.tr_cross_plot2.overlays.append(
-            PlotLabel(
-                "Y section",
-                component=self.tr_cross_plot2,
-                font = "swiss 16",
-                overlay_position="top"
-            )
-        )
-        plots[1].line_style = 'dot'
-
-    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, tr_cursor1.current_index, tr_index')
+    @on_trait_change('tr_scaling, tr_relative_scaling, tr_gamma_correction, tr_channel, cursor.current_index, tr_index')
     def _updateImg(self):
         
         h, w, d = self._ref_images[self.tr_index].shape
         
-        self.plotdata.set_data('basex', np.arange(w))
-        self.plotdata.set_data('basey', np.arange(h))
-
+        self.cross_plots.img0 = self._ref_images[self.tr_index][:, :, self.tr_channel]
+        self.cross_plots.img1 = self._sim_images[self.tr_index][:, :, self.tr_channel]
+        
         err = 0
         err_img = []
         for i, (ref_img, sim_img) in enumerate(zip(self._ref_images, self._sim_images)):
@@ -322,11 +273,8 @@ class resultAnalayzer(HasTraits):
         self.plotdata.set_data('result_img2', std_img)
         
     def _showImgGraph(self, i, img):
-        img_croped = cropImg(img)
-        
+        img_croped = cropImg(img)        
         self.plotdata.set_data('result_img%d' % i, img_croped)            
-        self.plotdata.set_data('img%d_x' % i, img[self.tr_cursor1.current_index[1], :, self.tr_channel])
-        self.plotdata.set_data('img%d_y' % i, img[:, self.tr_cursor1.current_index[0], self.tr_channel])
 
     def _scaleImg(self, img, relative_scale=0.0):
         img = img * 10**(self.tr_scaling+relative_scale)
