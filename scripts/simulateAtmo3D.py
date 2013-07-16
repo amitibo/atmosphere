@@ -89,7 +89,7 @@ def parallel(params_path, add_noise, run_arguments, ref_mc=None):
         for i, img in enumerate(result):
             if img != []:
                 sio.savemat(
-                    os.path.join(results_path, 'img' + ('0000%d.mat' % i)[-8:]),
+                    os.path.join(results_path, 'sim_img' + ('0000%d.mat' % i)[-8:]),
                     {'img':img},
                     do_compression=True
                 )

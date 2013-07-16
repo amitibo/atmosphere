@@ -72,8 +72,23 @@ def split_lists(items, n):
     return [items[s:e] for s, e in zip(indices[:-1], indices[1:])]
 
 
+def calcRatio(ref_img, single_img, erode=False):
+    #
+    # Calc a joint mask
+    #
+    mask = (ref_img > 0) * (single_img > 0)
+    if erode:
+        for i in range(3):
+            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
+        mask = mask>0
+    
+    ratio = ref_img[mask].mean() / single_img[mask].mean()
+
+    return ratio
+
+
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, tau=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -82,25 +97,47 @@ class RadianceProblem(object):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
         #
-        # Recieve the ratio (between reference and simulated images)
+        # Recieve the simulated images and sort according to rank
         #
         sts = MPI.Status()
 
-        ratio = 0
-        temp = np.empty(1)
+        unsort_sim_imgs = []
+        sim_imgs_src = []
         for i in range(1, mpi_size):
-            comm.Recv(temp, source=MPI.ANY_SOURCE, status=sts)
-            ratio += temp[0]
+            unsort_sim_imgs.append(comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=sts))
+            assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'            
+            sim_imgs_src.append(sts.source)
         
-        ratio = ratio / mpi_size
+        sim_imgs = []
+        for i in np.argsort(sim_imgs_src):
+            sim_imgs += unsort_sim_imgs[i]
+
+        #
+        # Calculate ratio and mask
+        #
+        means = []
+        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+            means.append(calcRatio(ref_img, sim_img))
+            
+        ratio = np.mean(means)
+
+        err_imgs = []
+        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+            err_imgs.append(ref_img/ratio - sim_img)
+
+        std = np.dstack(err_imgs).std(axis=2)
         
-        print ratio
+        sio.savemat(
+            os.path.join(results_path, 'std_img.mat'),
+            {'img': std},
+            do_compression=True
+        )
         
         #
         # Send back the averaged calculated ratio
         #
         for i in range(1, mpi_size):
-            comm.send(ratio, dest=i, tag=RATIOTAG)
+            comm.send([ratio, std], dest=i, tag=RATIOTAG)
         
         self.atmosphere_params = atmosphere_params
         self._objective_values = []
@@ -259,12 +296,14 @@ def master(
     air_dist,
     aerosols_dist,
     results_path,
+    ref_imgs,
     tau=0.0,
     solver='ipopt',
     init_with_solution=False
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
+    #import wingdbstub
     
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
@@ -293,6 +332,7 @@ def master(
         A_aerosols=aerosols_dist,
         A_air=air_dist,
         results_path=results_path,
+        ref_imgs=ref_imgs,
         tau=tau
     )
 
@@ -410,22 +450,7 @@ def master(
     #
     import pickle
     with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
-        pickle.dump(info, f)
-
-
-def calcRatio(ref_img, single_img, erode):
-    #
-    # Calc a joint mask
-    #
-    mask = (ref_img > 0) * (single_img > 0)
-    if erode:
-        for i in range(3):
-            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
-        mask = mask>0
-    
-    ratio = ref_img[mask].mean() / single_img[mask].mean()
-
-    return ratio
+        pickle.dump(info, f)    
 
 
 def slave(
@@ -439,8 +464,10 @@ def slave(
     use_simulated=False,
     mask_sun=False
     ):
+    
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
-
+    #import wingdbstub
+    
     assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
     camera_num = len(camera_positions)
     
@@ -461,17 +488,6 @@ def slave(
         )
         
         cam_paths.append(cam_path)
-    
-    #
-    # Create a mask around the sun center.
-    #
-    if mask_sun:
-        X, Y = np.meshgrid(np.arange(32)-24, np.arange(32)-16)
-        R = np.sqrt(X**2 + Y**2)
-        mask = R>5
-        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
-    else:
-        mask = 1
     
     #
     # The first data should be for creating the measured images.
@@ -506,10 +522,9 @@ def slave(
             ref_images.append(ref_img)
 
     #
-    # Save simulated images (useful for debugging)
-    # In the same time calculate the ratio
+    # Calculate and save simulated images
     #
-    ratio = 0
+    sim_imgs = []
     for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
         cam.load(cam_path)        
         cam.setA_air(A_air)
@@ -518,25 +533,30 @@ def slave(
             A_aerosols=A_aerosols,
             particle_params=particle_params
         )
+        sim_imgs.append(sim_img)
         
-        ratio += calcRatio(ref_img, sim_img, erode=False)
-
         sio.savemat(
             os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': sim_img},
             do_compression=True
         )
     
-    ratio /= len(ref_images)
+    #
+    # Send back the simulated images receive the global ratio and std image
+    #
+    comm.send(sim_imgs, dest=0, tag=RATIOTAG)
+    
+    ratio, std = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+    assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
     
     #
-    # Send back the ratio and receive the global ratio
+    # Create a mask around the sun center.
     #
-    comm.Send(np.array(ratio), dest=0)
-    ratio = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
-
-    tag = sts.Get_tag()
-    assert tag == RATIOTAG, 'Expecting the RATIO tag'
+    if mask_sun:
+        mask = np.exp(-std)
+        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+    else:
+        mask = 1
     
     #
     # Save the ref images
@@ -553,7 +573,6 @@ def slave(
             do_compression=True
         )
 
-        
     #
     # Set the camera_index to point to the last camera created
     # which is the currently loaded camera.
@@ -613,7 +632,7 @@ def slave(
             )
 
             grad = cam.calcImageGradient(
-                img_err=(ref_img-img)*mask,
+                img_err=(ref_img-img)*mask**2,
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
             )
@@ -689,7 +708,6 @@ def loadSlaveData(atmosphere_params, ref_images, ref_ratio, mcarats, sigma, remo
                 for channel in range(ref_img.shape[2]):
                     ref_img[:, :, channel] = \
                         ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
-            
             
     else:
         raise Exception('No reference images given')
@@ -767,6 +785,7 @@ def main(
             air_dist=air_dist,
             aerosols_dist=aerosols_dist,
             results_path=results_path,
+            ref_imgs=ref_images_list,
             tau=tau,
             solver=solver,
             init_with_solution=init_with_solution
