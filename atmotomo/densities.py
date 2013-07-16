@@ -8,47 +8,21 @@ import amitibo
 import os
 
 __all__ = [
-    "density_front",
+    "single_voxel_simulation",
+    "front_simulation",
     "clouds_simulation",
     "calcAirMcarats",
-    "single_voxel_atmosphere",
     "prepareSimulation",
-    "front_simulation"
 ]
 
 SIMULATION_TEMPLATE_FILE_NAME = 'simulation.jinja'
 
 
-def density_front(atmosphere_params):
-    #
-    # Create the sky
-    #
-    Y, X, H = atmosphere_params.cartesian_grids.expanded
-    width = atmosphere_params.cartesian_grids.closed[0][-1]
-    height = atmosphere_params.cartesian_grids.closed[2][-1]
-    h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + (atmosphere_params.earth_radius+H)**2) - atmosphere_params.earth_radius
-    
-    #
-    # Create the distributions of air
-    #
-    A_air = np.exp(-h/atmosphere_params.air_typical_h)
-    
-    #
-    # Create the distributions of aerosols
-    #
-    A_aerosols = np.exp(-h/atmosphere_params.aerosols_typical_h)
-    A_mask = np.zeros_like(A_aerosols)
-    Z1 = X**2/64 + (Y-width/2)**2/1000 + (H-height/2)**2
-    A_mask[Z1<4000**2] = 1
-    A_aerosols *= A_mask
-    
-    return A_air, A_aerosols, Y, X, H, h
-
-
-def base_dists(
+def exp_dists(
     atmosphere_params,
     aerosols_typical_density
     ):
+    """Create exponentially decaying atmospheres"""
     
     #
     # Create the sky
@@ -70,10 +44,11 @@ def base_dists(
     return air_dist, aerosols_dist
 
 
-def base_cameras(
+def grid_cameras(
     atmosphere_params,
     camera_grid_size
     ):
+    """Distribute cameras on a 'noised' grid"""
     
     Y, X, H = atmosphere_params.cartesian_grids.expanded
     width = atmosphere_params.cartesian_grids.closed[0][-1]
@@ -110,6 +85,7 @@ def base_data(
     sun_angle_phi,
     sun_angle_theta
     ):
+    """Create the data for a basic simulation configuration"""
     
     Y, X, H = atmosphere_params.cartesian_grids.expanded
     width = atmosphere_params.cartesian_grids.closed[0][-1]
@@ -159,10 +135,11 @@ def clouds_simulation(
     cloud_coords=((50000/3, 50000/3, 5000), (50000*2/3, 50000*2/3, 2500),),
     cloud_radiuses=((12000, 12000, 1500/np.sqrt(2)),(16000, 16000, 2000/np.sqrt(2)),)
     ):
-
-    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
+    """Simulation made of ellipsoid clouds"""
     
-    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
+    air_dist, aerosols_dist = exp_dists(atmosphere_params, aerosols_typical_density)
+    
+    camera_coords = grid_cameras(atmosphere_params, camera_grid_size)
     
     data = base_data(
         atmosphere_params,
@@ -205,10 +182,11 @@ def front_simulation(
     cloud1_radius=3000,
     cloud2_radius=4000
     ):
-
-    air_dist, aerosols_dist = base_dists(atmosphere_params, aerosols_typical_density)
+    """A simulation of a cloud front"""
     
-    camera_coords = base_cameras(atmosphere_params, camera_grid_size)
+    air_dist, aerosols_dist = exp_dists(atmosphere_params, aerosols_typical_density)
+    
+    camera_coords = grid_cameras(atmosphere_params, camera_grid_size)
     
     data = base_data(
         atmosphere_params,
@@ -237,28 +215,44 @@ def front_simulation(
     return data, air_dist, aerosols_dist
 
 
-def single_voxel_atmosphere(atmosphere_params, indices_list=[(0, 0, 0)], density=0.001, decay=False):
-    #
-    # Create the sky
-    #
-    Y, X, H = atmosphere_params.cartesian_grids.expanded
-    width = atmosphere_params.cartesian_grids.closed[0][-1]
+def single_voxel_simulation(
+    atmosphere_params,
+    particle_name='spherical_nonabsorbing_2.80',
+    particle_phase='HG',
+    camera_resolution=(128, 128),
+    camera_grid_size=(10, 10),
+    camera_type='linear',
+    sun_angle_phi=0,
+    sun_angle_theta=np.pi/4,
+    voxel_indices=(0, 0, 0),
+    aerosols_typical_density=1,
+    ):
+    """A simulation of an empty atmosphere with single voxel of aerosols"""
     
-    A_aerosol_base = density
-    if decay:
-        h = np.sqrt((X-width/2)**2 + (Y-width/2)**2 + H**2)
-        A_aerosol_base = A_aerosol_base * np.exp(-h/atmosphere_params.aerosols_typical_h)
+    #
+    # Create the camera coords
+    #
+    camera_coords = grid_cameras(atmosphere_params, camera_grid_size)
+    
+    data = base_data(
+        atmosphere_params,
+        particle_name,
+        particle_phase,
+        camera_resolution,
+        camera_coords,
+        camera_type,
+        sun_angle_phi,
+        sun_angle_theta
+    )
 
     #
-    # Create the distributions of aerosols
+    # Create the aerosols dist.
     #
-    A_aerosols = []
-    for voxel_indices in indices_list:
-        tmp = np.zeros_like(H)
-        tmp[voxel_indices] = 1
-        A_aerosols.append(tmp * A_aerosol_base)
-        
-    return A_aerosols, Y, X, H
+    air_dist = np.zeros(atmosphere_params.cartesian_grids.shape)
+    aerosols_dist = np.zeros(atmosphere_params.cartesian_grids.shape)    
+    aerosols_dist[voxel_indices] = aerosols_typical_density
+
+    return data, air_dist, aerosols_dist
 
 
 def fitExp(Z, z0, e0):
@@ -286,7 +280,12 @@ def calcAirMcarats(Z):
     return (e67, e55, e45)
 
 
-def prepareSimulation(path, func, *params, **kwrds):
+def prepareSimulation(
+    path,
+    func,
+    *params,
+    **kwrds
+    ):
     import jinja2
     from amitibo import getResourcePath, BaseData
     import scipy.io as sio
