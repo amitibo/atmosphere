@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=2:ncpus=12:mpiprocs=12
+#PBS -l select=9:ncpus=12:mpiprocs=12
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -75,8 +75,9 @@ cd $PBS_O_WORKDIR
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --ref_mc /u/amitibo/data/high_density_medium_resolution --ref_mc_ratio 39.6584 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --save_simulated --init_with_solution --ref_mc /u/amitibo/data/high_density_medium_resolution --ref_ratio 39.6584 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --ref_mc /u/amitibo/data/high_density_medium_resolution_mp --ref_ratio 392.869 --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
-mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
-#mpirun -np 108 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-8 --ref_mc /u/amitibo/data/New_Low_Density --ref_mc_ratio 503.166 --use_ref_mc_position --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+#mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
+#mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --mask_sun --transposexy --ref_mc /u/amitibo/data/front_high_density_medium_resolution $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
+mpirun -np 108 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --mask_sun --ref_mc /u/amitibo/data/low_density_high_resolution $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

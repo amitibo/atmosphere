@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  general_ld
+#PBS -q  minerva_h_p
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -64,7 +64,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
-#mpirun -np 24  python $HOME/.local/bin/simulateAtmo3D.py --parallel --ref_images /u/amitibo/data/20Images_single_voxel --no_air
+#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_high_density_medium_resolution/configuration.ini
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

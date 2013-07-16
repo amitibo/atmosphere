@@ -38,6 +38,7 @@ OBJTAG = 2
 GRADTAG = 3
 DIETAG = 4
 READYTAG = 5
+RATIOTAG = 6
 
 
 MAX_ITERATIONS = 4000
@@ -71,8 +72,23 @@ def split_lists(items, n):
     return [items[s:e] for s, e in zip(indices[:-1], indices[1:])]
 
 
+def calcRatio(ref_img, single_img, erode=False):
+    #
+    # Calc a joint mask
+    #
+    mask = (ref_img > 0) * (single_img > 0)
+    if erode:
+        for i in range(3):
+            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
+        mask = mask>0
+    
+    ratio = ref_img[mask].mean() / single_img[mask].mean()
+
+    return ratio
+
+
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, tau=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -80,6 +96,49 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
+        #
+        # Recieve the simulated images and sort according to rank
+        #
+        sts = MPI.Status()
+
+        unsort_sim_imgs = []
+        sim_imgs_src = []
+        for i in range(1, mpi_size):
+            unsort_sim_imgs.append(comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=sts))
+            assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'            
+            sim_imgs_src.append(sts.source)
+        
+        sim_imgs = []
+        for i in np.argsort(sim_imgs_src):
+            sim_imgs += unsort_sim_imgs[i]
+
+        #
+        # Calculate ratio and mask
+        #
+        means = []
+        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+            means.append(calcRatio(ref_img, sim_img))
+            
+        ratio = np.mean(means)
+
+        err_imgs = []
+        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+            err_imgs.append(ref_img/ratio - sim_img)
+
+        std = np.dstack(err_imgs).std(axis=2)
+        
+        sio.savemat(
+            os.path.join(results_path, 'std_img.mat'),
+            {'img': std},
+            do_compression=True
+        )
+        
+        #
+        # Send back the averaged calculated ratio
+        #
+        for i in range(1, mpi_size):
+            comm.send([ratio, std], dest=i, tag=RATIOTAG)
+        
         self.atmosphere_params = atmosphere_params
         self._objective_values = []
         self._intermediate_values = []
@@ -123,10 +182,12 @@ class RadianceProblem(object):
             # Store temporary x in case the simulation is stoped in the middle.
             #
             Y, X, Z = self.atmosphere_params.cartesian_grids.expanded
+            limits = np.array([int(l) for l in self.atmosphere_params.cartesian_grids.limits])
             
             sio.savemat(
                 os.path.join(self._results_path, 'temp_rad.mat'),
                 {
+                    'limits': limits,
                     'Y': Y,
                     'X': X,
                     'Z': Z,
@@ -235,12 +296,14 @@ def master(
     air_dist,
     aerosols_dist,
     results_path,
+    ref_imgs,
     tau=0.0,
     solver='ipopt',
     init_with_solution=False
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
+    #import wingdbstub
     
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
@@ -269,6 +332,7 @@ def master(
         A_aerosols=aerosols_dist,
         A_air=air_dist,
         results_path=results_path,
+        ref_imgs=ref_imgs,
         tau=tau
     )
 
@@ -365,9 +429,12 @@ def master(
     # Store the estimated distribution
     #
     Y, X, Z = atmosphere_params.cartesian_grids.expanded
+    limits = np.array([int(l) for l in atmosphere_params.cartesian_grids.limits])
+    
     sio.savemat(
         os.path.join(results_path, 'radiance.mat'),
         {
+            'limits': limits,
             'Y': Y,
             'X': X,
             'Z': Z,
@@ -383,7 +450,7 @@ def master(
     #
     import pickle
     with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
-        pickle.dump(info, f)
+        pickle.dump(info, f)    
 
 
 def slave(
@@ -397,8 +464,10 @@ def slave(
     use_simulated=False,
     mask_sun=False
     ):
+    
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
-
+    #import wingdbstub
+    
     assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
     camera_num = len(camera_positions)
     
@@ -419,17 +488,6 @@ def slave(
         )
         
         cam_paths.append(cam_path)
-    
-    #
-    # Create a mask around the sun center.
-    #
-    if mask_sun:
-        X, Y = np.meshgrid(np.arange(32)-24, np.arange(32)-16)
-        R = np.sqrt(X**2 + Y**2)
-        mask = R>5
-        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
-    else:
-        mask = 1
     
     #
     # The first data should be for creating the measured images.
@@ -464,34 +522,57 @@ def slave(
             ref_images.append(ref_img)
 
     #
-    # Save the ref images
+    # Calculate and save simulated images
     #
-    for i, ref_img in enumerate(ref_images):
-
-        sio.savemat(
-            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
-            {'img': ref_img},
-            do_compression=True
-        )
-    
-    #
-    # Save simulated images (useful for debugging)
-    #
-    for i, cam_path in enumerate(cam_paths):
+    sim_imgs = []
+    for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
         cam.load(cam_path)        
         cam.setA_air(A_air)
-
+        
         sim_img = cam.calcImage(
             A_aerosols=A_aerosols,
             particle_params=particle_params
         )
+        sim_imgs.append(sim_img)
         
         sio.savemat(
             os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': sim_img},
             do_compression=True
         )
-            
+    
+    #
+    # Send back the simulated images receive the global ratio and std image
+    #
+    comm.send(sim_imgs, dest=0, tag=RATIOTAG)
+    
+    ratio, std = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+    assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
+    
+    #
+    # Create a mask around the sun center.
+    #
+    if mask_sun:
+        mask = np.exp(-std)
+        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+    else:
+        mask = 1
+    
+    #
+    # Save the ref images
+    #
+    for i, ref_img in enumerate(ref_images):
+        #
+        # Note, I changeref_images in place so that ref_img is also effected.
+        #
+        ref_images[i] /= ratio
+        
+        sio.savemat(
+            os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+            {'img': ref_img},
+            do_compression=True
+        )
+
     #
     # Set the camera_index to point to the last camera created
     # which is the currently loaded camera.
@@ -551,7 +632,7 @@ def slave(
             )
 
             grad = cam.calcImageGradient(
-                img_err=(ref_img-img)*mask,
+                img_err=(ref_img-img)*mask**2,
                 A_aerosols=A_aerosols,
                 particle_params=particle_params
             )
@@ -628,7 +709,6 @@ def loadSlaveData(atmosphere_params, ref_images, ref_ratio, mcarats, sigma, remo
                     ref_img[:, :, channel] = \
                         ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
             
-            
     else:
         raise Exception('No reference images given')
 
@@ -644,6 +724,7 @@ def main(
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
+    transposexy=False,
     init_with_solution=False,
     solver='bfgs',
     tau=0.0,
@@ -660,6 +741,10 @@ def main(
     #
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
+    if transposexy:
+        air_dist = np.transpose(air_dist, [1, 0, 2])
+        aerosols_dist = np.transpose(aerosols_dist, [1, 0, 2])
+        
     #
     # Limit the number of mpi processes used.
     #
@@ -700,6 +785,7 @@ def main(
             air_dist=air_dist,
             aerosols_dist=aerosols_dist,
             results_path=results_path,
+            ref_imgs=ref_images_list,
             tau=tau,
             solver=solver,
             init_with_solution=init_with_solution
@@ -729,6 +815,7 @@ if __name__ == '__main__':
     parser.add_argument('--ref_ratio', type=float, default=1.0, help='intensity ratio between reference images and the images of the single algorithm.')
     parser.add_argument('--use_ref_mc_position', action='store_true', help='Use the position of the cameras from Vadims files')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+    parser.add_argument('--transposexy', action='store_true', help='Transpose the xy coordinates of the atmosphere (this is due to Vadims mismatch).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
@@ -748,6 +835,7 @@ if __name__ == '__main__':
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
+        transposexy=args.transposexy,
         init_with_solution=args.init_with_solution,
         solver=args.solver,
         tau=args.tau,
