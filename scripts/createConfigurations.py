@@ -53,13 +53,13 @@ def main(output_path):
         os.makedirs(output_path)
 
     atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'two_clouds_low_density'),
+        path=os.path.join(output_path, 'two_clouds_low_density_high_resolution'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=atmosphere_high_resolution,
         aerosols_typical_density=10**6
     )
     atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'two_clouds_high_density'),
+        path=os.path.join(output_path, 'two_clouds_high_density_high_resolution'),
         func=atmotomo.clouds_simulation,
         atmosphere_params=atmosphere_high_resolution,
         aerosols_typical_density=10**7

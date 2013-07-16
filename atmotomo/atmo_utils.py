@@ -41,7 +41,8 @@ __all__ = [
     "getMisrDB",
     "calcScatterMu",
     "loadVadimData",
-    "readConfiguration"
+    "readConfiguration",
+    "fixmat"
 ]
 
 

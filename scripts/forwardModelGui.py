@@ -10,7 +10,7 @@ from __future__ import division
 
 from traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
 from traitsui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action, spring
-from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel, ColorBar
+from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel, ColorBar, LinearMapper
 from chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
 from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
 from enable.component_editor import ComponentEditor
@@ -25,113 +25,8 @@ import glob
 import os
 import re
 
-IMG_SIZE = 32
+IMG_SIZE = 128
 
-
-class TC_Handler(Handler):
-
-    def do_savefig(self, info):
-
-        results_object = info.object
-        
-        sun_angle = results_object.tr_sun_angle
-        
-        path = 'C:/Users/amitibo/Desktop'
-        
-        for i in (1, 2):
-            figure_name = '%d.svg' % i
-            
-            img = results_object.plotdata.get_data('result_img%d' % i)
-        
-            #
-            # Draw the image
-            #
-            fig = plt.figure()
-            ax = plt.axes([0, 0, 1, 1]) 
-            plt.imshow(img.astype(np.uint8))
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-            
-            img_center = img.shape[0]/2
-    
-            #
-            # Draw sun
-            #
-            sun_x = img_center * (1 + sun_angle * 2)
-            sun_patch = mpatches.Circle((sun_x, img_center), 2, ec='y', fc='y')
-            ax.add_patch(sun_patch)
-    
-            #
-            # Draw angle arcs
-            #
-            for arc_angle in range(0, 90, 30)[1:]:
-                d = img_center * arc_angle / 90
-                arc_patch = mpatches.Arc(
-                    (img_center, img_center),
-                    2*d,
-                    2*d,
-                    90,
-                    25,
-                    335,
-                    ec='w',
-                    ls='dashed',
-                    lw=4
-                )
-                ax.add_patch(arc_patch)
-                plt.text(
-                    img_center,
-                    img_center+d,
-                    "$%s^{\circ}$" % str(arc_angle),
-                    ha="center",
-                    va="center",
-                    size=30,
-                    color='w'
-                )
-        
-            amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
-
-    def do_makemovie(self, info):
-
-        results_object = info.object
-
-        path, file_name =  os.path.split(results_object.tr_img_name)
-        file_pattern = re.search(r'(.*?)\d+.mat', file_name).groups()[0]
-        image_list = glob.glob(os.path.join(path, "%s*.mat" % file_pattern))
-        if not image_list:
-            warning(info.ui.control, "No ref_img's found in the folder", "Warning")
-            return
-
-        import matplotlib.animation as manim
-        
-        FFMpegWriter = manim.writers['ffmpeg']
-        metadata = dict(title='Results Movie', artist='Matplotlib', comment='Movie support!')
-        writer = FFMpegWriter(fps=2, bitrate=-1, metadata=metadata)
-
-        fig = plt.figure()
-        with writer.saving(fig, os.path.join(path, "%s.mp4" % file_pattern), 100):
-            for i in range(0, len(image_list)+1):
-                img_path = os.path.join(path, "%s%d.mat" % (file_pattern, i))
-                try:
-                    data = sio.loadmat(img_path)
-                except:
-                    continue
-                
-                if 'img' in data.keys():
-                    img = data['img']
-                else:
-                    img = data['rgb']
-                img = img * 10**results_object.tr_scaling
-                if results_object.tr_gamma_correction:
-                    img**=0.4
-                
-                img[img<0] = 0
-                img[img>255] = 255
-                
-                plt.imshow(img.astype(np.uint8))
-                plt.title('image %d' % i)
-                writer.grab_frame()            
-                fig.clear()
-                
 
 def calcRatio(ref_img, single_img, erode=False):
     #
@@ -167,13 +62,15 @@ class resultAnalayzer(HasTraits):
     tr_cross_plot2 = Instance(Plot)
     tr_cursor1 = Instance(BaseCursorTool)
     tr_channel = Enum(0, 1, 2)
+    colorbar = ColorBar()
     
     traits_view  = View(
         VGroup(
             HGroup(
+                Item('img_container0', editor=ComponentEditor(), show_label=False),
                 Item('img_container1', editor=ComponentEditor(), show_label=False),
                 Item('img_container2', editor=ComponentEditor(), show_label=False),
-                Item('img_container3', editor=ComponentEditor(), show_label=False),
+                Item('colorbar', editor=ComponentEditor(), show_label=False),
                 ),
             HGroup(
                 Item('tr_cross_plot1', editor=ComponentEditor(), show_label=False),
@@ -191,8 +88,6 @@ class resultAnalayzer(HasTraits):
             Item('tr_DND', label='Drag Image here', editor=DropEditor()),
             Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
-        handler=TC_Handler(),
-        buttons = [save_button, movie_button],
         resizable = True
     )
 
@@ -205,42 +100,46 @@ class resultAnalayzer(HasTraits):
         # Plot - Represents a correlated set of data, renderers, and
         # axes in a single screen region.
         #
-        self._ref_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
-        self._sim_images = [np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)]
+        self._ref_images = [np.random.rand(IMG_SIZE, IMG_SIZE, 3)]
+        self._sim_images = [np.random.rand(IMG_SIZE, IMG_SIZE, 3)]
         
-        self.plotdata = ArrayPlotData(result_img0=self._ref_images[0], result_img1=self._sim_images[0], result_img2=np.zeros((IMG_SIZE, IMG_SIZE)))
+        self.plotdata = ArrayPlotData(
+            result_img0=self._ref_images[0],
+            result_img1=self._sim_images[0],
+            std_img=np.random.rand(IMG_SIZE, IMG_SIZE)
+        )
         
         #
         # Create image containers
         #
-        self.img_container1 = Plot(self.plotdata)
-        img_plot = self.img_container1.img_plot('result_img0')[0]
-        self.img_container1.overlays.append(
+        self.img_container0 = Plot(self.plotdata)
+        img0 = self.img_container0.img_plot('result_img0')[0]
+        self.img_container0.overlays.append(
             PlotLabel(
                 "Monte-Carlo",
-                component=self.img_container1,
+                component=self.img_container0,
                 font = "swiss 16",
                 overlay_position="top"
             )
         )
 
-        self.img_container2 = Plot(self.plotdata)
-        self.img_container2.img_plot('result_img1')
-        self.img_container2.overlays.append(
+        self.img_container1 = Plot(self.plotdata)
+        self.img_container1.img_plot('result_img1')
+        self.img_container1.overlays.append(
             PlotLabel(
                 "Single-Scattering Simulation",
-                component=self.img_container2,
+                component=self.img_container1,
                 font = "swiss 16",
                 overlay_position="top"
             )
         )
         
-        self.img_container3 = Plot(self.plotdata)
-        self.img_container3.img_plot('result_img2')
-        self.img_container3.overlays.append(
+        self.img_container2 = Plot(self.plotdata)
+        self.img_container2.img_plot('std_img', name='std_img')[0]
+        self.img_container2.overlays.append(
             PlotLabel(
                 "Single-Scattering Reconstruction",
-                component=self.img_container3,
+                component=self.img_container2,
                 font = "swiss 16",
                 overlay_position="top"
             )
@@ -250,12 +149,12 @@ class resultAnalayzer(HasTraits):
         # Create the cursor
         #
         self.tr_cursor1 = CursorTool(
-            component=img_plot,
+            component=img0,
             drag_button='left',
             color='white',
             line_width=1.0
         )                
-        img_plot.overlays.append(self.tr_cursor1)
+        img0.overlays.append(self.tr_cursor1)
         self.tr_cursor1.current_position = 1, 1
 
         #
@@ -319,7 +218,19 @@ class resultAnalayzer(HasTraits):
             
         self.tr_err = err/len(self._ref_images)
         std_img = np.dstack(err_img).std(axis=2)
-        self.plotdata.set_data('result_img2', std_img)
+        self.plotdata.set_data('std_img', std_img)
+        
+        std_img = self.img_container2.plots['std_img'][0]
+        colormap = std_img.color_mapper
+        self.colorbar = ColorBar(
+            index_mapper=LinearMapper(range=colormap.range),
+            color_mapper=colormap,
+            plot=std_img,
+            orientation='v',
+            resizable='v',
+            width=30,
+            padding=20
+        )
         
     def _showImgGraph(self, i, img):
         img_croped = cropImg(img)

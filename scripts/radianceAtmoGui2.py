@@ -20,6 +20,19 @@ from enthought.enable.component_editor import ComponentEditor
 from enthought.io.api import File
 from tvtk.api import tvtk
 from mayavi import mlab
+import atmotomo
+
+
+def zeroBorders(s, margin=1):
+    if margin == 0:
+        return s
+    
+    t = s[margin:, :, :]
+    t = t[:, margin:, :]
+    t = t[:-margin, :, :]
+    t = t[:, :-margin, :]
+    
+    return t
 
 
 class Visualization(HasTraits):
@@ -28,6 +41,7 @@ class Visualization(HasTraits):
     visualization_mode = Enum('iso-surfaces', 'cross-planes')
     objective_plot = Instance(Plot)
     tr_DND = List(Instance(File))
+    margin = Range(0, 20, 0)
 
     # the layout of the dialog created
     view = View(
@@ -59,6 +73,7 @@ class Visualization(HasTraits):
                     }
                 )
                 ),
+            Item('margin', label='Error Margin'),
         )
     )
 
@@ -73,15 +88,21 @@ class Visualization(HasTraits):
                                       font = "swiss 16",
                                       overlay_position="top"))        
         
-    @on_trait_change('visualization_mode')
+    @on_trait_change('visualization_mode, margin')
     def _updatePlot(self):
         self.plotdata.set_data('x', np.arange(self.objective.size))
         self.plotdata.set_data('y', np.log(self.objective))
         
         for radiance, scene in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2)):
             mlab.clf(figure=scene.mayavi_scene)
-
-            src = scene.mlab.pipeline.scalar_field(self.Y, self.X, self.Z, radiance, figure=scene.mayavi_scene)
+            #scene.mayavi_scene.on_mouse_pick(self._updateCameras)
+            src = scene.mlab.pipeline.scalar_field(
+                zeroBorders(self.Y, self.margin),
+                zeroBorders(self.X, self.margin),
+                zeroBorders(self.Z, self.margin),
+                zeroBorders(radiance, self.margin),
+                figure=scene.mayavi_scene
+            )
             src.update_image_data = True    
 
             if self.visualization_mode == 'iso-surfaces':
@@ -103,9 +124,12 @@ class Visualization(HasTraits):
                 
             scene.mlab.colorbar()
             scene.mlab.outline(extent=self.limits)
-    
             scene.mlab.axes(ranges=self.limits, extent=self.limits)
 
+    @on_trait_change('scene1.camera')
+    def _updateCameras(self, picker):
+        print picker
+        
     @on_trait_change('tr_DND')
     def _updateDragNDrop(self):
         path = self.tr_DND[0].absolute_path
@@ -121,13 +145,20 @@ class Visualization(HasTraits):
         # This comes from out use of A:
         # exp(-A / visibility * length) = exp(-k * N * length)
         #
-        self.limits = data['limits'].ravel()
-        self.Y = data['Y']
-        self.X = data['X']
-        self.Z = data['Z']
-        self.radiance1 = data['true']
-        self.radiance2 = data['estimated']
-        self.objective = data['objective'].ravel()
+        self.radiance1 = atmotomo.fixmat(data['true'])
+        self.radiance2 = atmotomo.fixmat(data['estimated'])
+        self.objective = atmotomo.fixmat(data['objective']).ravel()
+        
+        if data.has_key('limit'):
+            self.Y = atmotomo.fixmat(data['Y'])
+            self.X = atmotomo.fixmat(data['X'])
+            self.Z = atmotomo.fixmat(data['Z'])
+            self.limits = data['limits'].ravel()
+        else:
+            shape = self.radiance1.shape
+            self.Y, self.X, self.Z = np.mgrid[0:50000:complex(shape[0]), 0:50000:complex(shape[1]), 0:10000:complex(shape[2])]
+            self.limits = (0, 50000, 0, 50000, 0, 10000)
+            
         
         self._updatePlot()
         
