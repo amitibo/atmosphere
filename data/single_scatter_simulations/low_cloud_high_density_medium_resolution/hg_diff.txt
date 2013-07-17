@@ -1,0 +1,34 @@
+diff -r 73d662708487 mpi_pbs_simulate.sh
+--- a/mpi_pbs_simulate.sh	Wed Jul 17 01:37:17 2013 +0300
++++ b/mpi_pbs_simulate.sh	Tue Jul 16 17:45:19 2013 -0500
+@@ -25,7 +25,7 @@
+ #   General		Low	      general_ld	    wall time limit=24 h            
+ #  Large Disk						    av. hosts n097 - n100                    All users
+ #
+-#PBS -q  minerva_h_p
++#PBS -q  all_l_p
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -64,7 +64,19 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density/configuration.ini
+-mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_high_density_medium_resolution/configuration.ini
++#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_high_resolution/configuration.ini
++#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_high_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_low_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_low_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/front_low_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/low_cloud_low_density_medium_resolution/configuration.ini
++mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/low_cloud_high_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/high_cloud_low_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/high_cloud_high_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_low_density_medium_resolution/configuration.ini
++#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_high_density_medium_resolution/configuration.ini
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
