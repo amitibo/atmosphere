@@ -32,6 +32,7 @@ import itertools
 import pkg_resources
 import amitibo
 import os
+import scipy.ndimage.filters as filters
 
 __all__ = [
     "calcHG",
@@ -42,7 +43,8 @@ __all__ = [
     "calcScatterMu",
     "loadVadimData",
     "readConfiguration",
-    "fixmat"
+    "fixmat",
+    "weighted_laplace"
 ]
 
 
@@ -284,6 +286,25 @@ def readConfiguration(path):
 
     return atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist
 
+
+def weighted_laplace(input, weights, output = None, mode = "reflect", cval = 0.0):
+    """N-dimensional Laplace filter based on approximate second derivatives.
+
+    Parameters
+    ----------
+    %(input)s
+    %(output)s
+    %(mode)s
+    %(cval)s
+    """
     
+    assert input.ndim == len(weights), 'Shape of input (%d) must equal lenght of weights (%d)' % (input.ndim, len(weights))
+    
+    def derivative2(input, axis, output, mode, cval):
+        filt = np.array((1, -2, 1)) * weights[axis]
+        return filters.correlate1d(input, filt, axis, output, mode, cval, 0)
+    return filters.generic_laplace(input, derivative2, output, mode, cval)
+
+
 if __name__ == '__main__':
     pass

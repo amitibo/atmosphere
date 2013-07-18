@@ -1,30 +1,16 @@
-"""
-Calculate the ratio between two sets of images.
-"""
-
-from __future__ import division
+import scipy.io as sio
+import atmotomo
+import os
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
-import atmotomo
-import argparse
-import glob
-import scipy.io as sio
-import re
-import os
-import skimage.morphology as morph
-
-
-def getMcMatList(path):
-
-    img_list, cameras = atmotomo.loadVadimData(path, remove_sunspot=False)
-    
-    return img_list
+from mpl_toolkits.axes_grid1 import AxesGrid
 
 
 def getSingleMatList(path):
     
     path = os.path.abspath(path)
-    files_list = glob.glob(os.path.join(path, "sim*.mat"))
+    files_list = glob.glob(os.path.join(path, "sim_img*.mat"))
     files_list.sort()
     
     img_list = []
@@ -39,114 +25,103 @@ def getSingleMatList(path):
     return img_list
 
 
-def findMatched(ref_img, single_imgs):
-
-    mask_results = []
-
-    if (ref_img>0).sum() > (ref_img.size*3/4):
-        #
-        # The mcarats ref images have values all over the sky
-        # so I supress all values below the median
-        #
-        ref_img = ref_img.copy()
-        mean_val = ref_img.mean()
-        ref_img[ref_img < mean_val] = 0
-        
-    for single_img in single_imgs:
-        #
-        # Calc a joint mask
-        #
-        mask = (ref_img > 0) * (single_img > 0)
-        for i in range(3):
-            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
-        mask = mask>0
-        
-        temp = single_img[mask]
-        mask_results.append(temp.sum())
-    
-    ind = np.argmax(mask_results)
-        
-    print ind
-    return single_imgs[ind]
-
-
-def calcRatio(ref_img, single_img, erode):
+def calcRatio(ref_img, single_img, sun_mask):
     #
     # Calc a joint mask
     #
     mask = (ref_img > 0) * (single_img > 0)
-    if erode:
-        for i in range(3):
-            mask[:, :, i] = morph.greyscale_erode(mask[:, :, i].astype(np.uint8) , morph.disk(1))
-        mask = mask>0
+
+    ref_img = ref_img * sun_mask
+    single_img = single_img * sun_mask
     
     ratio = ref_img[mask].mean() / single_img[mask].mean()
 
     return ratio
 
 
-def main(ref_path, single_path, vadim_ref):
-    """Main doc """
-    
+def compareImgs(mc_imgs, single_imgs):
     #
-    # Load the reference images and single scattering images
-    #
-    if vadim_ref:
-        ref_imgs = getMcMatList(ref_path)
-    else:
-        ref_imgs = getSingleMatList(ref_path)
-        
-    single_imgs = getSingleMatList(single_path)
-
-    #
-    # Match the images.
-    #
-    #matched_single_imgs = []
-    #for ref_img in ref_imgs:
-        #single_img = findMatched(ref_img, single_imgs)
-        #matched_single_imgs.append(single_img)
-    if vadim_ref:
-        matched_single_imgs = single_imgs[:]
-    else:
-        matched_single_imgs = single_imgs[:]
-    
+    # Calculate perliminary ratio
+    # 
     means = []
-    for i, (ref_img, single_img) in enumerate(zip(ref_imgs, matched_single_imgs)):
-        means.append(calcRatio(ref_img, single_img, not vadim_ref))
-        if i % 15 == 0:
-            showImages(ref_img, single_img)
-        
-    print 'Mean: %g (=10^%g)' % (np.mean(means[7:]), np.log10(np.mean(means[7:])))
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    rects1 = ax.bar(np.arange(len(means)), means, color='r')
-    if vadim_ref:
-        plt.title('Ratio Between Single Scattering and Vadim MC (isotropic phase)')
-    else:
-        plt.title('Ratio Between Single Scattering and MCARATS')
-        
-    plt.show()
+    for i, (mc_img, single_img) in enumerate(zip(mc_imgs, single_imgs)):
+        means.append(calcRatio(mc_img, single_img, sun_mask=1))
     
+    ratio = np.mean(means)
+    
+    #
+    # Calculate a sun mask
+    #
+    err_imgs = []
+    for mc_img, single_img in zip(mc_imgs, single_imgs):
+        err_imgs.append(mc_img/ratio - single_img)
+    
+    std = np.dstack(err_imgs).std(axis=2)
+    sun_mask = np.exp(-std)
+    sun_mask = np.tile(sun_mask[:, :, np.newaxis], (1, 1, 3))
+    
+    #
+    # Recalculate the ratio
+    #
+    means = []
+    for i, (mc_img, single_img) in enumerate(zip(mc_imgs, single_imgs)):
+        means.append(calcRatio(mc_img, single_img, sun_mask))
+        
+    return means
 
-def showImages(ref_img, single_img):
-    plt.figure()
-    plt.subplot(121)
-    plt.imshow(ref_img/ref_img.max())
-    plt.title('Reference')
-    plt.subplot(122)
-    plt.imshow(single_img/single_img.max())
-    plt.title('Single')
 
+def processSimulations():
+    
+    mc_base_path = '../data/monte_carlo_simulations'
+    single_base_path = '../data/single_scatter_simulations'
+    
+    mc_folders = (
+        ('front_high_density_medium_resolution',
+        'front_low_density_medium_resolution',),
+        ('high_cloud_high_density_medium_resolution',
+        'high_cloud_low_density_medium_resolution',),
+        ('low_cloud_high_density_medium_resolution',
+        'low_cloud_low_density_medium_resolution',),
+        ('two_clouds_high_density_medium_resolution',
+        'two_clouds_low_density_medium_resolution',),
+        ('two_clouds_high_density_high_resolution',
+        'two_clouds_low_density_high_resolution',),
+    )
+    
+    single_folders = (
+        ('front_high_density_medium_resolution',
+        'front_low_density_medium_resolution',),
+        ('high_cloud_high_density_medium_resolution',
+        'high_cloud_low_density_medium_resolution',),
+        ('low_cloud_high_density_medium_resolution',
+        'low_cloud_low_density_medium_resolution',),
+        ('two_clouds_high_density_medium_resolution',
+        'two_clouds_low_density_medium_resolution',),
+        ('two_clouds_high_density_high_resolution',
+        'two_clouds_low_density_high_resolution',),
+    )
+    
+    for mc_folder, single_folder in zip(mc_folders, single_folders):
+        fig = plt.figure(figsize=(12, 6))
+        
+        for i in range(2):
+            try:
+                mc_path = os.path.abspath(os.path.join(mc_base_path, mc_folder[i]))
+                single_path = os.path.abspath(os.path.join(single_base_path, single_folder[i]))
+            
+                mc_imgs, cameras = atmotomo.loadVadimData(mc_path, remove_sunspot=False)
+
+                single_imgs = getSingleMatList(single_path)
+                
+                means = compareImgs(mc_imgs, single_imgs)
+                
+                ax = plt.subplot(121+i)
+                ax.bar(np.arange(len(means)), means, color='r')
+                title(mc_folder[i])
+            except:
+                pass
+            
 
 if __name__ == '__main__':
-    #
-    # Parse the input
-    #
-    parser = argparse.ArgumentParser(description='Calculate the ratio between two sets of images')
-    parser.add_argument('--vadim_ref', action='store_true', help='The reference images are stored in Vadim\'s format (folder of folders).')
-    parser.add_argument('reference', type=str, help='The reference set of images.')
-    parser.add_argument('single', type=str, help='The single scatter set of images.')
-    args = parser.parse_args()
-
-    main(args.reference, args.single, args.vadim_ref)
+    processSimulations()
+    plt.show()
