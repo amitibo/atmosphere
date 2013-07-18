@@ -88,7 +88,7 @@ def calcRatio(ref_img, single_img, erode=False):
 
 
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0, ref_ratio=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -113,23 +113,29 @@ class RadianceProblem(object):
             sim_imgs += unsort_sim_imgs[i]
 
         #
-        # Calculate ratio and mask
+        # if ratio is not given it is calculated automaticall
         #
-        means = []
-        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
-            means.append(calcRatio(ref_img, sim_img))
-            
-        ratio = np.mean(means)
+        if ref_ratio == 0.0:
+            means = []
+            for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+                means.append(calcRatio(ref_img, sim_img))
+                
+            ref_ratio = np.mean(means)
 
+        #
+        # Calculate the mask around the sun
+        #
         err_imgs = []
         for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
-            err_imgs.append(ref_img/ratio - sim_img)
+            err_imgs.append(ref_img/ref_ratio - sim_img)
 
         std = np.dstack(err_imgs).std(axis=2)
+        sun_mask = np.exp(-std)
+        sun_mask = np.tile(sun_mask[:, :, np.newaxis], (1, 1, 3))
         
         sio.savemat(
-            os.path.join(results_path, 'std_img.mat'),
-            {'img': std},
+            os.path.join(results_path, 'sun_mask.mat'),
+            {'sun_mask': sun_mask},
             do_compression=True
         )
         
@@ -137,7 +143,7 @@ class RadianceProblem(object):
         # Send back the averaged calculated ratio
         #
         for i in range(1, mpi_size):
-            comm.send([ratio, std], dest=i, tag=RATIOTAG)
+            comm.send([ref_ratio, sun_mask], dest=i, tag=RATIOTAG)
         
         self.atmosphere_params = atmosphere_params
         self._objective_values = []
@@ -298,6 +304,7 @@ def master(
     results_path,
     ref_imgs,
     tau=0.0,
+    ref_ratio=0.0,
     solver='ipopt',
     init_with_solution=False
     ):
@@ -333,7 +340,8 @@ def master(
         A_air=air_dist,
         results_path=results_path,
         ref_imgs=ref_imgs,
-        tau=tau
+        tau=tau,
+        ref_ratio=ref_ratio
     )
 
     if solver == 'ipopt':
@@ -546,15 +554,14 @@ def slave(
     #
     comm.send(sim_imgs, dest=0, tag=RATIOTAG)
     
-    ratio, std = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+    ref_ratio, sun_mask = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
     assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
     
     #
     # Create a mask around the sun center.
     #
     if mask_sun:
-        mask = np.exp(-std)
-        mask = np.tile(mask[:, :, np.newaxis], (1, 1, 3))
+        mask = sun_mask
     else:
         mask = 1
     
@@ -565,7 +572,7 @@ def slave(
         #
         # Note, I changeref_images in place so that ref_img is also effected.
         #
-        ref_images[i] /= ratio
+        ref_images[i] /= ref_ratio
         
         sio.savemat(
             os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
@@ -666,65 +673,52 @@ def slave(
             print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
         
 
-def loadSlaveData(atmosphere_params, ref_images, ref_ratio, mcarats, sigma, remove_sunspot):
+def loadSlaveData(
+    atmosphere_params,
+    params_path,
+    ref_mc_path,
+    mcarats,
+    sigma,
+    remove_sunspot
+    ):
     """"""
     
     if mcarats:
         raise NotImplemented('The mcarats code is not yet adapted to the new configuration files')
+
+    if not ref_mc:
+        ref_mc_path = os.path.join(__src_path__, '../data/monte_carlo_simulations', params_path)
+
+    #
+    # Load the reference images
+    #
+    closed_grids = atmosphere_params.cartesian_grids.closed
+    ref_images_list, camera_positions_list = atmotomo.loadVadimData(
+        ref_mc_path,
+        (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
+        remove_sunspot=remove_sunspot
+    )
     
-        mpi_size = min(mpi_size, len(lines)+1)
-        
-        if mpi_rank >= mpi_size:
-            sys.exit()
-                
-        path = os.path.abspath(mcarats)
-
-        R_ch, G_ch, B_ch = [np.fromfile(os.path.join(path, 'base%d_conf_out' % i), dtype=np.float32) for i in range(3)]
-        IMG_SHAPE = (128, 128)
-        IMG_SIZE = IMG_SHAPE[0] * IMG_SHAPE[1]
-        
-        if mpi_rank > 0:
-            slc = slice((mpi_rank-1)*IMG_SIZE, mpi_rank*IMG_SIZE)
-            ref_img = Mcarats.calcMcaratsImg(R_ch, G_ch, B_ch, slc, IMG_SHAPE)
-            ref_img = ref_img.astype(np.float) / MCARATS_IMG_SCALE
-        
-    elif ref_images:
-        #
-        # Load the reference images
-        #
-        closed_grids = atmosphere_params.cartesian_grids.closed
-        ref_images_list, camera_positions_list = atmotomo.loadVadimData(
-            ref_images,
-            (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
-            remove_sunspot=remove_sunspot,
-            scale=1/ref_ratio
-        )
-        
-        #
-        # Smooth the reference images if necessary
-        #
-        for ref_img in ref_images_list:
-            if sigma > 0.0:
-                for channel in range(ref_img.shape[2]):
-                    ref_img[:, :, channel] = \
-                        ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
+    #
+    # Smooth the reference images if necessary
+    #
+    for ref_img in ref_images_list:
+        if sigma > 0.0:
+            for channel in range(ref_img.shape[2]):
+                ref_img[:, :, channel] = \
+                    ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
             
-    else:
-        raise Exception('No reference images given')
-
     return ref_images_list, camera_positions_list
 
 
 def main(
     params_path,
     ref_mc=None,
-    ref_ratio=1.0,
-    use_ref_mc_position=False,
+    ref_ratio=0.0,
     mcarats=None,
     use_simulated=False,
     mask_sun=False,
     sigma=0.0,
-    transposexy=False,
     init_with_solution=False,
     solver='bfgs',
     tau=0.0,
@@ -741,10 +735,6 @@ def main(
     #
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
     
-    if transposexy:
-        air_dist = np.transpose(air_dist, [1, 0, 2])
-        aerosols_dist = np.transpose(aerosols_dist, [1, 0, 2])
-        
     #
     # Limit the number of mpi processes used.
     #
@@ -758,16 +748,13 @@ def main(
     else:
         ref_images_list, camera_positions_list_temp = loadSlaveData(
             atmosphere_params,
+            params_path,
             ref_mc,
-            ref_ratio,
             mcarats,
             sigma,
             remove_sunspot
         )
         
-        if use_ref_mc_position:
-            camera_positions_list_temp = camera_positions_list
-    
     if mpi_rank == 0:
         #
         # Create the results path
@@ -787,6 +774,7 @@ def main(
             results_path=results_path,
             ref_imgs=ref_images_list,
             tau=tau,
+            ref_ratio=ref_ratio,
             solver=solver,
             init_with_solution=init_with_solution
         )
@@ -811,11 +799,9 @@ if __name__ == '__main__':
     #
     parser = argparse.ArgumentParser(description='Analyze atmosphere')
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
-    parser.add_argument('--ref_mc', help='path to reference images of vadims code')
-    parser.add_argument('--ref_ratio', type=float, default=1.0, help='intensity ratio between reference images and the images of the single algorithm.')
-    parser.add_argument('--use_ref_mc_position', action='store_true', help='Use the position of the cameras from Vadims files')
+    parser.add_argument('--ref_mc', default=None, help='path to reference images of vadims code')
+    parser.add_argument('--ref_ratio', type=float, default=0.0, help='intensity ratio between reference images and the images of the single algorithm.')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
-    parser.add_argument('--transposexy', action='store_true', help='Transpose the xy coordinates of the atmosphere (this is due to Vadims mismatch).')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
     parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
@@ -830,12 +816,10 @@ if __name__ == '__main__':
         params_path=args.params_path,
         ref_mc=args.ref_mc,
         ref_ratio=args.ref_ratio,
-        use_ref_mc_position=args.use_ref_mc_position,
         mcarats=args.mcarats,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
         sigma=args.sigma,
-        transposexy=args.transposexy,
         init_with_solution=args.init_with_solution,
         solver=args.solver,
         tau=args.tau,

@@ -33,6 +33,7 @@ import pkg_resources
 import amitibo
 import os
 import scipy.ndimage.filters as filters
+from ._src import __src_path__
 
 __all__ = [
     "calcHG",
@@ -200,9 +201,12 @@ def readConfiguration(path):
     
     if os.path.isdir(path):
         base_path = path
-        path = os.path.join(path, 'configuration.ini')
-    else:
+    elif os.path.isfile(path):
         base_path, dump = os.path.split(path)
+    else:
+        base_path = os.path.join(__src_path__, 'data/configurations', path)
+
+    path = os.path.join(base_path, 'configuration.ini')
         
     config = ConfigObj(path)
     

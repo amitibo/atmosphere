@@ -86,6 +86,8 @@ def processSimulations():
         'two_clouds_low_density_medium_resolution',),
         ('two_clouds_high_density_high_resolution',
         'two_clouds_low_density_high_resolution',),
+        ('single_voxel_high_density_medium_resolution',
+        'single_voxel_low_density_medium_resolution',),
     )
     
     single_folders = (
@@ -99,6 +101,8 @@ def processSimulations():
         'two_clouds_low_density_medium_resolution',),
         ('two_clouds_high_density_high_resolution',
         'two_clouds_low_density_high_resolution',),
+        ('single_voxel_high_density_medium_resolution',
+        'single_voxel_low_density_medium_resolution',),
     )
     
     for mc_folder, single_folder in zip(mc_folders, single_folders):
