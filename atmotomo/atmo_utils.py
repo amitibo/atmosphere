@@ -204,10 +204,12 @@ def readConfiguration(path):
     elif os.path.isfile(path):
         base_path, dump = os.path.split(path)
     else:
-        base_path = os.path.join(__src_path__, 'data/configurations', path)
+        base_path = os.path.join(__src_path__, 'atmotomo/data/configurations', path)
 
     path = os.path.join(base_path, 'configuration.ini')
-        
+    
+    print path
+    
     config = ConfigObj(path)
     
     #

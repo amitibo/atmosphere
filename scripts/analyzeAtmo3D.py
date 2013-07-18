@@ -686,8 +686,8 @@ def loadSlaveData(
     if mcarats:
         raise NotImplemented('The mcarats code is not yet adapted to the new configuration files')
 
-    if not ref_mc:
-        ref_mc_path = os.path.join(__src_path__, '../data/monte_carlo_simulations', params_path)
+    if not ref_mc_path:
+        ref_mc_path = os.path.join(atmotomo.__src_path__, 'data/monte_carlo_simulations', params_path)
 
     #
     # Load the reference images
@@ -713,7 +713,7 @@ def loadSlaveData(
 
 def main(
     params_path,
-    ref_mc=None,
+    ref_mc_path=None,
     ref_ratio=0.0,
     mcarats=None,
     use_simulated=False,
@@ -749,7 +749,7 @@ def main(
         ref_images_list, camera_positions_list_temp = loadSlaveData(
             atmosphere_params,
             params_path,
-            ref_mc,
+            ref_mc_path,
             mcarats,
             sigma,
             remove_sunspot
@@ -814,7 +814,7 @@ if __name__ == '__main__':
 
     main(
         params_path=args.params_path,
-        ref_mc=args.ref_mc,
+        ref_mc_path=args.ref_mc,
         ref_ratio=args.ref_ratio,
         mcarats=args.mcarats,
         use_simulated=args.use_simulated,
