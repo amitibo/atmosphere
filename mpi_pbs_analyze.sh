@@ -78,6 +78,6 @@ cd $PBS_O_WORKDIR
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --use_simulated --job_id $PBS_JOBID $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
 #mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --mask_sun --transposexy --ref_mc /u/amitibo/data/front_high_density_medium_resolution $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
 #mpirun -np 108 python $HOME/.local/bin/analyzeAtmo3D.py --tau 0.0 --mask_sun --ref_mc /u/amitibo/data/two_clouds_high_density_high_resolution $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_high_resolution/configuration.ini
-mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 two_clouds_high_density_medium_resolution
+mpirun -np 24 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --mask_sun two_clouds_high_density_medium_resolution --weights 1.0 1.0 1.0
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

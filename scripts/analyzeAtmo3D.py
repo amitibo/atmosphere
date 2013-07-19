@@ -88,7 +88,7 @@ def calcRatio(ref_img, single_img, erode=False):
 
 
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0, ref_ratio=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, tau=0.0, ref_ratio=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -129,8 +129,8 @@ class RadianceProblem(object):
         for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
             err_imgs.append(ref_img/ref_ratio - sim_img)
 
-        std = np.dstack(err_imgs).std(axis=2)
-        sun_mask = np.exp(-std)
+        mean = np.dstack(err_imgs).mean(axis=2)
+        sun_mask = np.exp(-mean)
         sun_mask = np.tile(sun_mask[:, :, np.newaxis], (1, 1, 3))
         
         sio.savemat(
@@ -146,6 +146,7 @@ class RadianceProblem(object):
             comm.send([ref_ratio, sun_mask], dest=i, tag=RATIOTAG)
         
         self.atmosphere_params = atmosphere_params
+        self.laplace_weights = laplace_weights
         self._objective_values = []
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
@@ -178,7 +179,7 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
+        x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
         obj += self._tau * np.linalg.norm(x_laplace)**2
         
         if self._objective_cnt % 1 == 0:
@@ -249,8 +250,14 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
-        grad_x_laplace = filters.laplace(x_laplace)
+        x_laplace = atmotomo.weighted_laplace(
+            x.reshape(self._atmo_shape),
+            weights=self.laplace_weights
+        )
+        grad_x_laplace = atmotomo.weighted_laplace(
+            x_laplace,
+            weights=self.laplace_weights
+        )
         
         return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
 
@@ -303,6 +310,7 @@ def master(
     aerosols_dist,
     results_path,
     ref_imgs,
+    laplace_weights,
     tau=0.0,
     ref_ratio=0.0,
     solver='ipopt',
@@ -340,6 +348,7 @@ def master(
         A_air=air_dist,
         results_path=results_path,
         ref_imgs=ref_imgs,
+        laplace_weights=laplace_weights,
         tau=tau,
         ref_ratio=ref_ratio
     )
@@ -718,6 +727,7 @@ def main(
     mcarats=None,
     use_simulated=False,
     mask_sun=False,
+    laplace_weights=(1.0, 1.0, 1.0),
     sigma=0.0,
     init_with_solution=False,
     solver='bfgs',
@@ -773,6 +783,7 @@ def main(
             aerosols_dist=aerosols_dist,
             results_path=results_path,
             ref_imgs=ref_images_list,
+            laplace_weights=laplace_weights,
             tau=tau,
             ref_ratio=ref_ratio,
             solver=solver,
@@ -810,6 +821,7 @@ if __name__ == '__main__':
     parser.add_argument('--solver', default='bfgs', help='type of solver to use [bfgs (default), global (DIRECT algorithm), ipopt]')
     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
     parser.add_argument('params_path', help='Path to simulation parameters')
+    parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
     args = parser.parse_args()
 
     main(
@@ -819,6 +831,7 @@ if __name__ == '__main__':
         mcarats=args.mcarats,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
+        laplace_weights=args.weights,
         sigma=args.sigma,
         init_with_solution=args.init_with_solution,
         solver=args.solver,
