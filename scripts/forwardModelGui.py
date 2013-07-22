@@ -217,7 +217,7 @@ class resultAnalayzer(HasTraits):
             err_img.append(ref_img[:, :, self.tr_channel] - sim_img[:, :, self.tr_channel])
             
         self.tr_err = err/len(self._ref_images)
-        std_img = np.dstack(err_img).std(axis=2)
+        std_img = np.abs(np.dstack(err_img).mean(axis=2))
         self.plotdata.set_data('std_img', std_img)
         
         std_img = self.img_container2.plots['std_img'][0]
