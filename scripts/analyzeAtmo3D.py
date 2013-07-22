@@ -87,6 +87,12 @@ def calcRatio(ref_img, single_img, erode=False):
     return ratio
 
 
+def gaussian(height, center_x, center_y, width_x, width_y):
+    """Returns a gaussian function with the given parameters"""
+
+    return lambda x,y: height*np.exp(-(((center_x-x)/width_x)**2+((center_y-y)/width_y)**2)/2)
+
+
 class RadianceProblem(object):
     def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, tau=0.0, ref_ratio=0.0):
 
@@ -128,14 +134,18 @@ class RadianceProblem(object):
         err_imgs = []
         for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
             err_imgs.append(ref_img/ref_ratio - sim_img)
-
-        mean = np.dstack(err_imgs).mean(axis=2)
-        sun_mask = np.exp(-mean)
-        sun_mask = np.tile(sun_mask[:, :, np.newaxis], (1, 1, 3))
+        err_mean = np.dstack(err_imgs).mean(axis=2)
+        sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
+        
+        img_shape = ref_imgs[0].shape
+        X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
+        gaus_mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
+        sun_mask_manual = np.tile(np.exp(-gaus_mask)[:, :, np.newaxis], (1, 1, 3))
         
         sio.savemat(
             os.path.join(results_path, 'sun_mask.mat'),
-            {'sun_mask': sun_mask},
+            {'sun_mask_auto': sun_mask_auto},
+            {'sun_mask_manual': sun_mask_manual},
             do_compression=True
         )
         
@@ -143,7 +153,7 @@ class RadianceProblem(object):
         # Send back the averaged calculated ratio
         #
         for i in range(1, mpi_size):
-            comm.send([ref_ratio, sun_mask], dest=i, tag=RATIOTAG)
+            comm.send([ref_ratio, sun_mask_auto, sun_mask_manual], dest=i, tag=RATIOTAG)
         
         self.atmosphere_params = atmosphere_params
         self.laplace_weights = laplace_weights
@@ -479,7 +489,7 @@ def slave(
     ref_images,
     switch_cams_period=5,
     use_simulated=False,
-    mask_sun=False
+    mask_sun=None
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
@@ -563,14 +573,16 @@ def slave(
     #
     comm.send(sim_imgs, dest=0, tag=RATIOTAG)
     
-    ref_ratio, sun_mask = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+    ref_ratio, sun_mask_auto, sun_mask_manual = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
     assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
     
     #
     # Create a mask around the sun center.
     #
-    if mask_sun:
-        mask = sun_mask
+    if mask_sun == 'auto':
+        mask = sun_mask_auto
+    elif mask_sun == 'manual':
+        mask = sun_mask_manual
     else:
         mask = 1
     
@@ -726,7 +738,7 @@ def main(
     ref_ratio=0.0,
     mcarats=None,
     use_simulated=False,
-    mask_sun=False,
+    mask_sun=None,
     laplace_weights=(1.0, 1.0, 1.0),
     sigma=0.0,
     init_with_solution=False,
@@ -815,7 +827,7 @@ if __name__ == '__main__':
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
-    parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
+    parser.add_argument('--mask_sun', default=None, help='Mask the area of the sun in the reference images [manual-use a predefined mask/auto-calculate mask based on error between montecarlo and single simulations].')
     parser.add_argument('--init_with_solution', action='store_true', help='Initialize the solver with the correct solution.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     parser.add_argument('--solver', default='bfgs', help='type of solver to use [bfgs (default), global (DIRECT algorithm), ipopt]')
