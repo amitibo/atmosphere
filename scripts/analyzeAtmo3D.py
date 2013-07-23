@@ -160,10 +160,22 @@ class RadianceProblem(object):
         self._objective_values = []
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
+        self._true_dist = A_aerosols
         self._results_path = results_path
         self._objective_cnt = 0
         self._tau = tau
+
+    @property
+    def tau(self):
         
+        return self._tau
+    
+    @tau.setter
+    def tau(self, tau):
+        
+        self._tau = tau
+    
+    
     def objective(self, x):
         """Calculate the objective"""
 
@@ -192,38 +204,29 @@ class RadianceProblem(object):
         x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
         obj += self._tau * np.linalg.norm(x_laplace)**2
         
-        if self._objective_cnt % 1 == 0:
+        if self._objective_cnt % 10 == 0:
             self._objective_values.append(obj)
 
             #
-            # Store temporary x in case the simulation is stoped in the middle.
+            # Store temporary radiance and objective values in case the simulation is
+            # stoped in the middle.
             #
             Y, X, Z = self.atmosphere_params.cartesian_grids.expanded
             limits = np.array([int(l) for l in self.atmosphere_params.cartesian_grids.limits])
             
             sio.savemat(
-                os.path.join(self._results_path, 'temp_rad.mat'),
+                os.path.join(self._results_path, 'temp_radiance_tau_%g.mat' % self.tau),
                 {
                     'limits': limits,
                     'Y': Y,
                     'X': X,
                     'Z': Z,
+                    'true': self._true_dist,
                     'estimated': x.reshape(self._atmo_shape),
-                },
-                do_compression=True
-            )
-            
-            #
-            # Save temporary objective values in case the simulation is stopped
-            # in the middle.
-            #
-            sio.savemat(
-                os.path.join(self._results_path, 'temp_obj.mat'),
-                {
                     'objective': np.array(self.obj_values)
                 },
                 do_compression=True
-            )
+            )           
         
         self._objective_cnt += 1
         
@@ -438,13 +441,28 @@ def master(
     else:
         import scipy.optimize as sop
         
-        x, obj, info = sop.fmin_l_bfgs_b(
-            func=radiance_problem.objective,
-            x0=x0,
-            fprime=radiance_problem.gradient,
-            bounds=[(0, None)]*x0.size,
-            maxfun=MAX_ITERATIONS
-        )
+        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+            print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
+            radiance_problem.tau = tau
+            x, obj, info = sop.fmin_l_bfgs_b(
+                func=radiance_problem.objective,
+                x0=x0,
+                fprime=radiance_problem.gradient,
+                bounds=[(0, None)]*x0.size,
+                factr=factr,
+                pgtol=pgtol,
+                maxfun=MAX_ITERATIONS
+            )
+            
+            x0 = x
+
+            #
+            # store optimization info
+            #
+            import pickle
+            with open(os.path.join(results_path, 'optimization_info_tau_%g.pkl' % tau), 'w') as f:
+                pickle.dump(info, f)    
+
 
     #
     # Kill all slaves
@@ -623,7 +641,6 @@ def slave(
             break
 
         if tag == OBJTAG:
-            print 'slave %d calculating objective' % mpi_rank
             
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
@@ -642,17 +659,13 @@ def slave(
             if (camera_num > 1) and (switch_counter % switch_cams_period == 0):
                 camera_index = (camera_index + 1) % camera_num
                 
-                print 'slave %d switching to camera index %d' % (mpi_rank, camera_index)
-                
                 cam.load(cam_paths[camera_index])        
                 cam.setA_air(A_air)
 
                 ref_img = ref_images[camera_index]
-                print 'slave %d successfully created camera' % mpi_rank
                 
                 
         elif tag == GRADTAG:
-            print 'slave %d calculating gradient' % mpi_rank
             
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
