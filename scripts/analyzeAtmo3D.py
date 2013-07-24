@@ -519,20 +519,31 @@ def slave(
     #
     # Instatiate the camera slave
     #
-    cam_paths = []
-    for camera_position in camera_positions:
+    if len(camera_positions) > 1:
+        cam_paths = []
+        for camera_position in camera_positions:
+            
+            cam_path = tempfile.mkdtemp(prefix='/gtmp/')
+            cam = Camera()
+            cam.create(
+                sun_params=sun_params,
+                atmosphere_params=atmosphere_params,
+                camera_params=camera_params,
+                camera_position=camera_position,
+                save_path=cam_path
+            )
         
-        cam_path = tempfile.mkdtemp(prefix='/gtmp/')
+            cam_paths.append(cam_path)
+    else:
         cam = Camera()
         cam.create(
             sun_params=sun_params,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=camera_position,
-            save_path=cam_path
+            camera_position=camera_positions[0]
         )
-        
-        cam_paths.append(cam_path)
+    
+        cam_paths = [None]
     
     #
     # The first data should be for creating the measured images.
@@ -555,7 +566,9 @@ def slave(
         ref_images = []
             
         for i, cam_path in enumerate(cam_paths):
-            cam.load(cam_path)        
+            if cam_path:
+                cam.load(cam_path)        
+                
             cam.setA_air(A_air)
     
             ref_img = cam.calcImage(
@@ -571,7 +584,9 @@ def slave(
     #
     sim_imgs = []
     for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
-        cam.load(cam_path)        
+        if cam_path:
+            cam.load(cam_path)        
+            
         cam.setA_air(A_air)
         
         sim_img = cam.calcImage(
@@ -687,7 +702,13 @@ def slave(
     # Save the image the relates to the calculated aerosol distribution
     #
     for i, cam_path in enumerate(cam_paths):
-        cam.load(cam_path)        
+        if cam_path:
+            cam.load(cam_path)
+            try:
+                shutil.rmtree(cam_path)
+            except Exception, e:
+                print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
+            
         cam.setA_air(A_air)
 
         final_img = cam.calcImage(
@@ -700,11 +721,6 @@ def slave(
             {'img': final_img},
             do_compression=True
         )
-        
-        try:
-            shutil.rmtree(cam_path)
-        except Exception, e:
-            print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
         
 
 def loadSlaveData(

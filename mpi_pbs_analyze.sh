@@ -25,7 +25,7 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  minerva_h_p
+#PBS -q  reg_q
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=13:ncpus=1:mpiprocs=1 -l place=free
+#PBS -l select=37:ncpus=1:mpiprocs=1 -l place=free
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -68,6 +68,8 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 13 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --mask_sun manual front_high_density_medium_resolution --weights 1.0 1.0 0.1
+mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-8 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
