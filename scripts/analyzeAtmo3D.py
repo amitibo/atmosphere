@@ -201,8 +201,9 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
-        obj += self._tau * np.linalg.norm(x_laplace)**2
+        #x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
+        #obj += self._tau * np.linalg.norm(x_laplace)**2
+        obj += self._tau * x.sum()
         
         if self._objective_cnt % 10 == 0:
             self._objective_values.append(obj)
@@ -263,17 +264,18 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = atmotomo.weighted_laplace(
-            x.reshape(self._atmo_shape),
-            weights=self.laplace_weights
-        )
-        grad_x_laplace = atmotomo.weighted_laplace(
-            x_laplace,
-            weights=self.laplace_weights
-        )
+        #x_laplace = atmotomo.weighted_laplace(
+            #x.reshape(self._atmo_shape),
+            #weights=self.laplace_weights
+        #)
+        #grad_x_laplace = atmotomo.weighted_laplace(
+            #x_laplace,
+            #weights=self.laplace_weights
+        #)
         
-        return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
-
+        #return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
+        return grad.flatten() + self._tau * np.ones(x.size)
+    
     def intermediate(
             self,
             alg_mod,
@@ -441,28 +443,38 @@ def master(
     else:
         import scipy.optimize as sop
         
-        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
-            print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
-            radiance_problem.tau = tau
-            x, obj, info = sop.fmin_l_bfgs_b(
-                func=radiance_problem.objective,
-                x0=x0,
-                fprime=radiance_problem.gradient,
-                bounds=[(0, None)]*x0.size,
-                factr=factr,
-                pgtol=pgtol,
-                maxfun=MAX_ITERATIONS
-            )
+        #for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+            #print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
+            #radiance_problem.tau = tau
+            #x, obj, info = sop.fmin_l_bfgs_b(
+                #func=radiance_problem.objective,
+                #x0=x0,
+                #fprime=radiance_problem.gradient,
+                #bounds=[(0, None)]*x0.size,
+                #factr=factr,
+                #pgtol=pgtol,
+                #maxfun=MAX_ITERATIONS
+            #)
             
-            x0 = x
+            #x0 = x
 
-            #
-            # store optimization info
-            #
-            import pickle
-            with open(os.path.join(results_path, 'optimization_info_tau_%g.pkl' % tau), 'w') as f:
-                pickle.dump(info, f)    
+            ##
+            ## store optimization info
+            ##
+            #import pickle
+            #with open(os.path.join(results_path, 'optimization_info_tau_%g.pkl' % tau), 'w') as f:
+                #pickle.dump(info, f)    
 
+
+        x, obj, info = sop.fmin_l_bfgs_b(
+            func=radiance_problem.objective,
+            x0=x0,
+            fprime=radiance_problem.gradient,
+            bounds=[(0, None)]*x0.size,
+            factr=1e6,
+            pgtol=1e-7,
+            maxfun=MAX_ITERATIONS
+        )
 
     #
     # Kill all slaves
