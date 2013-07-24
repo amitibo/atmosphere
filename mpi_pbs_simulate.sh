@@ -49,7 +49,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=1:ncpus=12:mpiprocs=12
+#PBS -l select=36:ncpus=1:mpiprocs=1 -l place=free
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -64,19 +64,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_high_resolution/configuration.ini
-#mpirun -np 108  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_high_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_medium_resolution/configuration.ini
-mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_low_density_low_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/two_clouds_high_density_low_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/front_low_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/front_high_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/low_cloud_low_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/low_cloud_high_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/high_cloud_low_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/high_cloud_high_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_low_density_medium_resolution/configuration.ini
-#mpirun -np 12  python $HOME/.local/bin/simulateAtmo3D.py --parallel $HOME/code/atmosphere/atmotomo/data/configurations/single_voxel_high_density_medium_resolution/configuration.ini
+mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel front_low_density_mediumhigh_resolution
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

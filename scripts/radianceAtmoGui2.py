@@ -11,7 +11,7 @@ from __future__ import division
 import numpy as np
 import scipy.io as sio
 from traits.api import HasTraits, Range, List, Instance, on_trait_change, Enum
-from traitsui.api import View, Item, HGroup, VGroup, DropEditor, EnumEditor
+from traitsui.api import View, Item, HGroup, VGroup, DropEditor, EnumEditor, spring, Action, Handler
 from tvtk.pyface.scene_editor import SceneEditor
 from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
 from mayavi.tools.mlab_scene_model import MlabSceneModel
@@ -21,6 +21,8 @@ from enthought.io.api import File
 from tvtk.api import tvtk
 from mayavi import mlab
 import atmotomo
+import amitibo
+import os
 
 
 def zeroBorders(s, margin=1):
@@ -35,20 +37,38 @@ def zeroBorders(s, margin=1):
     return t
 
 
+class TC_Handler(Handler):
+    
+    def do_savefig(self, info):
+
+        gui_object = info.object
+        
+        path = 'C:/Users/amitibo/Desktop'
+        
+        gui_object.scene1.anti_aliasing_frames = 16
+        gui_object.scene2.anti_aliasing_frames = 16
+        mlab.sync_camera(reference_figure=gui_object.scene1.mayavi_scene, target_figure=gui_object.scene2.mayavi_scene)
+        mlab.savefig(os.path.join(path, 'snapshot1.png'), magnification=2, figure=gui_object.scene1.mayavi_scene)
+        mlab.savefig(os.path.join(path, 'snapshot2.png'), magnification=2, figure=gui_object.scene2.mayavi_scene)
+
+
 class Visualization(HasTraits):
     scene1 = Instance(MlabSceneModel, ())
     scene2 = Instance(MlabSceneModel, ())
+    scene3 = Instance(MlabSceneModel, ())
+    scene4 = Instance(MlabSceneModel, ())
     visualization_mode = Enum('iso-surfaces', 'cross-planes')
     objective_plot = Instance(Plot)
     tr_DND = List(Instance(File))
     margin = Range(0, 20, 0)
+    save_button = Action(name = "Save Fig", action = "do_savefig")
 
     # the layout of the dialog created
     view = View(
         VGroup(
             HGroup(
                 Item('scene1',
-                     editor=SceneEditor(),
+                     editor=SceneEditor(scene_class=MayaviScene),
                      height=250,
                      width=300,
                      show_label=False
@@ -60,6 +80,21 @@ class Visualization(HasTraits):
                      show_label=False
                      ),
                 Item('objective_plot', editor=ComponentEditor(), show_label=False),
+                ),
+            HGroup(
+                Item('scene3',
+                     editor=SceneEditor(),
+                     height=250,
+                     width=300,
+                     show_label=False
+                     ),
+                Item('scene4',
+                     editor=SceneEditor(),
+                     height=250,
+                     width=300,
+                     show_label=False
+                     ),
+                spring,
                 ),
             '_',
             Item('tr_DND', label='Drag radiance mat here', editor=DropEditor()),
@@ -74,7 +109,10 @@ class Visualization(HasTraits):
                 )
                 ),
             Item('margin', label='Error Margin'),
-        )
+        ),
+        handler=TC_Handler(),
+        buttons = [save_button],
+        resizable = True
     )
 
     def __init__(self):
@@ -93,14 +131,19 @@ class Visualization(HasTraits):
         self.plotdata.set_data('x', np.arange(self.objective.size))
         self.plotdata.set_data('y', np.log(self.objective))
         
-        for radiance, scene in zip((self.radiance1, self.radiance2), (self.scene1, self.scene2)):
+        abs_err = np.abs(self.radiance1 - self.radiance2)
+        rel_err = abs_err / (self.radiance1 + amitibo.eps(self.radiance1))
+        for radiance, scene in zip(
+            (self.radiance1, self.radiance2, abs_err, rel_err),
+            (self.scene1, self.scene2, self.scene3, self.scene4)
+            ):
             mlab.clf(figure=scene.mayavi_scene)
             #scene.mayavi_scene.on_mouse_pick(self._updateCameras)
             src = scene.mlab.pipeline.scalar_field(
                 zeroBorders(self.Y, self.margin),
                 zeroBorders(self.X, self.margin),
                 zeroBorders(self.Z, self.margin),
-                zeroBorders(radiance, self.margin),
+                zeroBorders(radiance/1e6, self.margin),
                 figure=scene.mayavi_scene
             )
             src.update_image_data = True    
@@ -122,9 +165,12 @@ class Visualization(HasTraits):
                 ipw_z.ipw.reslice_interpolate = 'linear'
                 ipw_z.ipw.texture_interpolate = False
                 
-            scene.mlab.colorbar()
-            scene.mlab.outline(extent=self.limits)
-            scene.mlab.axes(ranges=self.limits, extent=self.limits)
+            scene.scene.background = (1.0, 1.0, 1.0)
+            scene.scene.foreground = (0.0, 0.0, 0.0)
+            color_bar = scene.mlab.colorbar(title='Density', label_fmt='%.1f', orientation='vertical', nb_labels=5)
+            color_bar.scalar_bar_representation.position = np.array([0.88, 0.16])            
+            scene.mlab.outline(color=(0, 0, 0), extent=self.limits)
+            #scene.mlab.axes(ranges=(0, 50, 0, 50, 0, 10), extent=self.limits)
 
     @on_trait_change('scene1.camera')
     def _updateCameras(self, picker):

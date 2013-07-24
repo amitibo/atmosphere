@@ -87,8 +87,14 @@ def calcRatio(ref_img, single_img, erode=False):
     return ratio
 
 
+def gaussian(height, center_x, center_y, width_x, width_y):
+    """Returns a gaussian function with the given parameters"""
+
+    return lambda x,y: height*np.exp(-(((center_x-x)/width_x)**2+((center_y-y)/width_y)**2)/2)
+
+
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, tau=0.0, ref_ratio=0.0):
+    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, tau=0.0, ref_ratio=0.0):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -128,14 +134,18 @@ class RadianceProblem(object):
         err_imgs = []
         for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
             err_imgs.append(ref_img/ref_ratio - sim_img)
-
-        std = np.dstack(err_imgs).std(axis=2)
-        sun_mask = np.exp(-std)
-        sun_mask = np.tile(sun_mask[:, :, np.newaxis], (1, 1, 3))
+        err_mean = np.dstack(err_imgs).mean(axis=2)
+        sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
+        
+        img_shape = ref_imgs[0].shape
+        X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
+        gaus_mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
+        sun_mask_manual = np.tile(np.exp(-gaus_mask)[:, :, np.newaxis], (1, 1, 3))
         
         sio.savemat(
             os.path.join(results_path, 'sun_mask.mat'),
-            {'sun_mask': sun_mask},
+            {'sun_mask_auto': sun_mask_auto},
+            {'sun_mask_manual': sun_mask_manual},
             do_compression=True
         )
         
@@ -143,16 +153,29 @@ class RadianceProblem(object):
         # Send back the averaged calculated ratio
         #
         for i in range(1, mpi_size):
-            comm.send([ref_ratio, sun_mask], dest=i, tag=RATIOTAG)
+            comm.send([ref_ratio, sun_mask_auto, sun_mask_manual], dest=i, tag=RATIOTAG)
         
         self.atmosphere_params = atmosphere_params
+        self.laplace_weights = laplace_weights
         self._objective_values = []
         self._intermediate_values = []
         self._atmo_shape = A_aerosols.shape
+        self._true_dist = A_aerosols
         self._results_path = results_path
         self._objective_cnt = 0
         self._tau = tau
+
+    @property
+    def tau(self):
         
+        return self._tau
+    
+    @tau.setter
+    def tau(self, tau):
+        
+        self._tau = tau
+    
+    
     def objective(self, x):
         """Calculate the objective"""
 
@@ -178,41 +201,32 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
+        x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
         obj += self._tau * np.linalg.norm(x_laplace)**2
         
-        if self._objective_cnt % 1 == 0:
+        if self._objective_cnt % 10 == 0:
             self._objective_values.append(obj)
 
             #
-            # Store temporary x in case the simulation is stoped in the middle.
+            # Store temporary radiance and objective values in case the simulation is
+            # stoped in the middle.
             #
             Y, X, Z = self.atmosphere_params.cartesian_grids.expanded
             limits = np.array([int(l) for l in self.atmosphere_params.cartesian_grids.limits])
             
             sio.savemat(
-                os.path.join(self._results_path, 'temp_rad.mat'),
+                os.path.join(self._results_path, 'temp_radiance_tau_%g.mat' % self.tau),
                 {
                     'limits': limits,
                     'Y': Y,
                     'X': X,
                     'Z': Z,
+                    'true': self._true_dist,
                     'estimated': x.reshape(self._atmo_shape),
-                },
-                do_compression=True
-            )
-            
-            #
-            # Save temporary objective values in case the simulation is stopped
-            # in the middle.
-            #
-            sio.savemat(
-                os.path.join(self._results_path, 'temp_obj.mat'),
-                {
                     'objective': np.array(self.obj_values)
                 },
                 do_compression=True
-            )
+            )           
         
         self._objective_cnt += 1
         
@@ -249,8 +263,14 @@ class RadianceProblem(object):
         #
         # Add regularization
         #
-        x_laplace = filters.laplace(x.reshape(self._atmo_shape))
-        grad_x_laplace = filters.laplace(x_laplace)
+        x_laplace = atmotomo.weighted_laplace(
+            x.reshape(self._atmo_shape),
+            weights=self.laplace_weights
+        )
+        grad_x_laplace = atmotomo.weighted_laplace(
+            x_laplace,
+            weights=self.laplace_weights
+        )
         
         return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
 
@@ -303,6 +323,7 @@ def master(
     aerosols_dist,
     results_path,
     ref_imgs,
+    laplace_weights,
     tau=0.0,
     ref_ratio=0.0,
     solver='ipopt',
@@ -340,6 +361,7 @@ def master(
         A_air=air_dist,
         results_path=results_path,
         ref_imgs=ref_imgs,
+        laplace_weights=laplace_weights,
         tau=tau,
         ref_ratio=ref_ratio
     )
@@ -419,13 +441,28 @@ def master(
     else:
         import scipy.optimize as sop
         
-        x, obj, info = sop.fmin_l_bfgs_b(
-            func=radiance_problem.objective,
-            x0=x0,
-            fprime=radiance_problem.gradient,
-            bounds=[(0, None)]*x0.size,
-            maxfun=MAX_ITERATIONS
-        )
+        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+            print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
+            radiance_problem.tau = tau
+            x, obj, info = sop.fmin_l_bfgs_b(
+                func=radiance_problem.objective,
+                x0=x0,
+                fprime=radiance_problem.gradient,
+                bounds=[(0, None)]*x0.size,
+                factr=factr,
+                pgtol=pgtol,
+                maxfun=MAX_ITERATIONS
+            )
+            
+            x0 = x
+
+            #
+            # store optimization info
+            #
+            import pickle
+            with open(os.path.join(results_path, 'optimization_info_tau_%g.pkl' % tau), 'w') as f:
+                pickle.dump(info, f)    
+
 
     #
     # Kill all slaves
@@ -470,7 +507,7 @@ def slave(
     ref_images,
     switch_cams_period=5,
     use_simulated=False,
-    mask_sun=False
+    mask_sun=None
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
@@ -554,14 +591,16 @@ def slave(
     #
     comm.send(sim_imgs, dest=0, tag=RATIOTAG)
     
-    ref_ratio, sun_mask = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+    ref_ratio, sun_mask_auto, sun_mask_manual = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
     assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
     
     #
     # Create a mask around the sun center.
     #
-    if mask_sun:
-        mask = sun_mask
+    if mask_sun == 'auto':
+        mask = sun_mask_auto
+    elif mask_sun == 'manual':
+        mask = sun_mask_manual
     else:
         mask = 1
     
@@ -602,7 +641,6 @@ def slave(
             break
 
         if tag == OBJTAG:
-            print 'slave %d calculating objective' % mpi_rank
             
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
@@ -621,17 +659,13 @@ def slave(
             if (camera_num > 1) and (switch_counter % switch_cams_period == 0):
                 camera_index = (camera_index + 1) % camera_num
                 
-                print 'slave %d switching to camera index %d' % (mpi_rank, camera_index)
-                
                 cam.load(cam_paths[camera_index])        
                 cam.setA_air(A_air)
 
                 ref_img = ref_images[camera_index]
-                print 'slave %d successfully created camera' % mpi_rank
                 
                 
         elif tag == GRADTAG:
-            print 'slave %d calculating gradient' % mpi_rank
             
             img = cam.calcImage(
                 A_aerosols=A_aerosols,
@@ -717,7 +751,8 @@ def main(
     ref_ratio=0.0,
     mcarats=None,
     use_simulated=False,
-    mask_sun=False,
+    mask_sun=None,
+    laplace_weights=(1.0, 1.0, 1.0),
     sigma=0.0,
     init_with_solution=False,
     solver='bfgs',
@@ -773,6 +808,7 @@ def main(
             aerosols_dist=aerosols_dist,
             results_path=results_path,
             ref_imgs=ref_images_list,
+            laplace_weights=laplace_weights,
             tau=tau,
             ref_ratio=ref_ratio,
             solver=solver,
@@ -804,12 +840,13 @@ if __name__ == '__main__':
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
-    parser.add_argument('--mask_sun', action='store_true', help='Mask the area of the sun in the reference images.')
+    parser.add_argument('--mask_sun', default=None, help='Mask the area of the sun in the reference images [manual-use a predefined mask/auto-calculate mask based on error between montecarlo and single simulations].')
     parser.add_argument('--init_with_solution', action='store_true', help='Initialize the solver with the correct solution.')
     parser.add_argument('--job_id', default=None, help='pbs job ID (set automatically by the PBS script)')
     parser.add_argument('--solver', default='bfgs', help='type of solver to use [bfgs (default), global (DIRECT algorithm), ipopt]')
     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
     parser.add_argument('params_path', help='Path to simulation parameters')
+    parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
     args = parser.parse_args()
 
     main(
@@ -819,6 +856,7 @@ if __name__ == '__main__':
         mcarats=args.mcarats,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,
+        laplace_weights=args.weights,
         sigma=args.sigma,
         init_with_solution=args.init_with_solution,
         solver=args.solver,
