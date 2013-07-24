@@ -107,6 +107,22 @@ def main(output_path):
         #camera_grid_size=(4, 3),
         #aerosols_typical_density=10**7
     #)
+    atmotomo.prepareSimulation(
+        path=os.path.join(output_path, 'two_clouds_low_density_mediumhigh_resolution'),
+        func=atmotomo.clouds_simulation,
+        atmosphere_params=atmosphere_mediumhigh_resolution,
+        camera_resolution=(64, 64),
+        camera_grid_size=(6, 6),
+        aerosols_typical_density=10**6
+    )
+    atmotomo.prepareSimulation(
+        path=os.path.join(output_path, 'two_clouds_high_density_mediumhigh_resolution'),
+        func=atmotomo.clouds_simulation,
+        atmosphere_params=atmosphere_mediumhigh_resolution,
+        camera_resolution=(64, 64),
+        camera_grid_size=(6, 6),
+        aerosols_typical_density=10**7
+    )
     #atmotomo.prepareSimulation(
         #path=os.path.join(output_path, 'front_low_density_medium_resolution'),
         #func=atmotomo.front_simulation,
@@ -135,22 +151,22 @@ def main(output_path):
         #atmosphere_params=atmosphere_high_resolution,
         #aerosols_typical_density=10**7
     #)
-    atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'front_low_density_mediumhigh_resolution'),
-        func=atmotomo.front_simulation,
-        atmosphere_params=atmosphere_mediumhigh_resolution,
-        camera_resolution=(64, 64),
-        camera_grid_size=(6, 6),
-        aerosols_typical_density=10**6
-    )
-    atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'front_high_density_mediumhigh_resolution'),
-        func=atmotomo.front_simulation,
-        atmosphere_params=atmosphere_mediumhigh_resolution,
-        camera_resolution=(64, 64),
-        camera_grid_size=(6, 6),
-        aerosols_typical_density=10**7
-    )
+    #atmotomo.prepareSimulation(
+        #path=os.path.join(output_path, 'front_low_density_mediumhigh_resolution'),
+        #func=atmotomo.front_simulation,
+        #atmosphere_params=atmosphere_mediumhigh_resolution,
+        #camera_resolution=(64, 64),
+        #camera_grid_size=(6, 6),
+        #aerosols_typical_density=10**6
+    #)
+    #atmotomo.prepareSimulation(
+        #path=os.path.join(output_path, 'front_high_density_mediumhigh_resolution'),
+        #func=atmotomo.front_simulation,
+        #atmosphere_params=atmosphere_mediumhigh_resolution,
+        #camera_resolution=(64, 64),
+        #camera_grid_size=(6, 6),
+        #aerosols_typical_density=10**7
+    #)
     #atmotomo.prepareSimulation(
         #path=os.path.join(output_path, 'low_cloud_low_density_medium_resolution'),
         #func=atmotomo.clouds_simulation,
