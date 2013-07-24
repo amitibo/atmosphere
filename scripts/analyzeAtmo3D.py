@@ -131,21 +131,14 @@ class RadianceProblem(object):
         #
         # Calculate the mask around the sun
         #
-        err_imgs = []
-        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
-            err_imgs.append(ref_img/ref_ratio - sim_img)
-        err_mean = np.dstack(err_imgs).mean(axis=2)
-        sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
+        sun_mask_auto = calcAutoMask(sim_imgs, ref_imgs, ref_ratio)
         
-        img_shape = ref_imgs[0].shape
-        X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
-        gaus_mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
-        sun_mask_manual = np.tile(np.exp(-gaus_mask)[:, :, np.newaxis], (1, 1, 3))
+        sun_mask_manual = calcManualMask(ref_imgs)
         
         sio.savemat(
             os.path.join(results_path, 'sun_mask.mat'),
-            {'sun_mask_auto': sun_mask_auto},
-            {'sun_mask_manual': sun_mask_manual},
+            {'sun_mask_auto': sun_mask_auto,
+            'sun_mask_manual': sun_mask_manual},
             do_compression=True
         )
         
@@ -301,6 +294,44 @@ class RadianceProblem(object):
             return self._intermediate_values
         else:
             return self._objective_values
+
+
+def calcManualMask(ref_imgs):
+    img_shape = ref_imgs[0].shape
+    
+    #
+    # Create a gaussian at the center of the sun
+    #
+    X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
+    mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
+    
+    #
+    # Mask the horizon pixel
+    #
+    Y_sensor, step = np.linspace(-1.0, 1.0, img_shape[0], endpoint=False, retstep=True)
+    X_sensor = np.linspace(-1.0, 1.0, img_shape[1], endpoint=False)
+    X_sensor, Y_sensor = np.meshgrid(X_sensor+step/2, Y_sensor+step/2)
+    R_sensor = np.sqrt(X_sensor**2 + Y_sensor**2)
+    THETA = R_sensor * np.pi / 2
+    
+    theta_threshold = THETA[:, 1].min()
+    mask[THETA>theta_threshold] = 4
+    
+    #
+    # Calculate the actual mask
+    #
+    sun_mask_manual = np.tile(np.exp(-mask)[:, :, np.newaxis], (1, 1, 3))
+    
+    return sun_mask_manual
+
+
+def calcAutoMask(sim_imgs, ref_imgs, ref_ratio):
+    err_imgs = []
+    for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+        err_imgs.append(ref_img/ref_ratio - sim_img)
+    err_mean = np.dstack(err_imgs).mean(axis=2)
+    sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
+    return sun_mask_auto
         
 
 class ParametericRadianceProblem(RadianceProblem):
@@ -505,45 +536,42 @@ def slave(
     camera_params,
     camera_positions,
     ref_images,
-    switch_cams_period=5,
     use_simulated=False,
-    mask_sun=None
+    mask_sun=None,
+    save_cams=False
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
     #import wingdbstub
     
-    assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
+    assert len(camera_positions) == len(ref_images), 'Slave_%d: The number of cameras positions, %d, and reference images, %d, should be equal' % (mpi_rank, len(camera_positions), len(ref_images))
     camera_num = len(camera_positions)
     
     #
     # Instatiate the camera slave
     #
-    if len(camera_positions) > 1:
-        cam_paths = []
-        for camera_position in camera_positions:
-            
-            cam_path = tempfile.mkdtemp(prefix='/gtmp/')
-            cam = Camera()
-            cam.create(
-                sun_params=sun_params,
-                atmosphere_params=atmosphere_params,
-                camera_params=camera_params,
-                camera_position=camera_position,
-                save_path=cam_path
-            )
+    cams_or_paths = []
+    for camera_position in camera_positions:
         
-            cam_paths.append(cam_path)
-    else:
+        if save_cams:
+            cam_path = tempfile.mkdtemp(prefix='/gtmp/')
+        else:
+            cam_path = None
+            
         cam = Camera()
         cam.create(
             sun_params=sun_params,
             atmosphere_params=atmosphere_params,
             camera_params=camera_params,
-            camera_position=camera_positions[0]
+            camera_position=camera_position,
+            save_path=cam_path
         )
     
-        cam_paths = [None]
+        if save_cams:
+            cams_or_paths.append(cam_path)
+        else:
+            cams_or_paths.append(cam)
+            
     
     #
     # The first data should be for creating the measured images.
@@ -559,17 +587,20 @@ def slave(
     A_aerosols = data[1]
     results_path = data[2]
     
+    if not save_cams:
+        for cam in cams_or_paths:
+            cam.setA_air(A_air)
+        
     #
     # Use simulated images as reference
     #
     if use_simulated:
         ref_images = []
             
-        for i, cam_path in enumerate(cam_paths):
-            if cam_path:
-                cam.load(cam_path)        
-                
-            cam.setA_air(A_air)
+        for i, cam in enumerate(cams_or_paths):
+            if save_cams:
+                cam = Camera().load(cam)                
+                cam.setA_air(A_air)
     
             ref_img = cam.calcImage(
                 A_aerosols=A_aerosols,
@@ -583,11 +614,10 @@ def slave(
     # Calculate and save simulated images
     #
     sim_imgs = []
-    for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
-        if cam_path:
-            cam.load(cam_path)        
-            
-        cam.setA_air(A_air)
+    for i, (cam, ref_img) in enumerate(zip(cams_or_paths, ref_images)):
+        if save_cams:
+            cam = Camera().load(cam)
+            cam.setA_air(A_air)
         
         sim_img = cam.calcImage(
             A_aerosols=A_aerosols,
@@ -656,42 +686,45 @@ def slave(
             break
 
         if tag == OBJTAG:
-            
-            img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-            
-            temp = ((ref_img - img) * mask).reshape((-1, 1))
-            obj = np.dot(temp.T, temp)
-            
-            comm.Send(np.array(obj), dest=0)
-            
-            #
-            # Check if there is a need to switch the cams
-            #
-            switch_counter += 1
-            if (camera_num > 1) and (switch_counter % switch_cams_period == 0):
-                camera_index = (camera_index + 1) % camera_num
-                
-                cam.load(cam_paths[camera_index])        
-                cam.setA_air(A_air)
 
-                ref_img = ref_images[camera_index]
+            obj = 0
+            for cam, ref_img in zip(cams_or_paths, ref_images):
+                if save_cams:
+                    cam = Camera().load(cam)
+                    cam.setA_air(A_air)
+
+                img = cam.calcImage(
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
                 
+                temp = ((ref_img - img) * mask).reshape((-1, 1))
+                obj += np.dot(temp.T, temp)
+            
+            comm.Send(np.array(obj), dest=0)                
                 
         elif tag == GRADTAG:
             
-            img = cam.calcImage(
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
-
-            grad = cam.calcImageGradient(
-                img_err=(ref_img-img)*mask**2,
-                A_aerosols=A_aerosols,
-                particle_params=particle_params
-            )
+            grad = None
+            for cam, ref_img in zip(cams_or_paths, ref_images):
+                if save_cams:
+                    cam = Camera().load(cam)
+                    cam.setA_air(A_air)
+                    
+                img = cam.calcImage(
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
+    
+                temp = cam.calcImageGradient(
+                    img_err=(ref_img-img)*mask**2,
+                    A_aerosols=A_aerosols,
+                    particle_params=particle_params
+                )
+                if grad == None:
+                    grad = temp
+                else:
+                    grad += temp
                     
             comm.Send([grad, grad.dtype.char], dest=0)
             
@@ -701,15 +734,16 @@ def slave(
     #
     # Save the image the relates to the calculated aerosol distribution
     #
-    for i, cam_path in enumerate(cam_paths):
-        if cam_path:
-            cam.load(cam_path)
+    for i, cam in enumerate(cams_or_paths):
+        if save_cams:
+            cam_path = cam
+            cam = Camera().load(cam_path)
+            cam.setA_air(A_air)
+
             try:
                 shutil.rmtree(cam_path)
             except Exception, e:
                 print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
-            
-        cam.setA_air(A_air)
 
         final_img = cam.calcImage(
             A_aerosols=A_aerosols,
@@ -765,6 +799,7 @@ def main(
     params_path,
     ref_mc_path=None,
     ref_ratio=0.0,
+    save_cams=False,
     mcarats=None,
     use_simulated=False,
     mask_sun=None,
@@ -841,7 +876,8 @@ def main(
             camera_positions=camera_positions,
             ref_images=ref_images,
             use_simulated=use_simulated,
-            mask_sun=mask_sun
+            mask_sun=mask_sun,
+            save_cams=save_cams
         )
 
 
@@ -853,6 +889,7 @@ if __name__ == '__main__':
     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
     parser.add_argument('--ref_mc', default=None, help='path to reference images of vadims code')
     parser.add_argument('--ref_ratio', type=float, default=0.0, help='intensity ratio between reference images and the images of the single algorithm.')
+    parser.add_argument('--save_cams', action='store_true', help='Save the cameras to temp file instead of storing them in the memory.')
     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
@@ -869,6 +906,7 @@ if __name__ == '__main__':
         params_path=args.params_path,
         ref_mc_path=args.ref_mc,
         ref_ratio=args.ref_ratio,
+        save_cams=args.save_cams,
         mcarats=args.mcarats,
         use_simulated=args.use_simulated,
         mask_sun=args.mask_sun,

@@ -34,7 +34,7 @@ class Camera(object):
         assert camera_orientation==None, "orientation not implemented yet"
         
         grids = atmosphere_params.cartesian_grids
-        self._shape = grids.shape
+        self.atmosphere_grid = atmosphere_params.cartesian_grids
         
         #
         # Calculate the distance matrices and scattering angle
@@ -99,9 +99,6 @@ class Camera(object):
         self.camera_params = camera_params
         self.sun_params = sun_params
         
-        self.A_air_ = np.empty(1)
-        self._air_exts = ()
-
         #
         # Save to disk
         #
@@ -143,6 +140,7 @@ class Camera(object):
         
         H_distances_to_sensor = spt.loadTransform(os.path.join(path, 'H_distances_to_sensor'))
         H_distances_from_sun = spt.loadTransform(os.path.join(path, 'H_distances_from_sun'))
+        self.atmosphere_grid = H_distances_from_sun.in_grids
         self.H_cart2polar = spt.loadTransform(os.path.join(path, 'H_cart2polar'))
         self.H_sensor = spt.loadTransform(os.path.join(path, 'H_sensor'))
         self.calcHDistances(H_distances_to_sensor, H_distances_from_sun)
@@ -151,6 +149,8 @@ class Camera(object):
         
         with open(os.path.join(path, 'camera.pkl'), 'r') as f:
             self.camera_params, self.sun_params = pickle.load(f)
+        
+        return self
         
     def setA_air(self, A_air):
         """Store the air distribution"""
@@ -162,7 +162,7 @@ class Camera(object):
     def set_air_extinction(self, air_exts):
         """Set the air extinction of the three color channels"""
         
-        air_ext_coef = [np.tile(air_ext.reshape((1, 1, -1)), (self._shape[0], self._shape[1], 1)).reshape((-1, 1)) for air_ext in air_exts]
+        air_ext_coef = [np.tile(air_ext.reshape((1, 1, -1)), (self.atmosphere_grid.shape[0], self.atmosphere_grid.shape[1], 1)).reshape((-1, 1)) for air_ext in air_exts]
         self.preCalcAir(air_ext_coef)
         
     def preCalcAir(self, air_ext_coefs):
