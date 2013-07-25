@@ -9,7 +9,11 @@ def main(path):
     
     for root, dirs, files in os.walk(base):
         if 'Matrixs' in dirs:
-            os.rename(os.path.join(root, 'Matrixs', 'RGB_MATRIX.mat'), os.path.join(root, 'RGB_MATRIX.mat'))
+            try:
+                os.rename(os.path.join(root, 'Matrixs', 'RGB_MATRIX.mat'), os.path.join(root, 'RGB_MATRIX.mat'))
+            except:
+                pass
+            
             shutil.rmtree(os.path.join(root, 'Matrixs'))
             dirs.remove('Matrixs')
             
