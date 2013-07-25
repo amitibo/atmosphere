@@ -25,6 +25,12 @@ import glob
 import os
 import re
 
+import matplotlib
+font = {'family' : 'normal',
+        'size'   : 22}
+
+matplotlib.rc('font', **font)
+
 IMG_SIZE = 32
 
 
@@ -36,17 +42,16 @@ class TC_Handler(Handler):
         
         sun_angle = results_object.tr_sun_angle
         
-        path = 'C:/Users/amitibo/Desktop'
-        
+        #
+        # Draw images
+        #
+        fig = plt.figure()
         for i in (1, 2):
-            figure_name = '%d.svg' % i
-            
             img = results_object.plotdata.get_data('result_img%d' % i)
         
             #
             # Draw the image
             #
-            fig = plt.figure()
             ax = plt.axes([0, 0, 1, 1]) 
             plt.imshow(img.astype(np.uint8))
             ax.get_xaxis().set_visible(False)
@@ -87,8 +92,46 @@ class TC_Handler(Handler):
                     size=30,
                     color='w'
                 )
+                
+            fig.savefig(os.path.join(results_object.base_path, 'img%d.svg' % i), format='svg')
+    
+    def do_saveplots(self, info):
         
-            amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
+        results_object = info.object
+        
+        #
+        # Draw images
+        #
+        fig = plt.figure()
+        
+        #
+        # Draw cross sections
+        # "basex", "img1_x", "img2_x", "img3_x"
+        for i, axis in enumerate(('x', 'y')):
+            base = results_object.plotdata.get_data('base%s' % axis)
+            img1 = results_object.plotdata.get_data('img1_%s' % axis)
+            img2 = results_object.plotdata.get_data('img2_%s' % axis)
+            img3 = results_object.plotdata.get_data('img3_%s' % axis)
+            
+                
+            ax = plt.axes([0, 0, 1, 1])
+            plt.plot(
+                base, img1, 'k',
+                base, img2, 'k:',
+                base, img3, 'k--'
+            )
+            
+            plt.legend(
+                ('MC', 'Sim', 'Rec'),
+                'upper right',
+                shadow=True
+            )
+            plt.grid(False)
+            plt.xlabel('%s Axis' % axis.upper())
+            plt.ylabel('Intensity')
+            plt.title('%s Cross Section' % axis.upper())
+        
+            fig.savefig(os.path.join(results_object.base_path, 'plot%d.svg' % i), format='svg')
 
     def do_makemovie(self, info):
 
@@ -145,7 +188,8 @@ class resultAnalayzer(HasTraits):
     tr_min = Int(0)
     tr_len = Int(0)
     tr_index = Range('tr_min', 'tr_len', 0, desc='Index of image in amit list')
-    save_button = Action(name = "Save Fig", action = "do_savefig")
+    save_button1 = Action(name = "Save Figures", action = "do_savefig")
+    save_button2 = Action(name = "Save Cross Sections", action = "do_saveplots")
     movie_button = Action(name = "Make Movie", action = "do_makemovie")
     tr_cross_plot1 = Instance(Plot)
     tr_cross_plot2 = Instance(Plot)
@@ -172,7 +216,7 @@ class resultAnalayzer(HasTraits):
             Item('tr_channel', label='Plot Channel', editor=EnumEditor(values={0: 'R', 1: 'G', 2: 'B'}), style='custom')
             ),
         handler=TC_Handler(),
-        buttons = [save_button, movie_button],
+        buttons = [save_button1, save_button2, movie_button],
         resizable = True
     )
 
@@ -305,13 +349,13 @@ class resultAnalayzer(HasTraits):
     def _updateDragNDrop(self):
         path = self.tr_DND[0].absolute_path
          
-        path, file_name =  os.path.split(path)
-        ref_list = glob.glob(os.path.join(path, "ref_img*.mat"))
+        self.base_path, file_name =  os.path.split(path)
+        ref_list = glob.glob(os.path.join(self.base_path, "ref_img*.mat"))
         if not ref_list:
             warning(info.ui.control, "No img found in the folder", "Warning")
             return
-        sim_list = glob.glob(os.path.join(path, "sim_img*.mat"))
-        final_list = glob.glob(os.path.join(path, "final_img*.mat"))
+        sim_list = glob.glob(os.path.join(self.base_path, "sim_img*.mat"))
+        final_list = glob.glob(os.path.join(self.base_path, "final_img*.mat"))
         
         self._ref_images = []
         self._sim_images = []
