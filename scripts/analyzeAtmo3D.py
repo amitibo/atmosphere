@@ -172,6 +172,7 @@ class RadianceProblem(object):
     def objective(self, x):
         """Calculate the objective"""
 
+        logging.log(logging.INFO, 'Objective called.')
         x = x.reshape((-1, 1))
         
         #
@@ -223,11 +224,13 @@ class RadianceProblem(object):
         
         self._objective_cnt += 1
         
+        logging.log(logging.INFO, '....objective finished.')
         return obj
     
     def gradient(self, x):
         """The callback for calculating the gradient"""
 
+        logging.log(logging.INFO, 'Gradient called.')
         x = x.reshape((-1, 1))
 
         for i in range(1, mpi_size):
@@ -265,6 +268,7 @@ class RadianceProblem(object):
             weights=self.laplace_weights
         )
         
+        logging.log(logging.INFO, '....gradient finished.')
         return grad.flatten() + 2 * self._tau * grad_x_laplace.flatten()
 
     def intermediate(
@@ -366,6 +370,7 @@ def master(
     
     logging.basicConfig(
         filename=os.path.join(results_path, 'run.log'),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.DEBUG
     )
 
@@ -472,7 +477,7 @@ def master(
     else:
         import scipy.optimize as sop
         
-        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
             print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
             radiance_problem.tau = tau
             x, obj, info = sop.fmin_l_bfgs_b(
