@@ -1,0 +1,66 @@
+diff -r dd64faf7fdad mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Thu Jul 25 16:50:55 2013 +0300
++++ b/mpi_pbs_analyze.sh	Thu Jul 25 11:59:35 2013 -0500
+@@ -29,7 +29,7 @@
+ #
+ #  bigmech_q                                           The queue of Dan Mordechai
+ #
+-#PBS -q all_l_p
++#PBS -q bigmech_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -53,7 +53,7 @@
+ #
+ # resource limits: number and distribution of parallel processes 
+ #------------------------------------------------------------------ 
+-#PBS -l select=101:ncpus=1:mpiprocs=1 -l place=free
++#PBS -l select=37:ncpus=1:mpiprocs=1 -l place=free
+ #
+ # comment: this select statement means: use M chunks (nodes), 
+ # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 101 python $HOME/.local/bin/analyzeAtmo3D.py --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_high_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --init_with_solution --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r dd64faf7fdad mpi_pbs_simulate.sh
+--- a/mpi_pbs_simulate.sh	Thu Jul 25 16:50:55 2013 +0300
++++ b/mpi_pbs_simulate.sh	Thu Jul 25 11:59:35 2013 -0500
+@@ -25,7 +25,11 @@
+ #   General		Low	      general_ld	    wall time limit=24 h            
+ #  Large Disk						    av. hosts n097 - n100                    All users
+ #
+-#PBS -q  all_l_p
++#  amir_q                                              The queue of Oded Amir
++#
++#  bigmech_q                                           The queue of Dan Mordechai
++#
++#PBS -q  amir_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -65,5 +69,7 @@
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+ mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID front_low_density_mediumhigh_resolution
++mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID front_high_density_mediumhigh_resolution
++mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r dd64faf7fdad scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Thu Jul 25 16:50:55 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Thu Jul 25 11:59:35 2013 -0500
+@@ -318,8 +318,7 @@
+     R_sensor = np.sqrt(X_sensor**2 + Y_sensor**2)
+     THETA = R_sensor * np.pi / 2
+     
+-    theta_threshold = THETA[:, 1].min()
+-    mask[THETA>theta_threshold] = 4
++    mask[THETA>(np.pi/2*80/90)] = 4
+     
+     #
+     # Calculate the actual mask

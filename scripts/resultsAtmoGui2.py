@@ -27,11 +27,11 @@ import re
 
 import matplotlib
 font = {'family' : 'normal',
-        'size'   : 22}
+        'size'   : 28}
 
 matplotlib.rc('font', **font)
 
-IMG_SIZE = 32
+IMG_SIZE = 64
 
 
 class TC_Handler(Handler):
@@ -100,14 +100,10 @@ class TC_Handler(Handler):
         results_object = info.object
         
         #
-        # Draw images
-        #
-        fig = plt.figure()
-        
-        #
         # Draw cross sections
         # "basex", "img1_x", "img2_x", "img3_x"
         for i, axis in enumerate(('x', 'y')):
+            fig = plt.figure()
             base = results_object.plotdata.get_data('base%s' % axis)
             img1 = results_object.plotdata.get_data('img1_%s' % axis)
             img2 = results_object.plotdata.get_data('img2_%s' % axis)
@@ -118,11 +114,12 @@ class TC_Handler(Handler):
             plt.plot(
                 base, img1, 'k',
                 base, img2, 'k:',
-                base, img3, 'k--'
+                base, img3, 'k--',
+                linewidth=2.0
             )
             
             plt.legend(
-                ('MC', 'Sim', 'Rec'),
+                ('MC', 'Single', 'Recon'),
                 'upper right',
                 shadow=True
             )
@@ -130,8 +127,9 @@ class TC_Handler(Handler):
             plt.xlabel('%s Axis' % axis.upper())
             plt.ylabel('Intensity')
             plt.title('%s Cross Section' % axis.upper())
-        
-            fig.savefig(os.path.join(results_object.base_path, 'plot%d.svg' % i), format='svg')
+            plt.xlim(0, IMG_SIZE)
+            
+            fig.savefig(os.path.join(results_object.base_path, 'cross_section_%s.svg' % axis), format='svg')
 
     def do_makemovie(self, info):
 
