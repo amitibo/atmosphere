@@ -29,7 +29,7 @@
 #
 #  bigmech_q                                           The queue of Dan Mordechai
 #
-#PBS -q bigmech_q
+#PBS -q amir_q
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -72,6 +72,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --init_with_solution --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.01 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
