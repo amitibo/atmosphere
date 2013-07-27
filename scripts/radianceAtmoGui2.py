@@ -65,6 +65,7 @@ class Visualization(HasTraits):
     scene2 = Instance(MlabSceneModel, ())
     scene3 = Instance(MlabSceneModel, ())
     scene4 = Instance(MlabSceneModel, ())
+    scene5 = Instance(MlabSceneModel, ())
     visualization_mode = Enum('iso-surfaces', 'cross-planes')
     objective_plot = Instance(Plot)
     tr_DND = List(Instance(File))
@@ -103,7 +104,12 @@ class Visualization(HasTraits):
                      width=300,
                      show_label=False
                      ),
-                spring,
+                Item('scene5',
+                     editor=SceneEditor(),
+                     height=250,
+                     width=300,
+                     show_label=False
+                     ),
                 ),
             '_',
             Item('tr_DND', label='Drag radiance mat here', editor=DropEditor()),
@@ -147,10 +153,11 @@ class Visualization(HasTraits):
         
         abs_err = np.abs(self.radiance1 - self.radiance2)
         rel_err = abs_err / (self.radiance1 + amitibo.eps(self.radiance1))
+        laplacian = np.abs(atmotomo.weighted_laplace(self.radiance2, weights=(1, 1, 0.1)))
         color_bars = []
         for radiance, scene in zip(
-            (self.radiance1, self.radiance2, abs_err, rel_err),
-            (self.scene1, self.scene2, self.scene3, self.scene4)
+            (self.radiance1, self.radiance2, abs_err, rel_err, laplacian),
+            (self.scene1, self.scene2, self.scene3, self.scene4, self.scene5)
             ):
             mlab.clf(figure=scene.mayavi_scene)
             src = scene.mlab.pipeline.scalar_field(
