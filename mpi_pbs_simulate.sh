@@ -25,7 +25,11 @@
 #   General		Low	      general_ld	    wall time limit=24 h            
 #  Large Disk						    av. hosts n097 - n100                    All users
 #
-#PBS -q  all_l_p
+#  amir_q                                              The queue of Oded Amir
+#
+#  bigmech_q                                           The queue of Dan Mordechai
+#
+#PBS -q  amir_q
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -64,6 +68,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID front_low_density_mediumhigh_resolution
+mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_low_density_mediumhigh_resolution
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

@@ -318,8 +318,7 @@ def calcManualMask(ref_imgs):
     R_sensor = np.sqrt(X_sensor**2 + Y_sensor**2)
     THETA = R_sensor * np.pi / 2
     
-    theta_threshold = THETA[:, 1].min()
-    mask[THETA>theta_threshold] = 4
+    mask[THETA>(np.pi/2*80/90)] = 4
     
     #
     # Calculate the actual mask
