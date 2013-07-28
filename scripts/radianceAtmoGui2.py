@@ -232,7 +232,7 @@ class Visualization(HasTraits):
         self.radiance2 = atmotomo.fixmat(data['estimated'])
         self.objective = atmotomo.fixmat(data['objective']).ravel()
         
-        if data.has_key('limit'):
+        if data.has_key('limits'):
             self.Y = atmotomo.fixmat(data['Y'])
             self.X = atmotomo.fixmat(data['X'])
             self.Z = atmotomo.fixmat(data['Z'])

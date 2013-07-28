@@ -6,6 +6,7 @@ import numpy as np
 from atmotomo import L_SUN_RGB, RGB_WAVELENGTH
 import amitibo
 import os
+import scipy.ndimage.filters as filters
 
 __all__ = [
     "single_voxel_simulation",
@@ -283,6 +284,7 @@ def calcAirMcarats(Z):
 def prepareSimulation(
     path,
     func,
+    smoothing_sigma=0.0,
     *params,
     **kwrds
     ):
@@ -307,6 +309,9 @@ def prepareSimulation(
     #
     data, air_dist, aerosols_dist = func(*params, **kwrds)
     
+    if smoothing_sigma > 0.0:
+        aerosols_dist = filters.gaussian_filter(aerosols_dist, sigma=smoothing_sigma)
+        
     sio.savemat(
         os.path.join(path, 'air_dist.mat'),
         {'distribution': air_dist},
