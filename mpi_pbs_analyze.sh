@@ -29,7 +29,7 @@
 #
 #  bigmech_q                                           The queue of Dan Mordechai
 #
-#PBS -q all_l_p
+#PBS -q amir_q
 #
 # Send the mail messages (see below) to the specified user address 
 #-----------------------------------------------------------------
@@ -53,7 +53,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=101:ncpus=1:mpiprocs=1 -l place=free
+#PBS -l select=37:ncpus=1:mpiprocs=1 -l place=free
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -72,7 +72,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 101 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_high_resolution --weights 1.0 1.0 0.1
-mpirun -np 101 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual front_high_density_high_resolution --weights 1.0 1.0 0.1
+mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

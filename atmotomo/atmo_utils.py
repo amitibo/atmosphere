@@ -193,7 +193,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
     return img_list, cameras_list
 
 
-def readConfiguration(path):
+def readConfiguration(path, highten_atmosphere=False):
     
     from configobj import ConfigObj
     import sparse_transforms as spt
@@ -222,6 +222,16 @@ def readConfiguration(path):
     nx = atmosphere_section.as_int('nx')
     z_coords = np.array([float(i) for i in atmosphere_section.as_list('z_coords')])
     
+    #
+    # Check if there is a need to extend the atmosphere up.
+    #
+    if highten_atmosphere:
+        dz = z_coords[-1] - z_coords[-2]
+        nz = len(z_coords)
+        ext_nz = min(10, int(nz/2))
+        ext_z_coords = np.arange(1, ext_nz+1) * dz + z_coords[-1]
+        z_coords = np.concatenate((z_coords, ext_z_coords))
+        
     atmosphere_params = amitibo.attrClass(
         cartesian_grids=spt.Grids(
             np.arange(0, ny*dy, dy), # Y
@@ -257,6 +267,13 @@ def readConfiguration(path):
     aerosols_dist = fixmat(sio.loadmat(aerosols_dist_path)['distribution'])
     
     #
+    # Check if there is a need to extend the atmosphere up.
+    #
+    if highten_atmosphere:
+        air_dist = hightenDist(air_dist, target_shape=atmosphere_params.cartesian_grids.shape)
+        aerosols_dist = hightenDist(aerosols_dist, target_shape=atmosphere_params.cartesian_grids.shape)
+        
+    #
     # Load particle
     #
     particle_section = config['particle']
@@ -291,6 +308,12 @@ def readConfiguration(path):
     cameras=[(camera_y[i], camera_x[i], camera_z[i]) for i in range(camera_section.as_int('cameras_num'))]
 
     return atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist
+
+
+def hightenDist(dist, target_shape):
+    temp_dist = np.zeros(target_shape)
+    temp_dist[:dist.shape[0], :dist.shape[1], :dist.shape[2]] = dist
+    return temp_dist
 
 
 def weighted_laplace(input, weights, output = None, mode = "reflect", cval = 0.0):

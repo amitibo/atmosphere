@@ -856,6 +856,7 @@ def main(
     tau=0.0,
     regularization_decay=0.0,
     remove_sunspot=False,
+    highten_atmosphere=False,
     run_arguments=None
     ):
     
@@ -866,7 +867,7 @@ def main(
     #
     # Load the simulation params
     #
-    atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
+    atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path, highten_atmosphere)
     
     #
     # Limit the number of mpi processes used.
@@ -950,6 +951,7 @@ if __name__ == '__main__':
     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
     parser.add_argument('params_path', help='Path to simulation parameters')
     parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
+    parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
     args = parser.parse_args()
 
     main(
@@ -967,5 +969,6 @@ if __name__ == '__main__':
         tau=args.tau,
         regularization_decay=args.regularization_decay,
         remove_sunspot=args.remove_sunspot,
+        highten_atmosphere=args.highten_atmosphere,
         run_arguments=args
     )
