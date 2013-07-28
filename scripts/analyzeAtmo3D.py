@@ -94,7 +94,19 @@ def gaussian(height, center_x, center_y, width_x, width_y):
 
 
 class RadianceProblem(object):
-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, regularization_decay=1.0, tau=0.0, ref_ratio=0.0):
+    def __init__(
+        self,
+        atmosphere_params,
+        A_aerosols,
+        A_air,
+        results_path,
+        ref_imgs,
+        laplace_weights,
+        regularization_decay=1.0,
+        tau=0.0,
+        ref_ratio=0.0,
+        use_simulated=False        
+        ):
 
         #
         # Send the real atmospheric distribution to all childs so as to create the measurement.
@@ -102,38 +114,54 @@ class RadianceProblem(object):
         for i in range(1, mpi_size):
             comm.send([A_air, A_aerosols, results_path], dest=i, tag=IMGTAG)
 
-        #
-        # Recieve the simulated images and sort according to rank
-        #
-        sts = MPI.Status()
-
-        unsort_sim_imgs = []
-        sim_imgs_src = []
-        for i in range(1, mpi_size):
-            unsort_sim_imgs.append(comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=sts))
-            assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'            
-            sim_imgs_src.append(sts.source)
+        if not use_simulated:
+            #
+            # Recieve the simulated images and sort according to rank
+            #
+            sts = MPI.Status()
+    
+            unsort_sim_imgs = []
+            sim_imgs_src = []
+            for i in range(1, mpi_size):
+                unsort_sim_imgs.append(comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=sts))
+                assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'            
+                sim_imgs_src.append(sts.source)
+            
+            sim_imgs = []
+            for i in np.argsort(sim_imgs_src):
+                sim_imgs += unsort_sim_imgs[i]
+    
+            #
+            # if ratio is not given it is calculated automaticall
+            #
+            if ref_ratio == 0.0:
+                means = []
+                for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+                    means.append(calcRatio(ref_img, sim_img))
+                    
+                ref_ratio = np.mean(means)
+    
+            #
+            # Calculate the mask around the sun
+            #
+            sun_mask_auto = calcAutoMask(sim_imgs, ref_imgs, ref_ratio)
+            
+            sun_mask_manual = calcManualMask(ref_imgs)
+            
+            sio.savemat(
+                os.path.join(results_path, 'sun_mask.mat'),
+                {
+                    'sun_mask_auto': sun_mask_auto,
+                    'sun_mask_manual': sun_mask_manual
+                },
+                do_compression=True
+            )
         
-        sim_imgs = []
-        for i in np.argsort(sim_imgs_src):
-            sim_imgs += unsort_sim_imgs[i]
-
-        #
-        # if ratio is not given it is calculated automaticall
-        #
-        if ref_ratio == 0.0:
-            means = []
-            for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
-                means.append(calcRatio(ref_img, sim_img))
-                
-            ref_ratio = np.mean(means)
-
-        #
-        # Calculate the mask around the sun
-        #
-        sun_mask_auto = calcAutoMask(sim_imgs, ref_imgs, ref_ratio)
-        
-        sun_mask_manual = calcManualMask(ref_imgs)
+            #
+            # Send back the averaged calculated ratio
+            #
+            for i in range(1, mpi_size):
+                comm.send([ref_ratio, sun_mask_auto, sun_mask_manual], dest=i, tag=RATIOTAG)
         
         #
         # Calculate a height dependant weight map for the regularization
@@ -141,21 +169,6 @@ class RadianceProblem(object):
         Y, X, Z = atmosphere_params.cartesian_grids.expanded
         self._regu_mask = np.exp(-Z * regularization_decay)
 
-        sio.savemat(
-            os.path.join(results_path, 'sun_mask.mat'),
-            {'sun_mask_auto': sun_mask_auto,
-            'sun_mask_manual': sun_mask_manual,
-            'regularization_mask': self._regu_mask
-            },
-            do_compression=True
-        )
-        
-        #
-        # Send back the averaged calculated ratio
-        #
-        for i in range(1, mpi_size):
-            comm.send([ref_ratio, sun_mask_auto, sun_mask_manual], dest=i, tag=RATIOTAG)
-        
         self.atmosphere_params = atmosphere_params
         self.laplace_weights = laplace_weights
         self._objective_values = []
@@ -381,7 +394,8 @@ def master(
     regularization_decay=0.0,
     ref_ratio=0.0,
     solver='ipopt',
-    init_with_solution=False
+    use_simulated=False,    
+    init_with_solution=False,
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
@@ -419,7 +433,8 @@ def master(
         laplace_weights=laplace_weights,
         tau=tau,
         regularization_decay=regularization_decay,
-        ref_ratio=ref_ratio
+        ref_ratio=ref_ratio,
+        use_simulated=use_simulated
     )
 
     if solver == 'ipopt':
@@ -573,7 +588,7 @@ def slave(
     camera_num = len(camera_positions)
     
     #
-    # Instatiate the camera slave
+    # Instantiate the camera slave
     #
     cams_or_paths = []
     for camera_position in camera_positions:
@@ -617,6 +632,27 @@ def slave(
             cam.setA_air(A_air)
         
     #
+    # Calculate and save simulated images
+    #
+    sim_imgs = []
+    for i, cam in enumerate(cams_or_paths):
+        if save_cams:
+            cam = Camera().load(cam)
+            cam.setA_air(A_air)
+        
+        sim_img = cam.calcImage(
+            A_aerosols=A_aerosols,
+            particle_params=particle_params
+        )
+        sim_imgs.append(sim_img)
+        
+        sio.savemat(
+            os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
+            {'img': sim_img},
+            do_compression=True
+        )
+    
+    #
     # Use simulated images as reference
     #
     if use_simulated:
@@ -635,54 +671,39 @@ def slave(
             
             ref_images.append(ref_img)
 
-    #
-    # Calculate and save simulated images
-    #
-    sim_imgs = []
-    for i, (cam, ref_img) in enumerate(zip(cams_or_paths, ref_images)):
-        if save_cams:
-            cam = Camera().load(cam)
-            cam.setA_air(A_air)
-        
-        sim_img = cam.calcImage(
-            A_aerosols=A_aerosols,
-            particle_params=particle_params
-        )
-        sim_imgs.append(sim_img)
-        
-        sio.savemat(
-            os.path.join(results_path, 'sim_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
-            {'img': sim_img},
-            do_compression=True
-        )
-    
-    #
-    # Send back the simulated images receive the global ratio and std image
-    #
-    comm.send(sim_imgs, dest=0, tag=RATIOTAG)
-    
-    ref_ratio, sun_mask_auto, sun_mask_manual = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
-    assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
-    
-    #
-    # Create a mask around the sun center.
-    #
-    if mask_sun == 'auto':
-        mask = sun_mask_auto
-    elif mask_sun == 'manual':
-        mask = sun_mask_manual
+        sun_mask = 1
     else:
-        mask = 1
+        #
+        # Send back the simulated images receive the global ratio and std image
+        #
+        comm.send(sim_imgs, dest=0, tag=RATIOTAG)
+        
+        ref_ratio, sun_mask_auto, sun_mask_manual = comm.recv(source=0, tag=MPI.ANY_TAG, status=sts)
+        assert sts.tag == RATIOTAG, 'Expecting the RATIO tag'
+        
+        #
+        # Create a mask around the sun center.
+        #
+        if mask_sun == 'auto':
+            sun_mask = sun_mask_auto
+        elif mask_sun == 'manual':
+            sun_mask = sun_mask_manual
+        else:
+            sun_mask = 1
     
+        #
+        # Update the reference images according to the ref_ratio
+        #
+        for i, ref_img in enumerate(ref_images):
+            #
+            # Note, I change ref_images in place so that ref_img is also effected.
+            #
+            ref_images[i] /= ref_ratio
+                
     #
     # Save the ref images
     #
     for i, ref_img in enumerate(ref_images):
-        #
-        # Note, I changeref_images in place so that ref_img is also effected.
-        #
-        ref_images[i] /= ref_ratio
-        
         sio.savemat(
             os.path.join(results_path, 'ref_img' + ('0000%d%d.mat' % (mpi_rank, i))[-9:]),
             {'img': ref_img},
@@ -723,7 +744,7 @@ def slave(
                     particle_params=particle_params
                 )
                 
-                temp = ((ref_img - img) * mask).reshape((-1, 1))
+                temp = ((ref_img - img) * sun_mask).reshape((-1, 1))
                 obj += np.dot(temp.T, temp)
             
             comm.Send(np.array(obj), dest=0)                
@@ -742,7 +763,7 @@ def slave(
                 )
     
                 temp = cam.calcImageGradient(
-                    img_err=(ref_img-img)*mask**2,
+                    img_err=(ref_img-img)*sun_mask**2,
                     A_aerosols=A_aerosols,
                     particle_params=particle_params
                 )
@@ -890,6 +911,7 @@ def main(
             regularization_decay=regularization_decay,
             ref_ratio=ref_ratio,
             solver=solver,
+            use_simulated=use_simulated,
             init_with_solution=init_with_solution
         )
     else:
