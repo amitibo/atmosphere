@@ -1,0 +1,134 @@
+diff -r da05477b0bc5 mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Sat Jul 27 12:34:26 2013 +0300
++++ b/mpi_pbs_analyze.sh	Sat Jul 27 05:46:26 2013 -0500
+@@ -29,7 +29,7 @@
+ #
+ #  bigmech_q                                           The queue of Dan Mordechai
+ #
+-#PBS -q bigmech_q
++#PBS -q amir_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --init_with_solution --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.01 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r da05477b0bc5 scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Sat Jul 27 12:34:26 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Sat Jul 27 05:46:26 2013 -0500
+@@ -94,7 +94,7 @@
+ 
+ 
+ class RadianceProblem(object):
+-    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, tau=0.0, ref_ratio=0.0):
++    def __init__(self, atmosphere_params, A_aerosols, A_air, results_path, ref_imgs, laplace_weights, regularization_decay=1.0, tau=0.0, ref_ratio=0.0):
+ 
+         #
+         # Send the real atmospheric distribution to all childs so as to create the measurement.
+@@ -135,10 +135,18 @@
+         
+         sun_mask_manual = calcManualMask(ref_imgs)
+         
++        #
++        # Calculate a height dependant weight map for the regularization
++        #
++        Y, X, Z = atmosphere_params.cartesian_grids.expanded
++        self._regu_mask = np.exp(-Z * regularization_decay)
++
+         sio.savemat(
+             os.path.join(results_path, 'sun_mask.mat'),
+             {'sun_mask_auto': sun_mask_auto,
+-            'sun_mask_manual': sun_mask_manual},
++            'sun_mask_manual': sun_mask_manual,
++            'regularization_mask': self._regu_mask
++            },
+             do_compression=True
+         )
+         
+@@ -157,7 +165,7 @@
+         self._results_path = results_path
+         self._objective_cnt = 0
+         self._tau = tau
+-
++        
+     @property
+     def tau(self):
+         
+@@ -196,6 +204,12 @@
+         # Add regularization
+         #
+         x_laplace = atmotomo.weighted_laplace(x.reshape(self._atmo_shape), weights=self.laplace_weights)
++        
++        #
++        # Apply a height dependant masking to the regularization
++        #
++        x_laplace *= self._regu_mask
++        
+         obj += self._tau * np.linalg.norm(x_laplace)**2
+         
+         if self._objective_cnt % 10 == 0:
+@@ -263,6 +277,11 @@
+             x.reshape(self._atmo_shape),
+             weights=self.laplace_weights
+         )
++        #
++        # Apply height dependant map
++        #
++        x_laplace *= self._regu_mask * self._regu_mask
++        
+         grad_x_laplace = atmotomo.weighted_laplace(
+             x_laplace,
+             weights=self.laplace_weights
+@@ -359,6 +378,7 @@
+     ref_imgs,
+     laplace_weights,
+     tau=0.0,
++    regularization_decay=0.0,
+     ref_ratio=0.0,
+     solver='ipopt',
+     init_with_solution=False
+@@ -398,6 +418,7 @@
+         ref_imgs=ref_imgs,
+         laplace_weights=laplace_weights,
+         tau=tau,
++        regularization_decay=regularization_decay,
+         ref_ratio=ref_ratio
+     )
+ 
+@@ -812,6 +833,7 @@
+     init_with_solution=False,
+     solver='bfgs',
+     tau=0.0,
++    regularization_decay=0.0,
+     remove_sunspot=False,
+     run_arguments=None
+     ):
+@@ -865,6 +887,7 @@
+             ref_imgs=ref_images_list,
+             laplace_weights=laplace_weights,
+             tau=tau,
++            regularization_decay=regularization_decay,
+             ref_ratio=ref_ratio,
+             solver=solver,
+             init_with_solution=init_with_solution
+@@ -893,6 +916,7 @@
+     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
+     parser.add_argument('--ref_mc', default=None, help='path to reference images of vadims code')
+     parser.add_argument('--ref_ratio', type=float, default=0.0, help='intensity ratio between reference images and the images of the single algorithm.')
++    parser.add_argument('--regularization_decay', type=float, default=0.0, help='Ratio of decay of the regularization')
+     parser.add_argument('--save_cams', action='store_true', help='Save the cameras to temp file instead of storing them in the memory.')
+     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
+@@ -919,6 +943,7 @@
+         init_with_solution=args.init_with_solution,
+         solver=args.solver,
+         tau=args.tau,
++        regularization_decay=args.regularization_decay,
+         remove_sunspot=args.remove_sunspot,
+         run_arguments=args
+     )

@@ -1,0 +1,32 @@
+diff -r 012a6e101310 mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Tue Jul 30 10:40:52 2013 +0300
++++ b/mpi_pbs_analyze.sh	Tue Jul 30 03:01:50 2013 -0500
+@@ -29,7 +29,7 @@
+ #
+ #  bigmech_q                                           The queue of Dan Mordechai
+ #
+-#PBS -q amir_q
++#PBS -q bigmech_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual front_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution_smooth --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r 012a6e101310 scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Tue Jul 30 10:40:52 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Tue Jul 30 03:01:50 2013 -0500
+@@ -329,7 +329,7 @@
+         self,
+         x
+         ):
+-        
++        return
+         y = x.reshape(self._atmo_shape)
+         y[:, :, -self.zero_TOA_voxels:] = 0
+ 

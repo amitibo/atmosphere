@@ -1,0 +1,24 @@
+diff -r 13a5f54d2aee mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Wed Jul 24 14:45:53 2013 +0300
++++ b/mpi_pbs_analyze.sh	Wed Jul 24 06:40:42 2013 -0500
+@@ -25,7 +25,7 @@
+ #   General		Low	      general_ld	    wall time limit=24 h            
+ #  Large Disk						    av. hosts n097 - n100                    All users
+ #
+-#PBS -q  reg_q
++#PBS -q amir_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+diff -r 13a5f54d2aee scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Wed Jul 24 14:45:53 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Wed Jul 24 06:40:42 2013 -0500
+@@ -513,7 +513,7 @@
+     #import rpdb2; rpdb2.start_embedded_debugger('pep')
+     #import wingdbstub
+     
+-    assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
++    assert len(camera_positions) == len(ref_images), 'Slave_%d: The number of cameras positions, %d, and reference images, %d, should be equal' % (mpi_rank, len(camera_positions), len(ref_images))
+     camera_num = len(camera_positions)
+     
+     #

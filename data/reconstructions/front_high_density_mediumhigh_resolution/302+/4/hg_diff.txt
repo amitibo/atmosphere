@@ -1,0 +1,380 @@
+diff -r 13a5f54d2aee atmotomo/camera.py
+--- a/atmotomo/camera.py	Wed Jul 24 14:45:53 2013 +0300
++++ b/atmotomo/camera.py	Wed Jul 24 09:59:47 2013 -0500
+@@ -34,7 +34,7 @@
+         assert camera_orientation==None, "orientation not implemented yet"
+         
+         grids = atmosphere_params.cartesian_grids
+-        self._shape = grids.shape
++        self.atmosphere_grid = atmosphere_params.cartesian_grids
+         
+         #
+         # Calculate the distance matrices and scattering angle
+@@ -99,9 +99,6 @@
+         self.camera_params = camera_params
+         self.sun_params = sun_params
+         
+-        self.A_air_ = np.empty(1)
+-        self._air_exts = ()
+-
+         #
+         # Save to disk
+         #
+@@ -143,6 +140,7 @@
+         
+         H_distances_to_sensor = spt.loadTransform(os.path.join(path, 'H_distances_to_sensor'))
+         H_distances_from_sun = spt.loadTransform(os.path.join(path, 'H_distances_from_sun'))
++        self.atmosphere_grid = H_distances_from_sun.in_grids
+         self.H_cart2polar = spt.loadTransform(os.path.join(path, 'H_cart2polar'))
+         self.H_sensor = spt.loadTransform(os.path.join(path, 'H_sensor'))
+         self.calcHDistances(H_distances_to_sensor, H_distances_from_sun)
+@@ -152,6 +150,8 @@
+         with open(os.path.join(path, 'camera.pkl'), 'r') as f:
+             self.camera_params, self.sun_params = pickle.load(f)
+         
++        return self
++        
+     def setA_air(self, A_air):
+         """Store the air distribution"""
+         
+@@ -162,7 +162,7 @@
+     def set_air_extinction(self, air_exts):
+         """Set the air extinction of the three color channels"""
+         
+-        air_ext_coef = [np.tile(air_ext.reshape((1, 1, -1)), (self._shape[0], self._shape[1], 1)).reshape((-1, 1)) for air_ext in air_exts]
++        air_ext_coef = [np.tile(air_ext.reshape((1, 1, -1)), (self.atmosphere_grid.shape[0], self.atmosphere_grid.shape[1], 1)).reshape((-1, 1)) for air_ext in air_exts]
+         self.preCalcAir(air_ext_coef)
+         
+     def preCalcAir(self, air_ext_coefs):
+diff -r 13a5f54d2aee mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Wed Jul 24 14:45:53 2013 +0300
++++ b/mpi_pbs_analyze.sh	Wed Jul 24 09:59:47 2013 -0500
+@@ -25,7 +25,11 @@
+ #   General		Low	      general_ld	    wall time limit=24 h            
+ #  Large Disk						    av. hosts n097 - n100                    All users
+ #
+-#PBS -q  reg_q
++#  amir_q                                              The queue of Oded Amir
++#
++#  bigmech_q                                           The queue of Dan Mordechai
++#
++#PBS -q bigmech_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -68,8 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-8 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-10 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-12 --mask_sun manual front_low_density_mediumhigh_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --tau 1.0e-8 --mask_sun manual front_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r 13a5f54d2aee scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Wed Jul 24 14:45:53 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Wed Jul 24 09:59:47 2013 -0500
+@@ -131,16 +131,9 @@
+         #
+         # Calculate the mask around the sun
+         #
+-        err_imgs = []
+-        for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
+-            err_imgs.append(ref_img/ref_ratio - sim_img)
+-        err_mean = np.dstack(err_imgs).mean(axis=2)
+-        sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
++        sun_mask_auto = calcAutoMask(sim_imgs, ref_imgs, ref_ratio)
+         
+-        img_shape = ref_imgs[0].shape
+-        X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
+-        gaus_mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
+-        sun_mask_manual = np.tile(np.exp(-gaus_mask)[:, :, np.newaxis], (1, 1, 3))
++        sun_mask_manual = calcManualMask(ref_imgs)
+         
+         sio.savemat(
+             os.path.join(results_path, 'sun_mask.mat'),
+@@ -301,6 +294,44 @@
+             return self._intermediate_values
+         else:
+             return self._objective_values
++
++
++def calcManualMask(ref_imgs):
++    img_shape = ref_imgs[0].shape
++    
++    #
++    # Create a gaussian at the center of the sun
++    #
++    X, Y = np.meshgrid(np.linspace(0, 1, img_shape[0]), np.linspace(0, 1, img_shape[1]))
++    mask = gaussian(4.5, 0.8, 0.50, 0.05, 0.05)(X, Y)
++    
++    #
++    # Mask the horizon pixel
++    #
++    Y_sensor, step = np.linspace(-1.0, 1.0, img_shape[0], endpoint=False, retstep=True)
++    X_sensor = np.linspace(-1.0, 1.0, img_shape[1], endpoint=False)
++    X_sensor, Y_sensor = np.meshgrid(X_sensor+step/2, Y_sensor+step/2)
++    R_sensor = np.sqrt(X_sensor**2 + Y_sensor**2)
++    THETA = R_sensor * np.pi / 2
++    
++    theta_threshold = THETA[:, 1].max()
++    mask[THETA>theta_threshold] = 4
++    
++    #
++    # Calculate the actual mask
++    #
++    sun_mask_manual = np.tile(np.exp(-mask)[:, :, np.newaxis], (1, 1, 3))
++    
++    return sun_mask_manual
++
++
++def calcAutoMask(sim_imgs, ref_imgs, ref_ratio):
++    err_imgs = []
++    for i, (ref_img, sim_img) in enumerate(zip(ref_imgs, sim_imgs)):
++        err_imgs.append(ref_img/ref_ratio - sim_img)
++    err_mean = np.dstack(err_imgs).mean(axis=2)
++    sun_mask_auto = np.tile(np.exp(-err_mean)[:, :, np.newaxis], (1, 1, 3))
++    return sun_mask_auto
+         
+ 
+ class ParametericRadianceProblem(RadianceProblem):
+@@ -505,45 +536,42 @@
+     camera_params,
+     camera_positions,
+     ref_images,
+-    switch_cams_period=5,
+     use_simulated=False,
+-    mask_sun=None
++    mask_sun=None,
++    save_cams=False
+     ):
+     
+     #import rpdb2; rpdb2.start_embedded_debugger('pep')
+     #import wingdbstub
+     
+-    assert len(camera_positions) == len(ref_images), 'The number of cameras positions and reference images should be equal'
++    assert len(camera_positions) == len(ref_images), 'Slave_%d: The number of cameras positions, %d, and reference images, %d, should be equal' % (mpi_rank, len(camera_positions), len(ref_images))
+     camera_num = len(camera_positions)
+     
+     #
+     # Instatiate the camera slave
+     #
+-    if len(camera_positions) > 1:
+-        cam_paths = []
+-        for camera_position in camera_positions:
++    cams_or_paths = []
++    for camera_position in camera_positions:
++        
++        if save_cams:
++            cam_path = tempfile.mkdtemp(prefix='/gtmp/')
++        else:
++            cam_path = None
+             
+-            cam_path = tempfile.mkdtemp(prefix='/gtmp/')
+-            cam = Camera()
+-            cam.create(
+-                sun_params=sun_params,
+-                atmosphere_params=atmosphere_params,
+-                camera_params=camera_params,
+-                camera_position=camera_position,
+-                save_path=cam_path
+-            )
+-        
+-            cam_paths.append(cam_path)
+-    else:
+         cam = Camera()
+         cam.create(
+             sun_params=sun_params,
+             atmosphere_params=atmosphere_params,
+             camera_params=camera_params,
+-            camera_position=camera_positions[0]
++            camera_position=camera_position,
++            save_path=cam_path
+         )
+     
+-        cam_paths = [None]
++        if save_cams:
++            cams_or_paths.append(cam_path)
++        else:
++            cams_or_paths.append(cam)
++            
+     
+     #
+     # The first data should be for creating the measured images.
+@@ -559,17 +587,20 @@
+     A_aerosols = data[1]
+     results_path = data[2]
+     
++    if not save_cams:
++        for cam in cams_or_paths:
++            cam.setA_air(A_air)
++        
+     #
+     # Use simulated images as reference
+     #
+     if use_simulated:
+         ref_images = []
+             
+-        for i, cam_path in enumerate(cam_paths):
+-            if cam_path:
+-                cam.load(cam_path)        
+-                
+-            cam.setA_air(A_air)
++        for i, cam in enumerate(cams_or_paths):
++            if save_cams:
++                cam = Camera().load(cam)                
++                cam.setA_air(A_air)
+     
+             ref_img = cam.calcImage(
+                 A_aerosols=A_aerosols,
+@@ -583,11 +614,10 @@
+     # Calculate and save simulated images
+     #
+     sim_imgs = []
+-    for i, (cam_path, ref_img) in enumerate(zip(cam_paths, ref_images)):
+-        if cam_path:
+-            cam.load(cam_path)        
+-            
+-        cam.setA_air(A_air)
++    for i, (cam, ref_img) in enumerate(zip(cams_or_paths, ref_images)):
++        if save_cams:
++            cam = Camera().load(cam)
++            cam.setA_air(A_air)
+         
+         sim_img = cam.calcImage(
+             A_aerosols=A_aerosols,
+@@ -656,42 +686,45 @@
+             break
+ 
+         if tag == OBJTAG:
++
++            obj = 0
++            for cam, ref_img in zip(cams_or_paths, ref_images):
++                if save_cams:
++                    cam = Camera().load(cam)
++                    cam.setA_air(A_air)
++
++                img = cam.calcImage(
++                    A_aerosols=A_aerosols,
++                    particle_params=particle_params
++                )
++                
++                temp = ((ref_img - img) * mask).reshape((-1, 1))
++                obj += np.dot(temp.T, temp)
+             
+-            img = cam.calcImage(
+-                A_aerosols=A_aerosols,
+-                particle_params=particle_params
+-            )
+-            
+-            temp = ((ref_img - img) * mask).reshape((-1, 1))
+-            obj = np.dot(temp.T, temp)
+-            
+-            comm.Send(np.array(obj), dest=0)
+-            
+-            #
+-            # Check if there is a need to switch the cams
+-            #
+-            switch_counter += 1
+-            if (camera_num > 1) and (switch_counter % switch_cams_period == 0):
+-                camera_index = (camera_index + 1) % camera_num
+-                
+-                cam.load(cam_paths[camera_index])        
+-                cam.setA_air(A_air)
+-
+-                ref_img = ref_images[camera_index]
+-                
++            comm.Send(np.array(obj), dest=0)                
+                 
+         elif tag == GRADTAG:
+             
+-            img = cam.calcImage(
+-                A_aerosols=A_aerosols,
+-                particle_params=particle_params
+-            )
+-
+-            grad = cam.calcImageGradient(
+-                img_err=(ref_img-img)*mask**2,
+-                A_aerosols=A_aerosols,
+-                particle_params=particle_params
+-            )
++            grad = None
++            for cam, ref_img in zip(cams_or_paths, ref_images):
++                if save_cams:
++                    cam = Camera().load(cam)
++                    cam.setA_air(A_air)
++                    
++                img = cam.calcImage(
++                    A_aerosols=A_aerosols,
++                    particle_params=particle_params
++                )
++    
++                temp = cam.calcImageGradient(
++                    img_err=(ref_img-img)*mask**2,
++                    A_aerosols=A_aerosols,
++                    particle_params=particle_params
++                )
++                if grad == None:
++                    grad = temp
++                else:
++                    grad += temp
+                     
+             comm.Send([grad, grad.dtype.char], dest=0)
+             
+@@ -701,15 +734,16 @@
+     #
+     # Save the image the relates to the calculated aerosol distribution
+     #
+-    for i, cam_path in enumerate(cam_paths):
+-        if cam_path:
+-            cam.load(cam_path)
++    for i, cam in enumerate(cams_or_paths):
++        if save_cams:
++            cam_path = cam
++            cam = Camera().load(cam_path)
++            cam.setA_air(A_air)
++
+             try:
+                 shutil.rmtree(cam_path)
+             except Exception, e:
+                 print 'Failed to remove folder %s:\n%s\n' % (cam_path, repr(e))
+-            
+-        cam.setA_air(A_air)
+ 
+         final_img = cam.calcImage(
+             A_aerosols=A_aerosols,
+@@ -765,6 +799,7 @@
+     params_path,
+     ref_mc_path=None,
+     ref_ratio=0.0,
++    save_cams=False,
+     mcarats=None,
+     use_simulated=False,
+     mask_sun=None,
+@@ -841,7 +876,8 @@
+             camera_positions=camera_positions,
+             ref_images=ref_images,
+             use_simulated=use_simulated,
+-            mask_sun=mask_sun
++            mask_sun=mask_sun,
++            save_cams=save_cams
+         )
+ 
+ 
+@@ -853,6 +889,7 @@
+     parser.add_argument('--mcarats', help='path to reference mcarats results folder')
+     parser.add_argument('--ref_mc', default=None, help='path to reference images of vadims code')
+     parser.add_argument('--ref_ratio', type=float, default=0.0, help='intensity ratio between reference images and the images of the single algorithm.')
++    parser.add_argument('--save_cams', action='store_true', help='Save the cameras to temp file instead of storing them in the memory.')
+     parser.add_argument('--sigma', type=float, default=0.0, help='smooth the reference image by sigma')
+     parser.add_argument('--use_simulated', action='store_true', help='Use simulated images for reconstruction.')
+     parser.add_argument('--remove_sunspot', action='store_true', help='Remove sunspot from reference images.')
+@@ -869,6 +906,7 @@
+         params_path=args.params_path,
+         ref_mc_path=args.ref_mc,
+         ref_ratio=args.ref_ratio,
++        save_cams=args.save_cams,
+         mcarats=args.mcarats,
+         use_simulated=args.use_simulated,
+         mask_sun=args.mask_sun,

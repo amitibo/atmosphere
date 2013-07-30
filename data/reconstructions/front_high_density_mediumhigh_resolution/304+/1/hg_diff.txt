@@ -1,0 +1,23 @@
+diff -r f1974e7efce4 mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Wed Jul 24 23:52:16 2013 +0300
++++ b/mpi_pbs_analyze.sh	Wed Jul 24 19:05:49 2013 -0500
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --job_id $PBS_JOBID --tau 1.0e-8 --mask_sun manual front_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --job_id $PBS_JOBID --mask_sun manual front_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r f1974e7efce4 scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Wed Jul 24 23:52:16 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Wed Jul 24 19:05:49 2013 -0500
+@@ -472,7 +472,7 @@
+     else:
+         import scipy.optimize as sop
+         
+-        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -12, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
++        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+             print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
+             radiance_problem.tau = tau
+             x, obj, info = sop.fmin_l_bfgs_b(

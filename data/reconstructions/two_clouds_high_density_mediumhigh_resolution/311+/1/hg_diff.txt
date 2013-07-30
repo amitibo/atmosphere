@@ -1,0 +1,121 @@
+diff -r 299b848dc2cd atmotomo/atmo_utils.py
+--- a/atmotomo/atmo_utils.py	Sun Jul 28 09:17:10 2013 +0300
++++ b/atmotomo/atmo_utils.py	Sun Jul 28 05:50:36 2013 -0500
+@@ -193,7 +193,7 @@
+     return img_list, cameras_list
+ 
+ 
+-def readConfiguration(path):
++def readConfiguration(path, highten_atmosphere=False):
+     
+     from configobj import ConfigObj
+     import sparse_transforms as spt
+@@ -222,6 +222,16 @@
+     nx = atmosphere_section.as_int('nx')
+     z_coords = np.array([float(i) for i in atmosphere_section.as_list('z_coords')])
+     
++    #
++    # Check if there is a need to extend the atmosphere up.
++    #
++    if highten_atmosphere:
++        dz = z_coords[-1] - z_coords[-2]
++        nz = len(z_coords)
++        ext_nz = min(10, int(nz/2))
++        ext_z_coords = np.arange(1, ext_nz+1) * dz + z_coords[-1]
++        z_coords = np.concatenate((z_coords, ext_z_coords))
++        
+     atmosphere_params = amitibo.attrClass(
+         cartesian_grids=spt.Grids(
+             np.arange(0, ny*dy, dy), # Y
+@@ -257,6 +267,13 @@
+     aerosols_dist = fixmat(sio.loadmat(aerosols_dist_path)['distribution'])
+     
+     #
++    # Check if there is a need to extend the atmosphere up.
++    #
++    if highten_atmosphere:
++        air_dist = hightenDist(air_dist, target_shape=atmosphere_params.cartesian_grids.shape)
++        aerosols_dist = hightenDist(aerosols_dist, target_shape=atmosphere_params.cartesian_grids.shape)
++        
++    #
+     # Load particle
+     #
+     particle_section = config['particle']
+@@ -293,6 +310,12 @@
+     return atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist
+ 
+ 
++def hightenDist(dist, target_shape):
++    temp_dist = np.zeros(target_shape)
++    temp_dist[:dist.shape[0], :dist.shape[1], :dist.shape[2]] = dist
++    return temp_dist
++
++
+ def weighted_laplace(input, weights, output = None, mode = "reflect", cval = 0.0):
+     """N-dimensional Laplace filter based on approximate second derivatives.
+ 
+diff -r 299b848dc2cd mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Sun Jul 28 09:17:10 2013 +0300
++++ b/mpi_pbs_analyze.sh	Sun Jul 28 05:50:36 2013 -0500
+@@ -29,7 +29,7 @@
+ #
+ #  bigmech_q                                           The queue of Dan Mordechai
+ #
+-#PBS -q all_l_p
++#PBS -q amir_q
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -53,7 +53,7 @@
+ #
+ # resource limits: number and distribution of parallel processes 
+ #------------------------------------------------------------------ 
+-#PBS -l select=101:ncpus=1:mpiprocs=1 -l place=free
++#PBS -l select=37:ncpus=1:mpiprocs=1 -l place=free
+ #
+ # comment: this select statement means: use M chunks (nodes), 
+ # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
+@@ -72,7 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 101 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_high_resolution --weights 1.0 1.0 0.1
+-mpirun -np 101 python $HOME/.local/bin/analyzeAtmo3D.py --regularization_decay 0.0005 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual front_high_density_high_resolution --weights 1.0 1.0 0.1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 40 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution --weights 1.0 1.0 0.1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r 299b848dc2cd scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Sun Jul 28 09:17:10 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Sun Jul 28 05:50:36 2013 -0500
+@@ -856,6 +856,7 @@
+     tau=0.0,
+     regularization_decay=0.0,
+     remove_sunspot=False,
++    highten_atmosphere=False,
+     run_arguments=None
+     ):
+     
+@@ -866,7 +867,7 @@
+     #
+     # Load the simulation params
+     #
+-    atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path)
++    atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path, highten_atmosphere)
+     
+     #
+     # Limit the number of mpi processes used.
+@@ -950,6 +951,7 @@
+     parser.add_argument('--tau', type=float, default=0.0, help='regularization coefficient')
+     parser.add_argument('params_path', help='Path to simulation parameters')
+     parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
++    parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
+     args = parser.parse_args()
+ 
+     main(
+@@ -967,5 +969,6 @@
+         tau=args.tau,
+         regularization_decay=args.regularization_decay,
+         remove_sunspot=args.remove_sunspot,
++        highten_atmosphere=args.highten_atmosphere,
+         run_arguments=args
+     )

@@ -1,0 +1,33 @@
+cartesian_grids: <sparse_transforms.base.Grids object at 0x1949dd0>
+
+phase: 'HG'
+k: array([  1.65000000e-11,   1.62000000e-11,   1.59000000e-11])
+w: (1.0, 1.0, 1.0)
+g: (0.763, 0.775, 0.786)
+
+angle_phi: 0.0
+wavelengths: [0.672, 0.558, 0.446]
+angle_theta: 0.785398163397
+intensities: [255.0, 236.0, 224.0]
+
+photons_per_pixel: 40000
+type: 'linear'
+resolution: [64, 64]
+
+tau: 0.0
+ref_mc: None
+job_id: '245448.tamnun'
+ref_ratio: 41.35
+init_with_solution: False
+solver: 'bfgs'
+save_cams: False
+params_path: 'front_high_density_mediumhigh_resolution_smooth'
+mask_sun: 'manual'
+weights: [1.0, 1.0, 0.1]
+highten_atmosphere: False
+use_simulated: False
+sigma: 0.0
+remove_sunspot: False
+mcarats: None
+regularization_decay: 0.0005
+
