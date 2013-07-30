@@ -55,7 +55,6 @@ class TC_Handler(Handler):
         
         gui_object.scene1.anti_aliasing_frames = 16
         gui_object.scene2.anti_aliasing_frames = 16
-        mlab.sync_camera(reference_figure=gui_object.scene1.mayavi_scene, target_figure=gui_object.scene2.mayavi_scene)
         mlab.savefig(os.path.join(gui_object.base_path, 'snapshot1.png'), magnification=2, figure=gui_object.scene1.mayavi_scene)
         mlab.savefig(os.path.join(gui_object.base_path, 'snapshot2.png'), magnification=2, figure=gui_object.scene2.mayavi_scene)
 
@@ -205,6 +204,8 @@ class Visualization(HasTraits):
             color_bar.lut.range = np.array((0.0, max_range))
             mlab.draw(figure=scene.mayavi_scene)
         
+        mlab.sync_camera(reference_figure=self.scene1.mayavi_scene, target_figure=self.scene2.mayavi_scene)
+
     @on_trait_change('mse_margin')
     def _updateMSE(self):
         orig1 = zeroBorders(self.radiance1, margin=self.mse_margin)
