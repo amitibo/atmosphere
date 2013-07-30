@@ -42,7 +42,6 @@ RATIOTAG = 6
 
 
 MAX_ITERATIONS = 4000
-MAX_ITERATIONS_STEP = 200
 MCARATS_IMG_SCALE = 10.0**9.7
 
 profile = False
@@ -179,6 +178,8 @@ class RadianceProblem(object):
         self._results_path = results_path
         self._objective_cnt = 0
         self._tau = tau
+        
+        self.zero_TOA_voxels = min(5, int(self._atmo_shape[2]/8 + 0.5))
         
     @property
     def tau(self):
@@ -323,6 +324,14 @@ class RadianceProblem(object):
         logging.log(logging.INFO, 'iteration: %d, objective: %g' % (iter_count, obj_value))
         
         return True
+
+    def resetTOA(
+        self,
+        x
+        ):
+        
+        y = x.reshape(self._atmo_shape)
+        y[:, :, -self.zero_TOA_voxels:] = 0
 
     @property
     def obj_values(self):
@@ -526,29 +535,21 @@ def master(
         for tau, factr, pgtol in zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7]):
             print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
             radiance_problem.tau = tau
-            for j in range(int(MAX_ITERATIONS/MAX_ITERATIONS_STEP)):
-                x, obj, info = sop.fmin_l_bfgs_b(
-                    func=radiance_problem.objective,
-                    x0=x0,
-                    fprime=radiance_problem.gradient,
-                    bounds=bounds,
-                    factr=factr,
-                    pgtol=pgtol,
-                    maxfun=MAX_ITERATIONS_STEP
-                )
-                
-                #
-                # Prepare the next iteration zeroing the top of the atmosphere
-                #
-                x0 = x.reshape(atmo_shape).copy()
-                x0[:, :, -zero_voxels:] = 0
-
-                #
-                # Check if convereged
-                #
-                if info['warnflag'] != 1:
-                    break
-                
+            x, obj, info = sop.fmin_l_bfgs_b(
+                func=radiance_problem.objective,
+                x0=x0,
+                fprime=radiance_problem.gradient,
+                bounds=bounds,
+                factr=factr,
+                pgtol=pgtol,
+                maxfun=MAX_ITERATIONS,
+                callback=radiance_problem.resetTOA
+            )
+            
+            #
+            # Prepare the next iteration
+            #
+            x0 = x
 
             #
             # store optimization info
