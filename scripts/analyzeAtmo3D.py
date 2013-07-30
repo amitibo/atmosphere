@@ -179,6 +179,8 @@ class RadianceProblem(object):
         self._objective_cnt = 0
         self._tau = tau
         
+        self.zero_TOA_voxels = min(5, int(self._atmo_shape[2]/8 + 0.5))
+        
     @property
     def tau(self):
         
@@ -225,9 +227,9 @@ class RadianceProblem(object):
         
         obj += self._tau * np.linalg.norm(x_laplace)**2
         
-        if self._objective_cnt % 10 == 0:
-            self._objective_values.append(obj)
+        self._objective_values.append(obj)
 
+        if self._objective_cnt % 10 == 0:
             #
             # Store temporary radiance and objective values in case the simulation is
             # stoped in the middle.
@@ -323,6 +325,14 @@ class RadianceProblem(object):
         
         return True
 
+    def resetTOA(
+        self,
+        x
+        ):
+        
+        y = x.reshape(self._atmo_shape)
+        y[:, :, -self.zero_TOA_voxels:] = 0
+
     @property
     def obj_values(self):
         
@@ -416,10 +426,11 @@ def master(
     # Using np.zeros produces byteorder '=' which stands for
     # native ('<' means little endian).
     #
+    atmo_shape = aerosols_dist.shape
     if init_with_solution:
         x0 = aerosols_dist.copy()
     else:
-        x0 = np.zeros(aerosols_dist.shape)
+        x0 = np.zeros(atmo_shape)
 
     #
     # Create the optimization problem object
@@ -492,7 +503,12 @@ def master(
             A_aerosols=aerosols_dist,
             A_air=air_dist,
             results_path=results_path,
-            tau=tau
+            ref_imgs=ref_imgs,
+            laplace_weights=laplace_weights,
+            tau=tau,
+            regularization_decay=regularization_decay,
+            ref_ratio=ref_ratio,
+            use_simulated=use_simulated
         )
 
         #
@@ -512,19 +528,27 @@ def master(
     else:
         import scipy.optimize as sop
         
-        for i, (tau, factr, pgtol) in enumerate(zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7])):
+        bounds = calcBounds(grids=atmosphere_params.cartesian_grids)
+        
+        zero_voxels = min(3, int(atmo_shape[2]/8 + 0.5))
+            
+        for tau, factr, pgtol in zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7]):
             print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
             radiance_problem.tau = tau
             x, obj, info = sop.fmin_l_bfgs_b(
                 func=radiance_problem.objective,
                 x0=x0,
                 fprime=radiance_problem.gradient,
-                bounds=[(0, None)]*x0.size,
+                bounds=bounds,
                 factr=factr,
                 pgtol=pgtol,
-                maxfun=MAX_ITERATIONS
+                maxfun=MAX_ITERATIONS,
+                callback=radiance_problem.resetTOA
             )
             
+            #
+            # Prepare the next iteration
+            #
             x0 = x
 
             #
@@ -555,7 +579,7 @@ def master(
             'X': X,
             'Z': Z,
             'true': aerosols_dist,
-            'estimated': x.reshape(aerosols_dist.shape),
+            'estimated': x.reshape(atmo_shape),
             'objective': np.array(radiance_problem.obj_values)
         },
         do_compression=True
@@ -567,6 +591,24 @@ def master(
     import pickle
     with open(os.path.join(results_path, 'optimization_info.pkl'), 'w') as f:
         pickle.dump(info, f)    
+
+
+def calcBounds(grids):
+    
+    bounds = [[0, None]] * grids.size
+    
+    return bounds
+
+    #temp = np.ones(grids.shape)
+    #temp[:, :, -5:] = 0
+    #bounds = []
+    #for val in temp.flat:
+        #if val == 0:
+            #bounds.append([0, 0])
+        #else:
+            #bounds.append([0, None])
+
+    #return bounds
 
 
 def slave(
