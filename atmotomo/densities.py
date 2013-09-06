@@ -179,9 +179,7 @@ def front_simulation(
     camera_type='linear',
     sun_angle_phi=0,
     sun_angle_theta=np.pi/4,
-    aerosols_typical_density=10**12,
-    cloud1_radius=3000,
-    cloud2_radius=4000
+    aerosols_typical_density=10**12
     ):
     """A simulation of a cloud front"""
     

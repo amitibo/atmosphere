@@ -31,7 +31,7 @@ font = {'family' : 'normal',
 
 matplotlib.rc('font', **font)
 
-IMG_SIZE = 64
+IMG_SIZE = 128
 
 
 class TC_Handler(Handler):
@@ -39,6 +39,13 @@ class TC_Handler(Handler):
     def do_savefig(self, info):
 
         results_object = info.object
+        dest_path = os.path.join(
+                    results_object.base_path,
+                    'img%d' % results_object.tr_index
+                    )
+
+        if not os.path.exists(dest_path):
+            os.makedirs(dest_path)
         
         sun_angle = results_object.tr_sun_angle
         
@@ -93,12 +100,26 @@ class TC_Handler(Handler):
                     color='w'
                 )
                 
-            fig.savefig(os.path.join(results_object.base_path, 'img%d.svg' % i), format='svg')
+            fig.savefig(
+                os.path.join(
+                    dest_path,
+                    'img%d.svg' % i
+                    ),
+                format='svg'
+            )
     
     def do_saveplots(self, info):
         
         results_object = info.object
         
+        dest_path = os.path.join(
+                    results_object.base_path,
+                    'img%d' % results_object.tr_index
+                    )
+
+        if not os.path.exists(dest_path):
+            os.makedirs(dest_path)
+
         #
         # Draw cross sections
         # "basex", "img1_x", "img2_x", "img3_x"
@@ -120,7 +141,7 @@ class TC_Handler(Handler):
             
             plt.legend(
                 ('MC', 'Single', 'Recon'),
-                'upper right',
+                'lower right',
                 shadow=True
             )
             plt.grid(False)
@@ -129,7 +150,13 @@ class TC_Handler(Handler):
             plt.title('%s Cross Section' % axis.upper())
             plt.xlim(0, IMG_SIZE)
             
-            fig.savefig(os.path.join(results_object.base_path, 'cross_section_%s.svg' % axis), format='svg')
+            fig.savefig(
+                os.path.join(
+                    dest_path,
+                    'cross_section_%s.svg' % axis
+                    ), 
+                format='svg'
+            )
 
     def do_makemovie(self, info):
 
