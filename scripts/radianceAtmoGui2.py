@@ -47,6 +47,16 @@ def zeroBorders(s, margin=1):
     return s
 
 
+def getJetColor(value):
+    
+    fourValue = 4 * value
+    red = min(fourValue - 1.5, -fourValue + 4.5)
+    green = min(fourValue - 0.5, -fourValue + 3.5)
+    blue  = min(fourValue + 0.5, -fourValue + 2.5)
+
+    return np.clip((red, green, blue), 0.0, 1.0 );
+
+
 class TC_Handler(Handler):
     
     def do_savefig(self, info):
@@ -89,6 +99,51 @@ class TC_Handler(Handler):
                 figure=scene2.mayavi_scene
             )
 
+    def do_savemesh(self, info):
+        
+        contours_num = 10
+        gui_object = info.object
+        
+        fig1 = mlab.figure(bgcolor=(1.0,1.0,1.0),fgcolor=(0.0,0.0,0.0), size=(1200,900))
+        
+        for val, jet_index in zip(np.linspace(gui_object.radiance1.min(), gui_object.radiance1.max(), contours_num+2)[1:-1], np.linspace(0, 1, contours_num)):
+            
+            surf = mlab.contour3d(
+                gui_object.Y, gui_object.X, gui_object.Z,
+                gui_object.radiance1,
+                contours=[val],
+                opacity=0.2,
+                color=tuple(tuple(getJetColor(jet_index)))
+            )
+
+        #camera_grid_size = (5, 5)
+        #width = 50000
+        #height = 10000
+        #cameras_X, cameras_Y = np.meshgrid(
+            #np.linspace(0, width, camera_grid_size[0]+2)[1:-1],
+            #np.linspace(0, width, camera_grid_size[1]+2)[1:-1]
+            #)
+        #cameras_Z = np.zeros_like(cameras_X)
+        #mlab.points3d(cameras_X.ravel(), cameras_Y.ravel(), cameras_Z.ravel(), color=(0, 0, 0), scale_factor=1000.)
+        
+        #mlab.plot3d([0, 0, width, width, 0], [0, width, width, 0], [0, 0, 0, 0], tube_radius=None)
+        #mlab.plot3d([0, 0, width, width, 0], [0, width, width, 0], [height, height, height, height], tube_radius=None)
+        
+        mlab.show()
+
+        mlab.savefig(
+            os.path.join(
+                gui_object.base_path,
+                'mesh.wrl'
+            )
+        )
+        mlab.savefig(
+            os.path.join(
+                gui_object.base_path,
+                'mesh.png'
+            )
+        )
+        
         
 class Visualization(HasTraits):
     scene1 = Instance(MlabSceneModel, ())
@@ -103,6 +158,7 @@ class Visualization(HasTraits):
     crop_TOA = Range(0, 20, 0)
     save_button = Action(name = "Save Fig", action = "do_savefig")
     movie_button = Action(name = "Save Movie", action = "do_savemovie")
+    mesh_button = Action(name = "Save Mesh", action = "do_savemesh")
     mse = Float( 0.0, desc='MSE of reconstruction (after removing margin from the sides)' )
     max_range_set = Float( 0.0, desc='Max range of colorbar manually set.' )
     max_range_calc = Float( 0.0, desc='Max range of colorbar automatically calculated.' )
@@ -179,7 +235,7 @@ class Visualization(HasTraits):
                 ),
         ),
         handler=TC_Handler(),
-        buttons = [save_button, movie_button],
+        buttons = [save_button, movie_button, mesh_button],
         resizable = True
     )
 
@@ -239,6 +295,11 @@ class Visualization(HasTraits):
             # Incase you don't see the cameras, then it most probable that the coordinates or scale factor is wrong
             #
             mlab.points3d(cameras_X.ravel(), cameras_Y.ravel(), cameras_Z.ravel(), colormap="copper", scale_factor=1000.)
+            
+            #
+            # Add an outline
+            #
+            #plot3d(x, y, z, numpy.sin(mu), tube_radius=0.025, colormap='Spectral')
             
             src = scene.mlab.pipeline.scalar_field(
                 Y,
