@@ -6,6 +6,7 @@ Created on Tue Oct 25 20:12:32 2011
 """
 from __future__ import division
 import pickle
+import amitibo
 import os
 
 def main():
@@ -13,7 +14,10 @@ def main():
     
     misr = {}
     
-    with open('misr.txt', 'rb') as f:
+    txt_path = amitibo.getResourcePath('misr.txt', package_name='atmotomo')
+    pkl_path = amitibo.getResourcePath('misr.pkl', package_name='atmotomo')
+    
+    with open(txt_path, 'rb') as f:
         lines = f.readlines()
         for i in range(0, len(lines), 4):
             blue = lines[i].strip().split()
@@ -28,7 +32,7 @@ def main():
     
             }
     
-    with open('misr.pkl', 'wb') as f:
+    with open(pkl_path, 'wb') as f:
         pickle.dump(misr, f)
 
 

@@ -157,8 +157,8 @@ def main(output_path):
         atmosphere_params=atmosphere_mediumhigh_resolution,
         camera_resolution=(64, 64),
         camera_grid_size=(6, 6),
-        aerosols_typical_density=80**9,
-        particle_name='spherical_absorbing_0.12_ssa_green_0.74'
+        aerosols_typical_density=10**7,
+        particle_name='spherical_absorbing_2.80'
     )
     #atmotomo.prepareSimulation(
         #path=os.path.join(output_path, 'front_low_density_medium_resolution'),

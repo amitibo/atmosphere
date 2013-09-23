@@ -105,7 +105,8 @@ class RadianceProblem(object):
         regularization_decay=1.0,
         tau=0.0,
         ref_ratio=0.0,
-        use_simulated=False        
+        use_simulated=False,
+        zero_TOA=0
         ):
 
         #
@@ -179,7 +180,7 @@ class RadianceProblem(object):
         self._objective_cnt = 0
         self._tau = tau
         
-        self.zero_TOA_voxels = min(5, int(self._atmo_shape[2]/8 + 0.5))
+        self.zero_TOA_voxels = min(zero_TOA, int(self._atmo_shape[2]/8 + 0.5))
         
     @property
     def tau(self):
@@ -330,6 +331,9 @@ class RadianceProblem(object):
         x
         ):
         
+        if self.zero_TOA_voxels < 1:
+            return
+        
         y = x.reshape(self._atmo_shape)
         y[:, :, -self.zero_TOA_voxels:] = 0
 
@@ -406,6 +410,7 @@ def master(
     solver='ipopt',
     use_simulated=False,    
     init_with_solution=False,
+    zero_TOA=0
     ):
     
     #import rpdb2; rpdb2.start_embedded_debugger('pep')
@@ -445,7 +450,8 @@ def master(
         tau=tau,
         regularization_decay=regularization_decay,
         ref_ratio=ref_ratio,
-        use_simulated=use_simulated
+        use_simulated=use_simulated,
+        zero_TOA=zero_TOA
     )
 
     if solver == 'ipopt':
@@ -530,8 +536,6 @@ def master(
         
         bounds = calcBounds(grids=atmosphere_params.cartesian_grids)
         
-        zero_voxels = min(3, int(atmo_shape[2]/8 + 0.5))
-            
         for tau, factr, pgtol in zip(np.logspace(-8, -10, num=3), [1e7, 5e6, 1e6], [1e-5, 1e-6, 1e-7]):
             print 'Running optimization using tau=%g, factr=%g' % (tau, factr)
             radiance_problem.tau = tau
@@ -899,6 +903,8 @@ def main(
     regularization_decay=0.0,
     remove_sunspot=False,
     highten_atmosphere=False,
+    zero_TOA=0,
+    camera_num=0,
     run_arguments=None
     ):
     
@@ -912,15 +918,21 @@ def main(
     atmosphere_params, particle_params, sun_params, camera_params, camera_positions_list, air_dist, aerosols_dist = atmotomo.readConfiguration(params_path, highten_atmosphere)
     
     #
+    # Limit the number of cameras
+    #
+    camera_num = min(max(camera_num, 0), len(camera_positions_list))
+    camera_indices = np.sort(np.random.permutation(len(camera_positions_list))[:camera_num])
+    
+    #
     # Limit the number of mpi processes used.
     #
-    mpi_size = min(mpi_size, len(camera_positions_list)+1)
+    mpi_size = min(mpi_size, camera_num+1)
     
     if mpi_rank >= mpi_size:
         sys.exit()
         
     if use_simulated:
-        ref_images_list = [None] * len(camera_positions_list)
+        ref_images_list = [None] * camera_num
     else:
         ref_images_list, camera_positions_list_temp = loadSlaveData(
             atmosphere_params,
@@ -930,7 +942,13 @@ def main(
             sigma,
             remove_sunspot
         )
-        
+    
+    #
+    # Pickup only the required set of camera positions and referemce images
+    #
+    ref_images_list = [ref_images_list[i] for i in camera_indices]
+    camera_positions_list = [camera_positions_list[i] for i in camera_indices]
+    
     if mpi_rank == 0:
         #
         # Create the results path
@@ -955,7 +973,8 @@ def main(
             ref_ratio=ref_ratio,
             solver=solver,
             use_simulated=use_simulated,
-            init_with_solution=init_with_solution
+            init_with_solution=init_with_solution,
+            zero_TOA=zero_TOA
         )
     else:
         ref_images = split_lists(ref_images_list, mpi_size-1)[mpi_rank-1]
@@ -994,6 +1013,8 @@ if __name__ == '__main__':
     parser.add_argument('params_path', help='Path to simulation parameters')
     parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
     parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
+    parser.add_argument('--zero_TOA', type=int, default=0, help='Number of TOA rows to zero (default=0).')
+    parser.add_argument('--camera_num', type=int, default=0, help='Number of cameras to use (default=0 -> use all cameras).')
     args = parser.parse_args()
 
     main(
@@ -1012,5 +1033,7 @@ if __name__ == '__main__':
         regularization_decay=args.regularization_decay,
         remove_sunspot=args.remove_sunspot,
         highten_atmosphere=args.highten_atmosphere,
+        zero_TOA=args.zero_TOA,
+        camera_num=args.camera_num,
         run_arguments=args
     )
