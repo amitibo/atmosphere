@@ -1,0 +1,15 @@
+width = 64
+height = 64
+CamModel = fisheye
+CamModelType = equidistant projection
+focal_ratio = 0.63662
+cameras_num = 36
+L_SUN_RGB = 255  236  224
+wavelengths = 0.672       0.558       0.446
+N_s = 100
+N_p0 = 10000
+dW = 0.019635
+chance = 10
+Treshold = 0.1
+boxSize = 515000000000000
+VecCamPos = 17778.8         71.5315         18151.2

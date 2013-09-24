@@ -31,7 +31,7 @@ font = {'family' : 'normal',
 
 matplotlib.rc('font', **font)
 
-IMG_SIZE = 128
+IMG_SIZE = 64
 
 
 class TC_Handler(Handler):
