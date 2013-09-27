@@ -904,7 +904,7 @@ def main(
     remove_sunspot=False,
     highten_atmosphere=False,
     zero_TOA=0,
-    camera_num=0,
+    camera_num=-1,
     run_arguments=None
     ):
     
@@ -920,7 +920,10 @@ def main(
     #
     # Limit the number of cameras
     #
-    camera_num = min(max(camera_num, 0), len(camera_positions_list))
+    if camera_num < 1:
+        camera_num = len(camera_positions_list)
+        
+    camera_num = min(camera_num, len(camera_positions_list))
     camera_indices = np.sort(np.random.permutation(len(camera_positions_list))[:camera_num])
     
     #
@@ -1014,7 +1017,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
     parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
     parser.add_argument('--zero_TOA', type=int, default=0, help='Number of TOA rows to zero (default=0).')
-    parser.add_argument('--camera_num', type=int, default=0, help='Number of cameras to use (default=0 -> use all cameras).')
+    parser.add_argument('--camera_num', type=int, default=-1, help='Number of cameras to use (default=-1 -> use all cameras).')
     args = parser.parse_args()
 
     main(
