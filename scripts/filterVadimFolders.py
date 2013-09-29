@@ -1,6 +1,6 @@
 """
-Visit the results folder of Vadim's simulations and delete uncessary files, leaving
-only the results matrix and params file.
+Visit the results folder of Vadim's simulations with separated scattering
+order and leave only a specific order (or sum of orders).
 """
 
 import os
@@ -26,12 +26,12 @@ def main(path):
             shutil.rmtree(os.path.join(root, 'Images'))
             dirs.remove('Images')
         
-        for f in files:
-            if os.path.splitext(f)[1] == '.mat':
+        for f in files:            
+            if f == 'LNS_MATRIX.mat':
+                os.rename(os.path.join(root, f), os.path.join(root, 'RGB_MATRIX.mat'))
                 continue
             
-            if f == 'hg_diff.txt':
-                os.remove(os.path.join(root, f))
+            os.remove(os.path.join(root, f))
         
     
 if __name__ == '__main__':

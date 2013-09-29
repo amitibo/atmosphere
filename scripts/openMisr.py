@@ -29,12 +29,12 @@ def main():
                 'k': (float(red[3]), float(green[3]), float(blue[3])),
                 'w': (float(red[4]), float(green[4]), float(blue[4])),
                 'g': (float(red[5]), float(green[5]), float(blue[5]))
-    
             }
     
     with open(pkl_path, 'wb') as f:
         pickle.dump(misr, f)
 
+    
 
 if __name__ == '__main__':
     main()

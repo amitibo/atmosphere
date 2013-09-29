@@ -119,7 +119,14 @@ def calcScatterMu(grids, sun_angle_phi, sun_angle_theta):
     return mu
 
 
-def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.0):
+def loadVadimData(
+    path,
+    base_name="RGB_MATRIX.mat",
+    offset=(0, 0),
+    remove_sunspot=False,
+    FACMIN=20,
+    scale=1.0
+    ):
     """
     Load the simulation data from the format used by Vadim: A list of folders.
     
@@ -127,10 +134,12 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
     -----------
     path : str
         Base path under which lie the folders with simulation results
+    base_name : str, optional (default="RGB_MATRIX.mat")
+        Base name of the matrix
     offset : (float, float)
         y, x translation to apply to the coordinates of Vadim's cameras.
         Vadim center is at 0, 0 while mine is at the center of the atmosphere.
-    remove_sunspot : bool
+    remove_sunspot : bool, optional (default=False)
         Remove the sunspot from the image
     FACMIN : float
         Ratio between img mean and sunspot, used to determine the sunspot.
@@ -159,7 +168,7 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
         #
         # Load the image data
         #
-        img_path = os.path.join(folder, "RGB_MATRIX.mat")
+        img_path = os.path.join(folder, base_name)
         try:
             data = sio.loadmat(img_path)
         except:
@@ -182,13 +191,16 @@ def loadVadimData(path, offset=(0, 0), remove_sunspot=False, FACMIN=20, scale=1.
         #
         # Parse cameras center file
         #
-        with open(os.path.join(folder, 'params.txt'), 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                parts = line.strip().split()
-                if parts[0] == 'CameraPosition':
-                    cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3]))))
-                    break
+        try:
+            with open(os.path.join(folder, 'params.txt'), 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts[0] == 'CameraPosition':
+                        cameras_list.append(np.array((float(parts[4])+offset[0], float(parts[2])+offset[1], float(parts[3]))))
+                        break
+        except:
+            pass
 
     return img_list, cameras_list
 
