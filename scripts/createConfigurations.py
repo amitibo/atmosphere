@@ -161,15 +161,25 @@ def main(output_path):
         #particle_name='spherical_absorbing_2.80'
     #)
     atmotomo.prepareSimulation(
-        path=os.path.join(output_path, 'two_clouds_high_density_mediumhigh_resolution_particle_14_smooth'),
+        path=os.path.join(output_path, 'two_clouds_high_density_mediumhigh_resolution_isotropic_smooth'),
         func=atmotomo.clouds_simulation,
         smoothing_sigma=1,
         atmosphere_params=atmosphere_mediumhigh_resolution,
         camera_resolution=(64, 64),
         camera_grid_size=(6, 6),
-        aerosols_typical_density=10**10,
-        particle_name='spherical_absorbing_0.12_ssa_green_0.8'
+        aerosols_typical_density=10**7,
+        particle_name='spherical_nonabsorbing_isotropic_2.80'
     )
+    #atmotomo.prepareSimulation(
+        #path=os.path.join(output_path, 'two_clouds_high_density_mediumhigh_resolution_particle_14_smooth'),
+        #func=atmotomo.clouds_simulation,
+        #smoothing_sigma=1,
+        #atmosphere_params=atmosphere_mediumhigh_resolution,
+        #camera_resolution=(64, 64),
+        #camera_grid_size=(6, 6),
+        #aerosols_typical_density=10**10,
+        #particle_name='spherical_absorbing_0.12_ssa_green_0.8'
+    #)
     #atmotomo.prepareSimulation(
         #path=os.path.join(output_path, 'front_low_density_medium_resolution'),
         #func=atmotomo.front_simulation,

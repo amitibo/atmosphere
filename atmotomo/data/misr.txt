@@ -86,3 +86,7 @@ blue 1.45 0.00 15.9 0.780 0.786 spherical_absorbing_2.80 (sea salt, organic)
 green 1.45 0.00 16.2 0.740 0.775
 red 1.45 0.00 16.5 0.690 0.763
 nir 1.45 0.00 17.0 0.610 0.747
+blue 1.45 0.00 15.9 1.00 0.0 spherical_nonabsorbing_isotropic_2.80 (sea salt, organic)
+green 1.45 0.00 16.2 1.00 0.0
+red 1.45 0.00 16.5 1.00 0.0
+nir 1.45 0.00 17.0 1.00 0.0

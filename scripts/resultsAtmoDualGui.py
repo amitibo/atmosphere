@@ -28,7 +28,7 @@ import glob
 import os
 import re
 
-IMG_SIZE = 64
+IMG_SIZE = 128
 
 
 class TC_Handler(Handler):
