@@ -68,6 +68,6 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_particle_14_smooth
+mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_absorbing_smooth
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"

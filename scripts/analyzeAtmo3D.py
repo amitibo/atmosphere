@@ -869,9 +869,9 @@ def loadSlaveData(
     # Load the reference images
     #
     closed_grids = atmosphere_params.cartesian_grids.closed
-    ref_images_list, camera_positions_list = atmotomo.loadVadimData(
+    ref_images_list, dump = atmotomo.loadVadimData(
         ref_mc_path,
-        (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
+        offset=(closed_grids[0][-1]/2, closed_grids[1][-1]/2),
         remove_sunspot=remove_sunspot
     )
     
@@ -884,7 +884,7 @@ def loadSlaveData(
                 ref_img[:, :, channel] = \
                     ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
             
-    return ref_images_list, camera_positions_list
+    return ref_images_list
 
 
 def main(
@@ -937,7 +937,7 @@ def main(
     if use_simulated:
         ref_images_list = [None] * camera_num
     else:
-        ref_images_list, camera_positions_list_temp = loadSlaveData(
+        ref_images_list = loadSlaveData(
             atmosphere_params,
             params_path,
             ref_mc_path,
