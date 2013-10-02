@@ -1,0 +1,62 @@
+diff -r ce715276e806 mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Tue Sep 24 11:08:52 2013 +0300
++++ b/mpi_pbs_analyze.sh	Tue Sep 24 09:10:38 2013 +0300
+@@ -29,7 +29,7 @@
+ #
+ #  bigmech_q                                           The queue of Dan Mordechai
+ #
+-#PBS -q all_l_p
++#PBS -q general_ld
+ #
+ # Send the mail messages (see below) to the specified user address 
+ #-----------------------------------------------------------------
+@@ -53,7 +53,7 @@
+ #
+ # resource limits: number and distribution of parallel processes 
+ #------------------------------------------------------------------ 
+-#PBS -l select=11:ncpus=1:mpiprocs=1 -l place=free
++#PBS -l select=37:ncpus=1:mpiprocs=1 -l place=free
+ #
+ # comment: this select statement means: use M chunks (nodes), 
+ # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 11 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution_smooth --weights 1.0 1.0 0.1 --camera_num 10
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual two_clouds_highx10_density_mediumhigh_resolution_smooth --weights 1.0 1.0 0.1 --camera_num -1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r ce715276e806 scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Tue Sep 24 11:08:52 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Tue Sep 24 09:10:38 2013 +0300
+@@ -904,7 +904,7 @@
+     remove_sunspot=False,
+     highten_atmosphere=False,
+     zero_TOA=0,
+-    camera_num=0,
++    camera_num=-1,
+     run_arguments=None
+     ):
+     
+@@ -920,7 +920,10 @@
+     #
+     # Limit the number of cameras
+     #
+-    camera_num = min(max(camera_num, 0), len(camera_positions_list))
++    if camera_num < 1:
++        camera_num = len(camera_positions_list)
++        
++    camera_num = min(camera_num, len(camera_positions_list))
+     camera_indices = np.sort(np.random.permutation(len(camera_positions_list))[:camera_num])
+     
+     #
+@@ -1014,7 +1017,7 @@
+     parser.add_argument('--weights', type=float, nargs='+', default=(1.0, 1.0, 1.0), help='Weight of laplacian smoothing')
+     parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
+     parser.add_argument('--zero_TOA', type=int, default=0, help='Number of TOA rows to zero (default=0).')
+-    parser.add_argument('--camera_num', type=int, default=0, help='Number of cameras to use (default=0 -> use all cameras).')
++    parser.add_argument('--camera_num', type=int, default=-1, help='Number of cameras to use (default=-1 -> use all cameras).')
+     args = parser.parse_args()
+ 
+     main(

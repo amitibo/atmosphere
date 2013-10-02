@@ -1,0 +1,55 @@
+diff -r 24f39f8fe874 mpi_pbs_analyze.sh
+--- a/mpi_pbs_analyze.sh	Wed Oct 02 13:18:49 2013 +0300
++++ b/mpi_pbs_analyze.sh	Wed Oct 02 05:04:21 2013 -0500
+@@ -72,6 +72,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 41.35 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution_particle_14_smooth --weights 1.0 1.0 0.1 --camera_num -1
++mpirun -np 37 python $HOME/.local/bin/analyzeAtmo3D.py --highten_atmosphere --regularization_decay 0.0005 --ref_ratio 41.29 --job_id $PBS_JOBID --mask_sun manual two_clouds_high_density_mediumhigh_resolution_absorbing_smooth --weights 1.0 1.0 0.1 --camera_num -1
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r 24f39f8fe874 mpi_pbs_simulate.sh
+--- a/mpi_pbs_simulate.sh	Wed Oct 02 13:18:49 2013 +0300
++++ b/mpi_pbs_simulate.sh	Wed Oct 02 05:04:21 2013 -0500
+@@ -68,6 +68,6 @@
+ #
+ # running MPI executable with M*N processes  
+ #------------------------------------------------------
+-mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_particle_14_smooth
++mpirun -np 36 python $HOME/.local/bin/simulateAtmo3D.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_absorbing_smooth
+ 
+ # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
+diff -r 24f39f8fe874 scripts/analyzeAtmo3D.py
+--- a/scripts/analyzeAtmo3D.py	Wed Oct 02 13:18:49 2013 +0300
++++ b/scripts/analyzeAtmo3D.py	Wed Oct 02 05:04:21 2013 -0500
+@@ -869,9 +869,9 @@
+     # Load the reference images
+     #
+     closed_grids = atmosphere_params.cartesian_grids.closed
+-    ref_images_list, camera_positions_list = atmotomo.loadVadimData(
++    ref_images_list, dump = atmotomo.loadVadimData(
+         ref_mc_path,
+-        (closed_grids[0][-1]/2, closed_grids[1][-1]/2),
++        offset=(closed_grids[0][-1]/2, closed_grids[1][-1]/2),
+         remove_sunspot=remove_sunspot
+     )
+     
+@@ -884,7 +884,7 @@
+                 ref_img[:, :, channel] = \
+                     ndimage.filters.gaussian_filter(ref_img[:, :, channel], sigma=sigma)
+             
+-    return ref_images_list, camera_positions_list
++    return ref_images_list
+ 
+ 
+ def main(
+@@ -937,7 +937,7 @@
+     if use_simulated:
+         ref_images_list = [None] * camera_num
+     else:
+-        ref_images_list, camera_positions_list_temp = loadSlaveData(
++        ref_images_list = loadSlaveData(
+             atmosphere_params,
+             params_path,
+             ref_mc_path,
