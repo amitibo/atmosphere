@@ -289,12 +289,12 @@ class Visualization(HasTraits):
             
             mlab.clf(figure=scene.mayavi_scene)
 
-            #
-            # Add the cameras
-            # Note:
-            # Incase you don't see the cameras, then it most probable that the coordinates or scale factor is wrong
-            #
-            mlab.points3d(cameras_X.ravel(), cameras_Y.ravel(), cameras_Z.ravel(), colormap="copper", scale_factor=1000.)
+            ##
+            ## Add the cameras
+            ## Note:
+            ## Incase you don't see the cameras, then it most probable that the coordinates or scale factor is wrong
+            ##
+            #mlab.points3d(cameras_X.ravel(), cameras_Y.ravel(), cameras_Z.ravel(), colormap="copper", scale_factor=1000.)
             
             #
             # Add an outline

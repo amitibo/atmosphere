@@ -28,7 +28,10 @@ def main(path):
         
         for f in files:            
             if f == 'LNS_MATRIX.mat':
-                os.rename(os.path.join(root, f), os.path.join(root, 'RGB_MATRIX.mat'))
+                try:
+                    os.rename(os.path.join(root, f), os.path.join(root, 'RGB_MATRIX.mat'))
+                except:
+                    print 'Failed creating file in %s. Might already exist' % root
                 continue
             
             os.remove(os.path.join(root, f))

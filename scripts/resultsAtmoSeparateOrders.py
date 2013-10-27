@@ -56,40 +56,40 @@ class TC_Handler(Handler):
     
             amitibo.saveFigures(path, bbox_inches='tight', figures_names=(figure_name, ))
 
-            #
-            # Draw cross sections
-            # "basex", "img1_x", "img2_x", "img3_x"
-            for i, axis in enumerate(('x', 'y')):
-                fig = plt.figure()
-                base = results_object.plotdata.get_data('base%s' % axis)
-                img1 = results_object.plotdata.get_data('img1_%s' % axis)
-                img2 = results_object.plotdata.get_data('img2_%s' % axis)
+            ##
+            ## Draw cross sections
+            ## "basex", "img1_x", "img2_x", "img3_x"
+            #for i, axis in enumerate(('x', 'y')):
+                #fig = plt.figure()
+                #base = results_object.plotdata.get_data('base%s' % axis)
+                #img1 = results_object.plotdata.get_data('img1_%s' % axis)
+                #img2 = results_object.plotdata.get_data('img2_%s' % axis)
                     
-                ax = plt.axes([0, 0, 1, 1])
-                plt.plot(
-                    base, img1, 'k',
-                    base, img2, 'k:',
-                    linewidth=2.0
-                )
+                #ax = plt.axes([0, 0, 1, 1])
+                #plt.plot(
+                    #base, img1, 'k',
+                    #base, img2, 'k:',
+                    #linewidth=2.0
+                #)
                 
-                plt.legend(
-                    ('MC', 'Single'),
-                    'lower right',
-                    shadow=True
-                )
-                plt.grid(False)
-                plt.xlabel('%s Axis' % axis.upper())
-                plt.ylabel('Intensity')
-                plt.title('%s Cross Section' % axis.upper())
-                plt.xlim(0, IMG_SIZE)
+                #plt.legend(
+                    #('MC', 'Single'),
+                    #'lower right',
+                    #shadow=True
+                #)
+                #plt.grid(False)
+                #plt.xlabel('%s Axis' % axis.upper())
+                #plt.ylabel('Intensity')
+                #plt.title('%s Cross Section' % axis.upper())
+                #plt.xlim(0, IMG_SIZE)
                 
-                fig.savefig(
-                    os.path.join(
-                        path,
-                        'cross_section_%s.svg' % axis
-                        ), 
-                    format='svg'
-                )
+                #fig.savefig(
+                    #os.path.join(
+                        #path,
+                        #'cross_section_%s.svg' % axis
+                        #), 
+                    #format='svg'
+                #)
 
     def do_makemovie(self, info):
 
