@@ -19,6 +19,7 @@ import glob
 ds = 10.0
 wavelength = 558e-3
 RGB_CHANNEL = 1
+air_height_constant = 8000
 
 
 def interpolate(grids, values, coords):
@@ -95,9 +96,6 @@ def main(params_path, add_noise, run_arguments):
         
         i_camera = []
         for z_cross, angle in zip(z_crossings, angles):
-            if z_cross > height:
-                i_camera.append(0)
-                continue
             
             #
             # Path along the Laser Beam
@@ -113,11 +111,12 @@ def main(params_path, add_noise, run_arguments):
                 aerosols_dist,
                 coords=[LB_y_coords, LB_x_coords, LB_z_coords]
             )
-            LB_air_samples = interpolate(
+            LB_air_samples_old = interpolate(
                 grids,
                 air_dist,
                 coords=[LB_y_coords, LB_x_coords, LB_z_coords]
             )
+            LB_air_samples = np.exp(-LB_z_coords/air_height_constant)
             
             LB_air_ext_coef = 1.09e-6 * wavelength**-4.05 * LB_air_samples * ds
             LB_aerosol_ext_coef = particle_params.k[RGB_CHANNEL] * LB_aerosols_samples * ds
@@ -140,11 +139,7 @@ def main(params_path, add_noise, run_arguments):
                 aerosols_dist,
                 coords=[LOS_y_coords, LOS_x_coords, LOS_z_coords]
             )
-            LOS_air_samples = interpolate(
-                grids,
-                air_dist,
-                coords=[LOS_y_coords, LOS_x_coords, LOS_z_coords]
-            )
+            LOS_air_samples = np.exp(-LOS_z_coords/air_height_constant)
             
             LOS_air_ext_coef = 1.09e-6 * wavelength**-4.05 * LOS_air_samples * ds
             LOS_aerosol_ext_coef = particle_params.k[RGB_CHANNEL] * LOS_aerosols_samples * ds
@@ -153,6 +148,7 @@ def main(params_path, add_noise, run_arguments):
             # Intensity
             #
             i_camera.append((LB_air_scatter + LB_aerosol_scatter)*np.exp(-np.sum(LB_air_ext_coef+LB_aerosol_ext_coef))*np.exp(-np.sum(LOS_air_ext_coef+LOS_aerosol_ext_coef)))
+            
         i_cameras.append(i_camera)
         
     plt.figure()
