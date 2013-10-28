@@ -41,6 +41,7 @@ def main(params_path, add_noise, run_arguments):
     #
     atmosphere_params, particle_params, sun_params, camera_params, cameras, air_dist, aerosols_dist = \
         atmotomo.readConfiguration(params_path)
+    aerosols_dist = np.transpose(aerosols_dist, (1, 0, 2))
     
     grids = atmosphere_params.cartesian_grids
     width, height = grids.closed[0][-1], grids.closed[2][-1]
@@ -83,14 +84,14 @@ def main(params_path, add_noise, run_arguments):
     #
     # Camera from the side
     #
-    angles = np.linspace(0, np.pi/2, 50)
+    angles = np.linspace(0, np.pi/2, 100)
     angles = angles[1:-5]
     i_cameras = []
-    cameras_distances = np.arange(2, 40) * 500
+    cameras_distances = np.concatenate((np.arange(-40, 0), np.arange(1, 40))) * 500
     for dx in cameras_distances:
         print dx
         camera_position = np.array((width/2+dx, width/2, 0))
-        z_crossings = dx * np.tan(angles)
+        z_crossings = abs(dx) * np.tan(angles)
         
         i_camera = []
         for z_cross, angle in zip(z_crossings, angles):
@@ -102,6 +103,8 @@ def main(params_path, add_noise, run_arguments):
             # Path along the Laser Beam
             #
             LB_z_coords = ds*np.arange(0, int(z_cross/ds), dtype=np.float)
+            if len(LB_z_coords) == 0:
+                LB_z_coords = np.array((ds,))
             LB_x_coords = np.ones_like(LB_z_coords) * lidar_position[0]
             LB_y_coords = np.ones_like(LB_z_coords) * lidar_position[0]
         
@@ -122,14 +125,14 @@ def main(params_path, add_noise, run_arguments):
             #
             # Scatter
             #
-            LB_air_scatter = 3 / (16*np.pi) * (1 + np.cos(angle)**2) * LB_air_ext_coef[-1]
-            LB_aerosol_scatter = atmotomo.calcHG_other(np.cos(np.pi), particle_params.g[RGB_CHANNEL]) * LB_aerosol_ext_coef[-1]
+            LB_air_scatter = 3 / (16*np.pi) * (1 + np.cos(np.pi/2+angle)**2) * LB_air_ext_coef[-1]
+            LB_aerosol_scatter = atmotomo.calcHG_other(np.cos(np.pi/2+angle), particle_params.g[RGB_CHANNEL]) * particle_params.w[RGB_CHANNEL] * LB_aerosol_ext_coef[-1]
     
             #
             # Path along the Line Of Sight
             #
             LOS_z_coords = np.sin(angle)*ds*np.arange(0, int(z_cross/ds/np.sin(angle)), dtype=np.float)
-            LOS_x_coords = lidar_position[0] + dx - np.cos(angle)*ds*np.arange(0, int(dx/ds/np.cos(angle)), dtype=np.float)
+            LOS_x_coords = lidar_position[0] + dx - np.sign(dx)*np.cos(angle)*ds*np.arange(0, int(abs(dx)/ds/np.cos(angle)), dtype=np.float)
             LOS_y_coords = np.ones_like(LOS_z_coords) * lidar_position[0]
             
             LOS_aerosols_samples = interpolate(
@@ -149,16 +152,16 @@ def main(params_path, add_noise, run_arguments):
             #
             # Intensity
             #
-            i_camera.append(1/1*(LB_air_scatter + LB_aerosol_scatter)*np.exp(-np.sum(LB_air_ext_coef+LB_aerosol_ext_coef))*np.exp(-np.sum(LOS_air_ext_coef+LOS_aerosol_ext_coef)))
+            i_camera.append((LB_air_scatter + LB_aerosol_scatter)*np.exp(-np.sum(LB_air_ext_coef+LB_aerosol_ext_coef))*np.exp(-np.sum(LOS_air_ext_coef+LOS_aerosol_ext_coef)))
         i_cameras.append(i_camera)
         
     plt.figure()
     plt.imshow(np.array(i_cameras).T, origin='lower', interpolation='nearest')
-    plt.xticks(np.arange(0, len(cameras_distances), 5), cameras_distances[::5])
+    plt.xticks(np.arange(0, len(cameras_distances), 5), cameras_distances[::5], rotation=70)
     plt.yticks(np.arange(0, len(angles), 5), np.round(angles[::5]*180/np.pi))
     plt.colorbar()
     plt.show()
-    
+            
     
 if __name__ == '__main__':
 
