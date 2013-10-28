@@ -153,8 +153,10 @@ def main(params_path, add_noise, run_arguments):
         
     plt.figure()
     plt.imshow(np.array(i_cameras).T, origin='lower', interpolation='nearest')
-    plt.xticks(np.arange(0, len(cameras_distances), 5), cameras_distances[::5], rotation=70)
-    plt.yticks(np.arange(0, len(angles), 5), np.round(angles[::5]*180/np.pi))
+    plt.xticks(np.array((0, int(len(cameras_distances)/2), len(cameras_distances))), (-20, 0, 20))
+    plt.xlabel('Distance from LIDAR [km]')
+    plt.yticks(np.array((0, int(len(angles)/3), int(len(angles)/3*2), len(angles))), (0, 30, 60, 90))
+    plt.ylabel('Elevation angle [degrees]')
     plt.colorbar()
     plt.show()
             
