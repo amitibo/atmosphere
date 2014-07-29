@@ -9,14 +9,14 @@ the MC and single scattering results.
 
 from __future__ import division
 
-from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
-from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
-from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
-from enthought.chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
+from traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
+from traitsui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
+from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
+from chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
 from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
-from enthought.enable.component_editor import ComponentEditor
-from enthought.pyface.api import warning
-from enthought.io.api import File
+from enable.component_editor import ComponentEditor
+from pyface.api import warning
+from io import FileIO
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import scipy.io as sio
@@ -179,8 +179,8 @@ class resultAnalayzer(HasTraits):
     tr_sun_angle = Range(-0.5, 0.5, 0.0, desc='Sun angle in parts of radian')
     tr_folder = Directory()
     tr_gamma_correction = Bool()
-    tr_DND_vadim = List(Instance(File))
-    tr_DND_amit = List(Instance(File))
+    tr_DND_vadim = List(Instance(FileIO))
+    tr_DND_amit = List(Instance(FileIO))
     tr_min = Int(0)
     tr_vadim_len = Int(0)
     tr_amit_len = Int(0)

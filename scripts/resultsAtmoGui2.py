@@ -8,14 +8,14 @@ the MC and single scattering results.
 
 from __future__ import division
 
-from enthought.traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
-from enthought.traits.ui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
-from enthought.chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
-from enthought.chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
+from traits.api import HasTraits, Range, on_trait_change, Float, List, Directory, Str, Bool, Instance, DelegatesTo, Enum, Int
+from traitsui.api import View, Item, Handler, DropEditor, VGroup, HGroup, EnumEditor, DirectoryEditor, Action
+from apptools.io import File
+from chaco.api import Plot, ArrayPlotData, PlotAxis, VPlotContainer, Legend, PlotLabel
+from chaco.tools.api import LineInspector, PanTool, ZoomTool, LegendTool
 from chaco.tools.cursor_tool import CursorTool, BaseCursorTool
-from enthought.enable.component_editor import ComponentEditor
-from enthought.pyface.api import warning
-from enthought.io.api import File
+from enable.component_editor import ComponentEditor
+from pyface.api import warning
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import scipy.io as sio
