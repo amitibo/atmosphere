@@ -33,6 +33,7 @@ import pkg_resources
 import amitibo
 import os
 import scipy.ndimage.filters as filters
+from pkg_resources import resource_filename
 from ._src import __src_path__
 
 __all__ = [
@@ -72,11 +73,10 @@ def getMisrDB():
     """
     
     import pickle
-    from amitibo import getResourcePath
     
-    with open(getResourcePath('misr.pkl', package_name=__name__), 'rb') as f:
+    with open(resource_filename(__name__, 'data/misr.pkl'), 'rb') as f:
         misr = pickle.load(f)
-    
+        
     return misr
 
     
@@ -345,6 +345,45 @@ def weighted_laplace(input, weights, output = None, mode = "reflect", cval = 0.0
         filt = np.array((1, -2, 1)) * weights[axis]
         return filters.correlate1d(input, filt, axis, output, mode, cval, 0)
     return filters.generic_laplace(input, derivative2, output, mode, cval)
+
+
+def loadpds(file_path):
+    """Load a shdom pds file."""
+    
+    labels = {}
+    with open(file_path, 'rb') as f:
+        while True:
+            line = f.readline().strip()
+            if line == 'END':
+                break
+            label, value = [s.strip() for s in line.split('=')]
+            
+            if value == '"':
+                value = ''
+                while True:
+                    line = f.readline()
+                    if line.strip() == '"':
+                        break
+                    value += line
+
+            try:
+                labels[label] = int(value)
+            except:
+                labels[label] = value
+            print label, value
+        rest_of_file = f.read()
+    
+    if labels['SAMPLE_BITS'] == 8:
+        dtype, sample_size = np.uint8, 1
+    elif labels['SAMPLE_BITS'] == 16:
+        dtype, sample_size = np.uint16, 2
+    else:
+        raise NotImplemented('Sample size: %d not implemented' % labels['SAMPLE_BITS'])
+    
+    h, w = labels['IMAGE_LINES'], labels['LINE_SAMPLES']
+    array = np.fromstring(rest_of_file[-h*w*sample_size:], dtype=dtype).reshape((h, w))
+    return array
+    
 
 
 if __name__ == '__main__':
