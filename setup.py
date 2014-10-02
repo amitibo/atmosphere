@@ -10,6 +10,10 @@ License: See attached license file
 """
 
 from setuptools import setup
+from setuptools.command.install import install
+from setuptools.command.develop import develop
+import shutil
+import stat
 import os
 
 NAME = 'atmotomo'
@@ -30,6 +34,45 @@ CLASSIFIERS = [
     'Topic :: Scientific/Engineering'
 ]
 URL = "http://bitbucket.org/amitibo/atmosphere"
+
+SHDOM_SRC = 'src/shdom'
+
+
+def make_shdom(shdom_dir, script_dir):
+    current_path = os.getcwd()
+    os.chdir('src/shdom')
+    os.system('make')
+    os.chdir(current_path)
+
+    for name in ('shdom', 'shdom90', 'propgen', 'make_mie_table', 'gradient'):
+        src_path = os.path.join(shdom_dir, name)
+        dst_path = os.path.join(script_dir, name)
+        shutil.copyfile(src_path, dst_path)
+        os.chmod(dst_path, stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        
+class SrcInstall(install):
+
+    def run(self):
+        install.run(self)
+        make_shdom(SHDOM_SRC, self.script_dir)
+
+
+class SrcDevelop(develop):
+
+    def run(self):
+        'running make'
+        develop.run(self)
+        make_shdom(SHDOM_SRC, self.script_dir)
+
+
+def scripts_list():
+    
+    scripts = [
+        'scripts/{name}.py'.format(name=name) for name in ('simulateAtmo3D', 'analyzeAtmo3D', )
+    ]
+
+    return scripts
+
 
 def main():
     """main setup function"""
@@ -53,21 +96,12 @@ def main():
         license=LICENSE,
         packages=PACKAGES,
         package_data={PACKAGE_NAME: ['data/*.*']},
-        scripts=[
-            'scripts/simulateAtmo3D.py',
-            'scripts/pbsMcarats.py',
-            'scripts/analyzeAtmo3D.py',
-            'scripts/resultsAtmoGui.py',
-            'scripts/resultsAtmoGui2.py',
-            'scripts/resultsAtmoDualGui.py',
-            'scripts/resultsAtmoDualMcarats.py',
-            'scripts/createMcaratsImgs.py',
-            'scripts/createMcaratsRGB.py',
-            'scripts/radianceAtmoGui.py',
-            'scripts/calcMcaratsSingleRatio.py',
-            'scripts/calcSingleMcaratsRatio.py'
-        ]
-        )
+        scripts=scripts_list(),
+        cmdclass={
+            'install': SrcInstall,
+            'develop': SrcDevelop
+        }
+    )
 
 
 if __name__ == '__main__':
