@@ -38,6 +38,9 @@ class Test(unittest.TestCase):
             cross_section=particle['k'][0]
             )
         
+    def test_createMieTable(self):
+        
+        atmotomo.createScatFile('mie_table')
         
 
 if __name__ == '__main__':

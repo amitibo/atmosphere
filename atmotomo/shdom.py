@@ -4,10 +4,12 @@
 from __future__ import division
 import numpy as np
 import subprocess as sbp
+import os
 
 __all__ = (
     'calcTemperature',
-    'createMassContentFile'
+    'createMassContentFile',
+    'createScatFile'
 )
 
 
@@ -102,11 +104,11 @@ def createParticleMixtureFile(
         scattable = """("${basefile}_${wavename}_Mie.scat"""        
 
         
-        put $#scattable $scattable "$scattypes" $parfile \
-            $maxnewphase $asymtol $fracphasetol $raylcoef \
-            $Nzother $prpfile  | propgen   
+        #put $#scattable $scattable "$scattypes" $parfile \
+            #$maxnewphase $asymtol $fracphasetol $raylcoef \
+            #$Nzother $prpfile  | propgen   
 
-        p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)'
+        p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
         p.communicate(
             input="1 "
         )
@@ -126,7 +128,7 @@ def createScatFile(base_path):
     partype = "A"                # W for water
     refindex="(1.45,-0.0006)"    # aerosol complex index of refraction 
     pardens=1.91                 # particle bulk denisty (g/cm^3)
-    distflag=L                   # G=gamma, L=lognormal size distribution
+    distflag="L"                   # G=gamma, L=lognormal size distribution
     sigma = 0.7                  # lognormal dist shape parameter
     Nretab=1                     # number of effective radius in table
     Sretab=0.57; Eretab=0.57     # starting, ending effective radius (micron)
@@ -134,9 +136,10 @@ def createScatFile(base_path):
     
     for wavename, wavelen, raylcoef in zip(wavenames, wavelengths, rayl_coef_array):
         outfile = "{base_file}_{wavename}_Mie.scat".format(base_file=base_path, wavename=wavename)
-        p = sbp.Popen(['make_mie_table'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)'
-        p.communicate(
-            input="{wavelen1} {wavelen2} {partype} {rindex} {pardens} {distflag} {alpha} {nretab} {sretab} {eretab} {maxradius} {miefile}".format(
+        p = sbp.Popen(['make_mie_table'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+
+        res = p.communicate(
+            input="{wavelen1}\n{wavelen2}\n{partype}\n{rindex}\n{pardens}\n{distflag}\n{alpha}\n{nretab}\n{sretab}\n{eretab}\n{maxradius}\n{miefile}\n".format(
                 wavelen1=wavelen,
                 wavelen2=wavelen,
                 partype=partype,
@@ -151,8 +154,11 @@ def createScatFile(base_path):
                 miefile=outfile
             )
         )
+        
+        for r in res:
+            print r
 
 
-        if __name__ == '__main__':
+if __name__ == '__main__':
     pass
     
