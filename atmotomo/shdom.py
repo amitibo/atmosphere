@@ -22,7 +22,8 @@ def runCmd(cmd, *args):
     p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
 
     res = p.communicate(input="\n".join([repr(arg) for arg in args]))
-    )
+    
+    return res
     
 
 def calcTemperature(z_levels, T0=295):
@@ -98,34 +99,30 @@ def createOpticalPropertyFile(
     If mass_content is given it is used as the extinction matrix. If not
     the particle properties are taken from the MISR table and the given distribution.
     """
-    
-    Nzother = 0
-    
+
     #
     # Wavelength dependent rayleigh coefficient at sea level
     # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
     #
     rayl_coef = (2.97e-4)*wavelen**(-4.15+0.2*wavelen)
     
-    p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+    nscattab=1,
+    scatnums='(1)',
+    nzo=0,
 
-    res = p.communicate(
-        input="{nscattab}\n{scattabfiles}\n{scatnums}\n{parfile}\n{maxnewphase}\n{asymtol}\n{fracphasetol}\n{raylcoef}\n{nzo}\n{propfile}\n".format(
-            nscattab=1,
-            scattabfiles='({scat_file})'.format(scat_file=scat_file),
-            scatnums='(1)',
-            parfile=part_file,
-            maxnewphase=maxnewphase,
-            asymtol=asymtol,
-            fracphasetol=fracphasetol,
-            raylcoef=rayl_coef,
-            nzo=0,
-            propfile=outfile
-        )
+    runCmd(
+        'propgen',
+        nscattab,
+        '({scat_file})'.format(scat_file=scat_file),
+        scatnums,
+        part_file,
+        maxnewphase,
+        asymtol,
+        fracphasetol,
+        rayl_coef,
+        nzo,
+        outfile
     )
-    
-    print res
-
 
 def createMieTable(
     outfile,
@@ -147,35 +144,42 @@ def createMieTable(
     # "L" for lognormal size distribution
     # maxradius truncates the inifinite lognormal distribution
     #
-    particle_num = 1
-    maxradius = 50 
-    
-    p = sbp.Popen(['make_mie_table'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+    wavelen1 = wavelen
+    wavelen2 = wavelen
+    rindex = "({real}, {imag})".format(real=refindex.real, imag=refindex.imag)
+    pardens = density
+    nretab = 1
+    sretab=char_radius
+    eretab=char_radius
+    miefile=outfile
 
-    res = p.communicate(
-        input="{wavelen1}\n{wavelen2}\n{partype}\n{rindex}\n{pardens}\n{distflag}\n{alpha}\n{nretab}\n{sretab}\n{eretab}\n{maxradius}\n{miefile}\n".format(
-            wavelen1=wavelen,
-            wavelen2=wavelen,
-            partype=partype,
-            rindex="({real}, {imag})".format(real=refindex.real, imag=refindex.imag),
-            pardens=density,
-            distflag=distflag,
-            alpha=sigma,
-            nretab=particle_num,
-            sretab=char_radius,
-            eretab=char_radius,
-            maxradius=max_radius,
-            miefile=outfile
-        )
+    runCmd(
+        'make_mie_table',
+        wavelen1,
+        wavelen2,
+        partype,
+        rindex,
+        pardens,
+        distflag,
+        sigma,
+        nretab,
+        sretab,
+        eretab,
+        max_radius,
+        outfile
     )
     
 
 def solveRTE(
+    nx, ny, nz,
+    propfile,
+    maxiter,
+    outfile,
     Nmu=8,
     Nphi=16,
-    mu0 = 0.5,
-    phi0=0.0,
-    flux0=1.0,
+    solarmu = 0.5,
+    solarphi=0.0,
+    solarfux=1.0,
     sfcalb=0.05,
     IPflag=0,
     BCflag=3,
@@ -206,23 +210,51 @@ def solveRTE(
 
     """
     
-    p = sbp.Popen(['shdom90'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
-
-    res = p.communicate(
-        input="{runname}\n{propfile}\n{sfcfile}\n{ckdfile}\n{infile}\n{outfile}\n{nx}\n{ny}\n{nz}".format(
-            wavelen1=wavelen,
-            wavelen2=wavelen,
-            partype=partype,
-            rindex="({real}, {imag})".format(real=refindex.real, imag=refindex.imag),
-            pardens=density,
-            distflag=distflag,
-            alpha=sigma,
-            nretab=particle_num,
-            sretab=char_radius,
-            eretab=char_radius,
-            maxradius=max_radius,
-            miefile=outfile
-        )
+    runname = 'Solve'
+    sfcfile = 'NONE'
+    ckdfile = 'NONE'
+    infile = 'NONE'
+    gridtype = 'P'
+    srctype = 'S'
+    noutfiles = 0
+    ncdffile = 'NONE'
+    max_memory = 1000
+    grid_factor = 2.2
+    spheric_factor = 0.6
+    point_ratio = 1.5
+    
+    runCmd(
+        'shdom90',
+        runname,
+        propfile,
+        sfcfile,
+        ckdfile,
+        infile,
+        outfile,
+        nx, ny, nz,
+        Nmu, Nphi,
+        BCflag,
+        IPflag,
+        deltaM,
+        gridtype,
+        srctype,
+        solarflux,
+        solarmu,
+        solaraz,
+        skyrad,
+        gndalbedo,
+        wavelen,
+        splitacc,
+        shacc,
+        accel,
+        solacc,
+        maxiter,
+        noutfiles,
+        ncdffile,
+        max_memory,
+        grid_factor,
+        spheric_factor,
+        point_ratio
     )
     
     
