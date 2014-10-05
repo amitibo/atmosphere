@@ -6,6 +6,7 @@ Created on Tue Oct 25 20:12:32 2011
 """
 from __future__ import division
 from pkg_resources import resource_filename
+from atmotomo import ColoredParam
 import pickle
 import os
 
@@ -15,22 +16,24 @@ def main():
     
     misr = {}
     
-    txt_path1 = resource_filename('shdom', 'data/misr.txt')
-    txt_path2 = resource_filename('shdom', 'data/misr_physical.txt')
-    pkl_path = resource_filename('shdom', 'data/misr.pkl')
+    txt_path1 = resource_filename('atmotomo', 'data/misr.txt')
+    txt_path2 = resource_filename('atmotomo', 'data/misr_physical.txt')
+    pkl_path = resource_filename('atmotomo', 'data/misr.pkl')
     
     with open(txt_path1, 'rb') as f:
         lines = f.readlines()
         for i in range(0, len(lines), 4):
-            blue = lines[i].strip().split()
-            green = lines[i+1].strip().split()
-            red = lines[i+2].strip().split()
+            #
+            # The parameters are read in the order blue, green red
+            #
+            color_params = [line.strip().split() for line in lines[i:i+3]][::-1]
             
-            misr[blue[6]] = {
-                'description': ''.join(blue[6:]),
-                'k': (float(red[3]), float(green[3]), float(blue[3])),
-                'w': (float(red[4]), float(green[4]), float(blue[4])),
-                'g': (float(red[5]), float(green[5]), float(blue[5]))
+            misr[color_params[2][6]] = {
+                'description': ''.join(color_params[2][6:]),
+                'refractive index': ColoredParam(*[complex(float(params[1]), float(params[2])) for params in color_params]),
+                'k': ColoredParam(*[float(params[3]) for params in color_params]),
+                'w': ColoredParam(*[float(params[4]) for params in color_params]),
+                'g': ColoredParam(*[float(params[5]) for params in color_params]),
             }
     
     with open(txt_path2, 'rb') as f:

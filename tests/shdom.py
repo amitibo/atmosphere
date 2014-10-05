@@ -14,33 +14,56 @@ class Test(unittest.TestCase):
     
     def setUp(self):
         
-        pass
-
-    def test_createPartFile(self):
-        
-        atmosphere_params = amitibo.attrClass(
+        self.atmosphere_params = amitibo.attrClass(
             cartesian_grids=spt.Grids(
                 np.arange(0, 400, 10.0), # Y
                 np.arange(0, 400, 10.0), # X
                 np.arange(0, 80, 10.0)   # H
                 ),
         )
+
+        self.particle = atmotomo.getMisrDB()['spherical_nonabsorbing_2.80']
+        self.particle_dist = np.random.rand(*self.atmosphere_params.cartesian_grids.shape) * 10**12
+
+    def test_createPartFile(self):
         
-        particle = atmotomo.getMisrDB()['spherical_nonabsorbing_2.80']
-        particle_dist = np.random.rand(*atmosphere_params.cartesian_grids.shape) * 10**12
-        path = os.path.abspath('part_file.part')
+        outfile = 'part_file.part'
         
         atmotomo.createMassContentFile(
-            path,
-            atmosphere_params,
-            char_radius=particle['char radius'],
-            particle_dist=particle_dist,
-            cross_section=particle['k'][0]
+            outfile,
+            self.atmosphere_params,
+            char_radius=self.particle['char radius'],
+            particle_dist=self.particle_dist,
+            cross_section=self.particle['k'][0]
             )
         
     def test_createMieTable(self):
         
-        atmotomo.createScatFile('mie_table')
+        for color in ('red', 'green', 'blue'):
+            outfile = 'mie_table_{color}.scat'.format(color=color)
+            atmotomo.createMieTable(
+                outfile,
+                wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),
+                refindex=getattr(self.particle['refractive index'], color),
+                density=self.particle['density'],
+                char_radius=self.particle['char radius']
+            )
+        
+    def test_createOpticalPorpFile(self):
+        
+        part_file = 'part_file.part'
+        
+        for color in ('red', 'green', 'blue'):
+            scat_file = 'mie_table_{color}.scat'.format(color=color)
+
+            outfile = 'prop_{color}.prp'.format(color=color)
+            atmotomo.createOpticalPropertyFile(
+                outfile,
+                scat_file=scat_file,
+                part_file=part_file,
+                wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),
+                rayl_coef=getattr
+            )
         
 
 if __name__ == '__main__':

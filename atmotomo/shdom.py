@@ -9,7 +9,8 @@ import os
 __all__ = (
     'calcTemperature',
     'createMassContentFile',
-    'createScatFile'
+    'createOpticalPropertyFile',
+    'createMieTable'
 )
 
 
@@ -27,7 +28,7 @@ def calcTemperature(z_levels, T0=295):
 
 
 def createMassContentFile(
-    file_path,
+    outfile,
     atmosphere_params,
     char_radius,
     mass_content=None,
@@ -61,7 +62,7 @@ def createMassContentFile(
     
     i_ind, j_ind, k_ind = np.unravel_index(range(grids.size), (nx, ny, nz))
     
-    with open(file_path, 'wb') as f:
+    with open(outfile, 'wb') as f:
         f.write('3\n')
         np.savetxt(f, ((nx, ny, nz),), fmt='%d', delimiter=' ')
         np.savetxt(f, ((dx, dy),), fmt='%.4f', delimiter=' ')
@@ -72,13 +73,15 @@ def createMassContentFile(
             f.write('%d\t%d\t%d\t1\t1\t%.5f\t%.5f\n' % (i+1, j+1, k+1, m, char_radius))
 
 
-def createParticleMixtureFile(
-    file_path,
-    atmosphere_params,
-    char_radius,
-    mass_content=None,
-    particle_dist=None,
-    cross_section=None
+def createOpticalPropertyFile(
+    outfile,
+    scat_file,
+    part_file,
+    wavelen,
+    rayl_coef,
+    maxnewphase=50,
+    asymtol=0.1,
+    fracphasetol=0.1,
     ):
     """
     This function creates a new .part file 
@@ -86,78 +89,70 @@ def createParticleMixtureFile(
     the particle properties are taken from the MISR table and the given distribution.
     """
     
-    wavenames = ('red', 'green', 'blue')
-    wavelengths = (0.672, 0.558, 0.446)
-    rayl_coef_array = (0.00148, 0.0031, 0.0079)
-
-    # Wavelength dependent rayleigh coefficient at sea level 
-    # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
-    
-    # parfile = ${basefile}.part
-    maxnewphase = 50
-    asymtol = 0.1
-    fracphasetol = 0.1
     Nzother = 0
     
-    for wavename, wavelen, raylcoef in ():
-        prpfile = """${basefile}_${wavename}.prp"""
-        scattable = """("${basefile}_${wavename}_Mie.scat"""        
+    p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
 
-        
-        #put $#scattable $scattable "$scattypes" $parfile \
-            #$maxnewphase $asymtol $fracphasetol $raylcoef \
-            #$Nzother $prpfile  | propgen   
-
-        p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
-        p.communicate(
-            input="1 "
+    res = p.communicate(
+        input="{nscattab}\n{scattabfiles}\n{scatnums}\n{parfile}\n{maxnewphase}\n{asymtol}\n{fracphasetol}\n{raylcoef}\n{nzo}\n{propfile}\n".format(
+            nscattab=1,
+            scattabfiles='({scat_file})'.format(scat_file=scat_file),
+            scatnums='(1)',
+            parfile=part_file,
+            maxnewphase=maxnewphase,
+            asymtol=asymtol,
+            fracphasetol=fracphasetol,
+            raylcoef=rayl_coef,
+            nzo=0,
+            propfile=outfile
         )
+    )
+    
+    print res
 
 
-def createScatFile(base_path):
+def createMieTable(
+    outfile,
+    wavelen,
+    refindex,
+    density,
+    char_radius,
+    max_radius=50,
+    partype="A",
+    distflag="L",
+    sigma=0.7
+    ):
     """
+    
     """
     
-    wavenames = ('red', 'green', 'blue')
-    wavelengths = (0.672, 0.558, 0.446)
-    rayl_coef_array = (0.00148, 0.0031, 0.0079)
-
-    # Wavelength dependent rayleigh coefficient at sea level 
-    # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
+    #
+    # "A" for aerosol particle
+    # "L" for lognormal size distribution
+    # maxradius truncates the inifinite lognormal distribution
+    #
+    particle_num = 1
+    maxradius = 50 
     
-    partype = "A"                # W for water
-    refindex="(1.45,-0.0006)"    # aerosol complex index of refraction 
-    pardens=1.91                 # particle bulk denisty (g/cm^3)
-    distflag="L"                   # G=gamma, L=lognormal size distribution
-    sigma = 0.7                  # lognormal dist shape parameter
-    Nretab=1                     # number of effective radius in table
-    Sretab=0.57; Eretab=0.57     # starting, ending effective radius (micron)
-    maxradius=50 
-    
-    for wavename, wavelen, raylcoef in zip(wavenames, wavelengths, rayl_coef_array):
-        outfile = "{base_file}_{wavename}_Mie.scat".format(base_file=base_path, wavename=wavename)
-        p = sbp.Popen(['make_mie_table'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+    p = sbp.Popen(['make_mie_table'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
 
-        res = p.communicate(
-            input="{wavelen1}\n{wavelen2}\n{partype}\n{rindex}\n{pardens}\n{distflag}\n{alpha}\n{nretab}\n{sretab}\n{eretab}\n{maxradius}\n{miefile}\n".format(
-                wavelen1=wavelen,
-                wavelen2=wavelen,
-                partype=partype,
-                rindex=refindex,
-                pardens=pardens,
-                distflag=distflag,
-                alpha=sigma,
-                nretab=Nretab,
-                sretab=Sretab,
-                eretab=Eretab,
-                maxradius=maxradius,
-                miefile=outfile
-            )
+    res = p.communicate(
+        input="{wavelen1}\n{wavelen2}\n{partype}\n{rindex}\n{pardens}\n{distflag}\n{alpha}\n{nretab}\n{sretab}\n{eretab}\n{maxradius}\n{miefile}\n".format(
+            wavelen1=wavelen,
+            wavelen2=wavelen,
+            partype=partype,
+            rindex="({real}, {imag})".format(real=refindex.real, imag=refindex.imag),
+            pardens=density,
+            distflag=distflag,
+            alpha=sigma,
+            nretab=particle_num,
+            sretab=char_radius,
+            eretab=char_radius,
+            maxradius=max_radius,
+            miefile=outfile
         )
-        
-        for r in res:
-            print r
-
+    )
+    
 
 if __name__ == '__main__':
     pass

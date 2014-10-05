@@ -34,7 +34,8 @@ import amitibo
 import os
 import scipy.ndimage.filters as filters
 from pkg_resources import resource_filename
-from ._src import __src_path__
+from collections import namedtuple
+
 
 __all__ = [
     "calcHG",
@@ -46,16 +47,19 @@ __all__ = [
     "loadVadimData",
     "readConfiguration",
     "fixmat",
-    "weighted_laplace"
+    "weighted_laplace",
+    "ColoredParam"
 ]
 
+
+ColoredParam = namedtuple('ColoredParam', ['red', 'green', 'blue'])
 
 #
 # Some globals
 #
-L_SUN_RGB=(255, 236, 224)
+L_SUN_RGB = ColoredParam(255, 236, 224)
 #RGB_WAVELENGTH = (700e-3, 530e-3, 470e-3)
-RGB_WAVELENGTH = (672e-3, 558e-3, 446e-3)
+RGB_WAVELENGTH = ColoredParam(672e-3, 558e-3, 446e-3)
 
 SPARSE_SIZE_LIMIT = 1e6
 GRID_DIM_LIMIT = 100
@@ -216,7 +220,7 @@ def readConfiguration(path, highten_atmosphere=False):
     elif os.path.isfile(path):
         base_path, dump = os.path.split(path)
     else:
-        base_path = os.path.join(__src_path__, 'atmotomo/data/configurations', path)
+        base_path = os.path.join(resource_filename(__name__, 'data/configurations'), path)
 
     path = os.path.join(base_path, 'configuration.ini')
     
