@@ -62,7 +62,6 @@ class Test(unittest.TestCase):
                 scat_file=scat_file,
                 part_file=part_file,
                 wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),
-                rayl_coef=getattr
             )
         
 

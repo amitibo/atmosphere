@@ -14,6 +14,17 @@ __all__ = (
 )
 
 
+def runCmd(cmd, *args):
+    """
+    Run a cmd as a subprocess and pass a list of args on stdin.
+    """
+
+    p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+
+    res = p.communicate(input="\n".join([repr(arg) for arg in args]))
+    )
+    
+
 def calcTemperature(z_levels, T0=295):
     """
     Calculate temperature for given z levels
@@ -78,7 +89,6 @@ def createOpticalPropertyFile(
     scat_file,
     part_file,
     wavelen,
-    rayl_coef,
     maxnewphase=50,
     asymtol=0.1,
     fracphasetol=0.1,
@@ -90,6 +100,12 @@ def createOpticalPropertyFile(
     """
     
     Nzother = 0
+    
+    #
+    # Wavelength dependent rayleigh coefficient at sea level
+    # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
+    #
+    rayl_coef = (2.97e-4)*wavelen**(-4.15+0.2*wavelen)
     
     p = sbp.Popen(['propgen'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
 
@@ -154,6 +170,62 @@ def createMieTable(
     )
     
 
+def solveRTE(
+    Nmu=8,
+    Nphi=16,
+    mu0 = 0.5,
+    phi0=0.0,
+    flux0=1.0,
+    sfcalb=0.05,
+    IPflag=0,
+    BCflag=3,
+    deltaM='T',
+    splitacc=-1,
+    shacc=0.003,
+    solacc=1.0E-4,
+    accel='T'
+    ):
+    """
+    Solve the Radiative Transfer using SHDOM.
+    
+    Parameters:
+    ===========
+    Nmu=8                 # number of zenith angles in both hemispheres
+    Nphi=16               # number of azimuth angles
+    mu0 = 0.5             # solar cosine zenith angle
+    phi0=0.0              # solar beam azimuth (degrees)
+    flux0=1.0             # solar flux (relative)
+    sfcalb=0.05           # surface Lambertian albedo
+    IPflag=0              # independent pixel flag (0 = 3D, 3 = IP)
+    BCflag=3              # horizontal boundary conditions (0 = periodic)
+    deltaM=T              # use delta-M scaling for solar problems
+    splitacc=-1           # adaptive grid cell splitting accuracy (was 0.10) negative for no splitting 
+    shacc=0.003           # adaptive spherical harmonic accuracy
+    solacc=1.0E-4         # solution accuracy
+    accel=T               # solution acceleration flag
+
+    """
+    
+    p = sbp.Popen(['shdom90'], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+
+    res = p.communicate(
+        input="{runname}\n{propfile}\n{sfcfile}\n{ckdfile}\n{infile}\n{outfile}\n{nx}\n{ny}\n{nz}".format(
+            wavelen1=wavelen,
+            wavelen2=wavelen,
+            partype=partype,
+            rindex="({real}, {imag})".format(real=refindex.real, imag=refindex.imag),
+            pardens=density,
+            distflag=distflag,
+            alpha=sigma,
+            nretab=particle_num,
+            sretab=char_radius,
+            eretab=char_radius,
+            maxradius=max_radius,
+            miefile=outfile
+        )
+    )
+    
+    
 if __name__ == '__main__':
     pass
     

@@ -12,6 +12,7 @@ License: See attached license file
 from setuptools import setup
 from setuptools.command.install import install
 from setuptools.command.develop import develop
+import platform
 import shutil
 import stat
 import os
@@ -39,6 +40,10 @@ SHDOM_SRC = 'src/shdom'
 
 
 def make_shdom(shdom_dir, script_dir):
+    
+    if platform.system() == 'Windows':
+        raise Warning('Installing on Windows, SHDOM not installed.')
+    
     current_path = os.getcwd()
     os.chdir('src/shdom')
     os.system('make')
