@@ -48,7 +48,8 @@ __all__ = [
     "readConfiguration",
     "fixmat",
     "weighted_laplace",
-    "ColoredParam"
+    "ColoredParam",
+    "loadpds"
 ]
 
 
@@ -299,12 +300,8 @@ def readConfiguration(path, highten_atmosphere=False):
         if attr in particle_section:
             setattr(particle, attr, particle[attr])
             
-    particle_params = amitibo.attrClass(
-        k=np.array(particle['k']) * 10**-12,
-        w=particle['w'],
-        g=particle['g'],
-        phase=particle_section['phase']
-        )
+    particle_params = amitibo.attrClass(**particle)
+    particle_params.phase=particle_section['phase']
 
     #
     # Load cameras
@@ -381,6 +378,8 @@ def loadpds(file_path):
         dtype, sample_size = np.uint8, 1
     elif labels['SAMPLE_BITS'] == 16:
         dtype, sample_size = np.uint16, 2
+    elif labels['SAMPLE_BITS'] == 32:
+        dtype, sample_size = np.uint32, 4
     else:
         raise NotImplemented('Sample size: %d not implemented' % labels['SAMPLE_BITS'])
     

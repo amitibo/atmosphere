@@ -53,7 +53,7 @@ def make_shdom(shdom_dir, script_dir):
         src_path = os.path.join(shdom_dir, name)
         dst_path = os.path.join(script_dir, name)
         shutil.copyfile(src_path, dst_path)
-        os.chmod(dst_path, stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        os.chmod(dst_path, stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | stat.S_IWUSR)
         
 class SrcInstall(install):
 

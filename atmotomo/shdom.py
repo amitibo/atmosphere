@@ -10,9 +10,12 @@ __all__ = (
     'calcTemperature',
     'createMassContentFile',
     'createOpticalPropertyFile',
-    'createMieTable'
+    'createMieTable',
+    'solveRTE',
+    'createImage'
 )
 
+debug = True
 
 def runCmd(cmd, *args):
     """
@@ -21,8 +24,14 @@ def runCmd(cmd, *args):
 
     p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
 
-    res = p.communicate(input="\n".join([repr(arg) for arg in args]))
+    res = p.communicate(input="\n".join([str(arg) for arg in args])+"\n")
     
+    if debug:
+        print '='*70
+        print 'CMD:', cmd
+        print 'STDOUT:\n', res[0]
+        print 'STDERR:\n', res[1]
+
     return res
     
 
@@ -59,7 +68,7 @@ def createMassContentFile(
         # TODO: figure out what is this magic number?
         # from aviad code: beta - extinction per 1 g/m^2 density of material taken from twoClouds_blue_Mie.scat
         particle_mass = 1.8885e-3
-        density2number_ratio = cross_section * 1e-12 / particle_mass
+        density2number_ratio = cross_section / particle_mass
         mass_content = particle_dist * density2number_ratio
 
     grids =  atmosphere_params.cartesian_grids
@@ -84,45 +93,6 @@ def createMassContentFile(
         for i, j, k, m in zip(i_ind, j_ind, k_ind, mass_content.ravel()):
             f.write('%d\t%d\t%d\t1\t1\t%.5f\t%.5f\n' % (i+1, j+1, k+1, m, char_radius))
 
-
-def createOpticalPropertyFile(
-    outfile,
-    scat_file,
-    part_file,
-    wavelen,
-    maxnewphase=50,
-    asymtol=0.1,
-    fracphasetol=0.1,
-    ):
-    """
-    This function creates a new .part file 
-    If mass_content is given it is used as the extinction matrix. If not
-    the particle properties are taken from the MISR table and the given distribution.
-    """
-
-    #
-    # Wavelength dependent rayleigh coefficient at sea level
-    # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
-    #
-    rayl_coef = (2.97e-4)*wavelen**(-4.15+0.2*wavelen)
-    
-    nscattab=1,
-    scatnums='(1)',
-    nzo=0,
-
-    runCmd(
-        'propgen',
-        nscattab,
-        '({scat_file})'.format(scat_file=scat_file),
-        scatnums,
-        part_file,
-        maxnewphase,
-        asymtol,
-        fracphasetol,
-        rayl_coef,
-        nzo,
-        outfile
-    )
 
 def createMieTable(
     outfile,
@@ -170,16 +140,57 @@ def createMieTable(
     )
     
 
+def createOpticalPropertyFile(
+    outfile,
+    scat_file,
+    part_file,
+    wavelen,
+    maxnewphase=50,
+    asymtol=0.1,
+    fracphasetol=0.1,
+    ):
+    """
+    This function creates a new .part file 
+    If mass_content is given it is used as the extinction matrix. If not
+    the particle properties are taken from the MISR table and the given distribution.
+    """
+
+    #
+    # Wavelength dependent rayleigh coefficient at sea level
+    # calculated by k=(2.97e-4)*lambda^(-4.15+0.2*lambda)
+    #
+    rayl_coef = (2.97e-4)*wavelen**(-4.15+0.2*wavelen)
+    
+    nscattab=1
+    scatnums=1
+    nzo=0
+
+    runCmd(
+        'propgen',
+        nscattab,
+        scat_file,
+        scatnums,
+        part_file,
+        maxnewphase,
+        asymtol,
+        fracphasetol,
+        rayl_coef,
+        nzo,
+        outfile
+    )
+
+
 def solveRTE(
     nx, ny, nz,
     propfile,
+    wavelen,
     maxiter,
     outfile,
     Nmu=8,
     Nphi=16,
     solarmu = 0.5,
     solarphi=0.0,
-    solarfux=1.0,
+    solarflux=1.0,
     sfcalb=0.05,
     IPflag=0,
     BCflag=3,
@@ -222,6 +233,7 @@ def solveRTE(
     grid_factor = 2.2
     spheric_factor = 0.6
     point_ratio = 1.5
+    skyrad = 0.0
     
     runCmd(
         'shdom90',
@@ -240,9 +252,9 @@ def solveRTE(
         srctype,
         solarflux,
         solarmu,
-        solaraz,
+        solarphi,
         skyrad,
-        gndalbedo,
+        sfcalb,
         wavelen,
         splitacc,
         shacc,
@@ -257,7 +269,128 @@ def solveRTE(
         point_ratio
     )
     
+
+def createImage(
+    nx, ny, nz,
+    propfile,
+    solvefile,
+    wavelen,
+    imgfile,
+    camX,
+    camY,
+    camZ,
+    camtheta=0,
+    camphi=0,
+    camrotang=0,
+    camnlines=128,
+    camnsamps=128,
+    camdelline=179.0/128,
+    camdelsamp=179.0/128,
+    nbytes=4,        
+    maxiter=0,
+    Nmu=8,
+    Nphi=16,
+    solarmu = 0.5,
+    solarphi=0.0,
+    solarflux=1.0,
+    sfcalb=0.05,
+    IPflag=0,
+    BCflag=3,
+    deltaM='T',
+    splitacc=-1,
+    shacc=0.003,
+    solacc=1.0E-4,
+    accel='T'
+    ):
+    """
+    Create the images from a SHDOM solve run.
     
+    Parameters:
+    ===========
+    Nmu=8                 # number of zenith angles in both hemispheres
+    Nphi=16               # number of azimuth angles
+    mu0 = 0.5             # solar cosine zenith angle
+    phi0=0.0              # solar beam azimuth (degrees)
+    flux0=1.0             # solar flux (relative)
+    sfcalb=0.05           # surface Lambertian albedo
+    IPflag=0              # independent pixel flag (0 = 3D, 3 = IP)
+    BCflag=3              # horizontal boundary conditions (0 = periodic)
+    deltaM=T              # use delta-M scaling for solar problems
+    splitacc=-1           # adaptive grid cell splitting accuracy (was 0.10) negative for no splitting 
+    shacc=0.003           # adaptive spherical harmonic accuracy
+    solacc=1.0E-4         # solution accuracy
+    accel=T               # solution acceleration flag
+
+    """
+    
+    runname = 'Visualize'
+    sfcfile = 'NONE'
+    ckdfile = 'NONE'
+    outfile = 'NONE'
+    gridtype = 'P'
+    srctype = 'S'
+    noutfiles = 1
+    outtype = 'V'
+    cammode = 1
+    scale = 4
+    binfile = 'temp.bin'
+    ncdffile = 'NONE'
+    max_memory = 120
+    grid_factor = 2.2
+    spheric_factor = 0.6
+    point_ratio = 1.5
+    skyrad = 0.0
+    
+    runCmd(
+        'shdom90',
+        runname,
+        propfile,
+        sfcfile,
+        ckdfile,
+        solvefile,
+        outfile,
+        nx, ny, nz,
+        Nmu, Nphi,
+        BCflag,
+        IPflag,
+        deltaM,
+        gridtype,
+        srctype,
+        solarflux,
+        solarmu,
+        solarphi,
+        skyrad,
+        sfcalb,
+        wavelen,
+        splitacc,
+        shacc,
+        accel,
+        solacc,
+        maxiter,
+        noutfiles,
+        outtype,
+        cammode,
+        nbytes,
+        scale,
+        camX, 
+        camY,
+        camZ,
+        camtheta, 
+        camphi, 
+        camrotang, 
+        camnlines, 
+        camnsamps,
+        camdelline,
+        camdelsamp,
+        imgfile,
+        ncdffile,
+        max_memory,
+        grid_factor,
+        spheric_factor,
+        point_ratio
+    )
+
+
 if __name__ == '__main__':
     pass
     
