@@ -16,7 +16,7 @@ class Test(unittest.TestCase):
     def setUp(self):
         
         self.atmosphere_params, self.particle_params, sun_params, camera_params, cameras, air_dist, self.particle_dist = \
-            atmotomo.readConfiguration('two_clouds_low_density_medium_resolution', particle_name='spherical_absorbing_0.57_ssa_green_0.94')
+            atmotomo.readConfiguration('two_clouds_high_density_mediumhigh_resolution_smooth', particle_name='spherical_absorbing_0.57_ssa_green_0.94')
         
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
@@ -29,7 +29,7 @@ class Test(unittest.TestCase):
             outfile,
             self.atmosphere_params,
             effective_radius=self.particle_params.effective_radius,
-            particle_dist=np.zeros_like(self.particle_dist),
+            particle_dist=self.particle_dist,
             cross_section=self.particle_params.k[0]
             )
 
@@ -90,7 +90,7 @@ class Test(unittest.TestCase):
         grids =  self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
         
-        for i, (camX, camY) in enumerate(itertools.product((10, 40), repeat=2)):
+        for i, (camX, camY) in enumerate(itertools.product((9.01, 39.01), repeat=2)):
             for color, flux in zip(('red', 'green', 'blue'), (255, 236, 224)):
                 propfile = 'prop_{color}.prp'.format(color=color)
                 solvefile = 'sol_{color}.bin'.format(color=color)
@@ -121,11 +121,13 @@ class Test(unittest.TestCase):
         for i in range(4):
             img = []
             for color in ('red', 'green', 'blue'):
-                imgfile = 'img_{color}.pds'.format(color=color)
+                imgfile = 'img_{color}_{i}.pds'.format(color=color, i=i)
 
                 img.append(atmotomo.loadpds(imgfile))
         
             img = np.transpose(np.array(img), (1, 2, 0))
+            
+            img = (20*img.astype(np.float)**0.4).astype(np.uint8)
             
             plt.figure()
             plt.imshow(img)
