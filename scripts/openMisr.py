@@ -30,10 +30,10 @@ def main():
             
             misr[color_params[2][6]] = {
                 'description': ''.join(color_params[2][6:]),
-                'refractive_index': ColoredParam(*[complex(float(params[1]), float(params[2])) for params in color_params]),
+                'refractive_index': ColoredParam(*[complex(float(params[1]), -float(params[2])) for params in color_params]),
                 'k': ColoredParam(*[float(params[3])*1e-12 for params in color_params]),
                 'w': ColoredParam(*[float(params[4]) for params in color_params]),
-                'g': ColoredParam(*[float(params[5]) for params in color_params]),
+                'g': ColoredParam(*[float(params[5]) for params in color_params])
             }
     
     with open(txt_path2, 'rb') as f:
@@ -45,8 +45,14 @@ def main():
                         ('min_radius', 'max_radius', 'char_radius', 'char_width', 'density', 'bottom', 'top', 'scale'),
                         [float(p) for p in parts[0:8]]
                     )
-                )
+                )            
             )
+            try:
+                eff_radius = float(parts[8].split('_')[2])
+            except:
+                eff_radius = 0.0
+            
+            misr[parts[8]]['effective_radius'] = eff_radius            
     
     with open(pkl_path, 'wb') as f:
         pickle.dump(misr, f)

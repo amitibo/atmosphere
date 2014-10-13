@@ -210,7 +210,7 @@ def loadVadimData(
     return img_list, cameras_list
 
 
-def readConfiguration(path, highten_atmosphere=False):
+def readConfiguration(path, highten_atmosphere=False, particle_name=None):
     
     from configobj import ConfigObj
     import sparse_transforms as spt
@@ -295,7 +295,10 @@ def readConfiguration(path, highten_atmosphere=False):
     #
     particle_section = config['particle']
 
-    particle = getMisrDB()[particle_section['name']]
+    if particle_name is None:
+        particle_name = particle_section['name']
+        
+    particle = getMisrDB()[particle_name]
     for attr in ('k', 'w', 'g'):
         if attr in particle_section:
             setattr(particle, attr, particle[attr])

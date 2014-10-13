@@ -51,7 +51,7 @@ def calcTemperature(z_levels, T0=295):
 def createMassContentFile(
     outfile,
     atmosphere_params,
-    char_radius,
+    effective_radius,
     mass_content=None,
     particle_dist=None,
     cross_section=None
@@ -91,7 +91,7 @@ def createMassContentFile(
         np.savetxt(f, temperature.reshape(1, -1), fmt='%.4f', delimiter='\t')
         
         for i, j, k, m in zip(i_ind, j_ind, k_ind, mass_content.ravel()):
-            f.write('%d\t%d\t%d\t1\t1\t%.5f\t%.5f\n' % (i+1, j+1, k+1, m, char_radius))
+            f.write('%d\t%d\t%d\t1\t1\t%.8f\t%.5f\n' % (i+1, j+1, k+1, m, effective_radius))
 
 
 def createMieTable(
@@ -99,7 +99,7 @@ def createMieTable(
     wavelen,
     refindex,
     density,
-    char_radius,
+    effective_radius,
     max_radius=50,
     partype="A",
     distflag="L",
@@ -119,8 +119,8 @@ def createMieTable(
     rindex = "({real}, {imag})".format(real=refindex.real, imag=refindex.imag)
     pardens = density
     nretab = 1
-    sretab=char_radius
-    eretab=char_radius
+    sretab=effective_radius
+    eretab=effective_radius
     miefile=outfile
 
     runCmd(
@@ -288,9 +288,10 @@ def createImage(
     camdelsamp=179.0/128,
     nbytes=4,        
     maxiter=0,
+    scale = 4,    
     Nmu=8,
     Nphi=16,
-    solarmu = 0.5,
+    solarmu = -0.5,
     solarphi=0.0,
     solarflux=1.0,
     sfcalb=0.05,
@@ -332,7 +333,6 @@ def createImage(
     noutfiles = 1
     outtype = 'V'
     cammode = 1
-    scale = 4
     binfile = 'temp.bin'
     ncdffile = 'NONE'
     max_memory = 120

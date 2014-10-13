@@ -5,6 +5,7 @@ from __future__ import division
 import unittest
 import atmotomo
 import sparse_transforms as spt
+import itertools
 import numpy as np
 import amitibo
 import os
@@ -15,7 +16,7 @@ class Test(unittest.TestCase):
     def setUp(self):
         
         self.atmosphere_params, self.particle_params, sun_params, camera_params, cameras, air_dist, self.particle_dist = \
-            atmotomo.readConfiguration('two_clouds_high_density_mediumhigh_resolution_smooth')
+            atmotomo.readConfiguration('two_clouds_low_density_medium_resolution', particle_name='spherical_absorbing_0.57_ssa_green_0.94')
         
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
@@ -27,8 +28,8 @@ class Test(unittest.TestCase):
         atmotomo.createMassContentFile(
             outfile,
             self.atmosphere_params,
-            char_radius=self.particle_params.char_radius,
-            particle_dist=self.particle_dist,
+            effective_radius=self.particle_params.effective_radius,
+            particle_dist=np.zeros_like(self.particle_dist),
             cross_section=self.particle_params.k[0]
             )
 
@@ -42,7 +43,7 @@ class Test(unittest.TestCase):
                 wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),
                 refindex=getattr(self.particle_params.refractive_index, color),
                 density=self.particle_params.density,
-                char_radius=self.particle_params.char_radius
+                effective_radius=self.particle_params.effective_radius
             )
         
     #@unittest.skip('')
@@ -77,7 +78,7 @@ class Test(unittest.TestCase):
                 propfile,
                 wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
                 maxiter=100,
-                outfile=outfile
+                outfile=outfile,
                 )
 
     #@unittest.skip('')
@@ -87,20 +88,24 @@ class Test(unittest.TestCase):
         grids =  self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
         
-        for color in ('red', 'green', 'blue'):
-            propfile = 'prop_{color}.prp'.format(color=color)
-            solvefile = 'sol_{color}.bin'.format(color=color)
-            imgfile = 'img_{color}.pds'.format(color=color)
-
-            atmotomo.createImage(
-                nx, ny, nz,
-                propfile,
-                solvefile,
-                wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
-                imgfile=imgfile,
-                camX=10,
-                camY=10,
-                camZ=0,
+        for i, (camX, camY) in enumerate(itertools.product((10, 40), repeat=2)):
+            for color, flux in zip(('red', 'green', 'blue'), (255, 236, 224)):
+                propfile = 'prop_{color}.prp'.format(color=color)
+                solvefile = 'sol_{color}.bin'.format(color=color)
+                imgfile = 'img_{color}_{i}.pds'.format(color=color, i=i)
+                
+                atmotomo.createImage(
+                    nx, ny, nz,
+                    propfile,
+                    solvefile,
+                    wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
+                    imgfile=imgfile,
+                    camX=camX,
+                    camY=camY,
+                    camZ=0.1,
+                    solarflux=flux,
+                    nbytes=1,
+                    scale=400,
                 )
 
     #@unittest.skip('')
@@ -108,13 +113,18 @@ class Test(unittest.TestCase):
 
         import matplotlib.pyplot as plt
         
-        img = []
-        for color in ('red', 'green', 'blue'):
-            imgfile = 'img_{color}.pds'.format(color=color)
+        for i in range(4):
+            img = []
+            for color in ('red', 'green', 'blue'):
+                imgfile = 'img_{color}.pds'.format(color=color)
 
-            img.append(atmotomo.loadpds(imgfile))
+                img.append(atmotomo.loadpds(imgfile))
+        
+            img = np.transpose(np.array(img), (1, 2, 0))
             
-        plt.imshow(np.transpose(np.array(img), (1, 2, 0)))
+            plt.figure()
+            plt.imshow(img)
+            
         plt.show()
             
         
