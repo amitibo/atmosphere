@@ -8,6 +8,7 @@ import sparse_transforms as spt
 import itertools
 import numpy as np
 import amitibo
+import glob
 import os
 
 
@@ -79,7 +80,7 @@ class Test(unittest.TestCase):
                 wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
                 maxiter=100,
                 solarflux=flux,
-                splitacc=0.1,
+                splitacc=-0.1,
                 outfile=outfile,
                 )
 
@@ -134,7 +135,20 @@ class Test(unittest.TestCase):
             
         plt.show()
             
-        
+
+def cleanup():
+    for f in glob.glob('*.part'):
+        os.remove(f)
+    for f in glob.glob('*.scat'):
+        os.remove(f)
+    for f in glob.glob('*.prp'):
+        os.remove(f)
+    for f in glob.glob('*.bin'):
+        os.remove(f)
+    for f in glob.glob('*.pds'):
+        os.remove(f)
+
 
 if __name__ == '__main__':
+    #cleanup()
     unittest.main()
