@@ -275,6 +275,7 @@ def createImage(
     propfile,
     solvefile,
     wavelen,
+    imgbinfile,
     imgfile,
     camX,
     camY,
@@ -342,7 +343,7 @@ def createImage(
     skyrad = 0.0
     
     runCmd(
-        'shdom90',
+        'gradient',
         runname,
         propfile,
         sfcfile,
@@ -382,6 +383,7 @@ def createImage(
         camnsamps,
         camdelline,
         camdelsamp,
+        imgbinfile,
         imgfile,
         ncdffile,
         max_memory,

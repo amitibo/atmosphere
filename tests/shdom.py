@@ -69,7 +69,7 @@ class Test(unittest.TestCase):
         grids =  self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
         
-        for color in ('red', 'green', 'blue'):
+        for color, flux in zip(('red', 'green', 'blue'), (255, 236, 224)):
             propfile = 'prop_{color}.prp'.format(color=color)
             outfile = 'sol_{color}.bin'.format(color=color)
             
@@ -78,6 +78,8 @@ class Test(unittest.TestCase):
                 propfile,
                 wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
                 maxiter=100,
+                solarflux=flux,
+                splitacc=0.1,
                 outfile=outfile,
                 )
 
@@ -92,6 +94,7 @@ class Test(unittest.TestCase):
             for color, flux in zip(('red', 'green', 'blue'), (255, 236, 224)):
                 propfile = 'prop_{color}.prp'.format(color=color)
                 solvefile = 'sol_{color}.bin'.format(color=color)
+                imgbinfile = 'img_{color}_{i}.bin'.format(color=color, i=i)
                 imgfile = 'img_{color}_{i}.pds'.format(color=color, i=i)
                 
                 atmotomo.createImage(
@@ -99,13 +102,15 @@ class Test(unittest.TestCase):
                     propfile,
                     solvefile,
                     wavelen=getattr(atmotomo.RGB_WAVELENGTH, color),                
+                    imgbinfile=imgbinfile,
                     imgfile=imgfile,
                     camX=camX,
                     camY=camY,
                     camZ=0.1,
                     solarflux=flux,
+                    splitacc=-0.1,                    
                     nbytes=1,
-                    scale=400,
+                    scale=4,
                 )
 
     #@unittest.skip('')
