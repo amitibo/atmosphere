@@ -55,6 +55,13 @@ __all__ = [
 
 ColoredParam = namedtuple('ColoredParam', ['red', 'green', 'blue'])
 
+def func(self, arg):
+    if type(arg) == int:
+        return super(ColoredParam, self).__getitem__(arg)
+    return getattr(self, arg)
+
+setattr(ColoredParam, '__getitem__', func)
+
 #
 # Some globals
 #
