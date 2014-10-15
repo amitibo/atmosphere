@@ -4,9 +4,12 @@
 from __future__ import division
 import numpy as np
 import subprocess as sbp
+from . import loadpds, readConfiguration, RGB_WAVELENGTH, ColoredParam, L_SUN_RGB
 from pkg_resources import resource_filename
+import matplotlib.pyplot as plt
 import tempfile
 import amitibo
+import Image
 import os
 
 __all__ = (
@@ -27,8 +30,11 @@ def runCmd(cmd, *args):
     """
 
     p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
-
-    res = p.communicate(input="\n".join([str(arg) for arg in args])+"\n")
+    
+    #input_string = "\n".join(['"'+os.path.abspath(arg)+'"' if (type(arg)==str and ('/' in arg)) else str(arg) for arg in args ])+"\n"
+    input_string = "\n".join([str(arg) for arg in args])+"\n"
+    
+    res = p.communicate(input=input_string)
     
     if debug:
         print '='*70
@@ -75,7 +81,7 @@ def createMassContentFile(
         density2number_ratio = cross_section / particle_mass
         mass_content = particle_dist * density2number_ratio
 
-    grids =  atmosphere_params.cartesian_grids
+    grids = atmosphere_params.cartesian_grids
     z_levels = grids[2]
     nx, ny, nz = grids.shape
     
@@ -343,8 +349,8 @@ def createImage(
     spheric_factor = 0.6
     point_ratio = 1.5
     skyrad = 0.0
-    camdelline=179.99/camnlines,
-    camdelsamp=179.99/camnsamps,
+    camdelline=179.99/camnlines
+    camdelsamp=179.99/camnsamps
     
     runCmd(
         'gradient',
@@ -413,18 +419,25 @@ class SHDOM(object):
     def load_configuration(self, config_name, particle_name):
         """Load atmosphere configuration"""
     
-        self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params, self.cameras, air_dist, self.particle_dist = \
-            atmotomo.readConfiguration(config_name, particle_name=particle_name)
+        self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params, cameras, air_dist, self.particle_dist = \
+            readConfiguration(config_name, particle_name=particle_name)
         
+        self.cameras = []
+        for cam in cameras:
+            self.cameras.append([0.001*coord for coord in cam])
         #
         # Convert the grid to KM
         #
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
-    def forward(self):
+    def forward(self, gamma=True, imshow=False, camera_limit=None):
         """Run the SHDOM algorithm in the forward direction."""
         
+        if camera_limit is not None:
+            self.cameras = self.cameras[:camera_limit]
+            
         results_path = amitibo.createResultFolder(
+            base_path="/home/amitibo/results",
             params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
             src_path=resource_filename(__name__, '')
         )
@@ -441,18 +454,19 @@ class SHDOM(object):
             cross_section=self.particle_params.k[0]
             )
         
-        grids =  self.atmosphere_params.cartesian_grids
+        grids = self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
 
         #
         # Create the Mie tables.
         #
+        imgs_names = ColoredParam([], [], []) 
         for color in ('red', 'green', 'blue'):
             scat_file = os.path.join(results_path, 'mie_table_{color}.scat'.format(color=color))
             
             createMieTable(
                 scat_file,
-                wavelen=atmotomo.RGB_WAVELENGTH[color],
+                wavelen=RGB_WAVELENGTH[color],
                 refindex=self.particle_params.refractive_index[color],
                 density=self.particle_params.density,
                 effective_radius=self.particle_params.effective_radius
@@ -461,26 +475,26 @@ class SHDOM(object):
             #
             # Create the properties file
             #
-            prp_file = os.path.join('prop_{color}.prp'.format(color=color))
+            prp_file = os.path.join(results_path, 'prop_{color}.prp'.format(color=color))
             
             createOpticalPropertyFile(
-                outfile,
+                outfile=prp_file,
                 scat_file=scat_file,
-                part_file=prp_file,
-                wavelen=atmotomo.RGB_WAVELENGTH[color],
+                part_file=part_file,
+                wavelen=RGB_WAVELENGTH[color],
             )
         
             #
             # Solve the RTE problem
             #
-            solve_file = os.path.join('sol_{color}.bin'.format(color=color))
+            solve_file = os.path.join(results_path, 'sol_{color}.bin'.format(color=color))
             
             solveRTE(
                 nx, ny, nz,
                 prp_file,
-                wavelen=atmotomo.RGB_WAVELENGTH[color],                
+                wavelen=RGB_WAVELENGTH[color],                
                 maxiter=self.maxiter,
-                solarflux=atmotomo.L_SUN_RGB[color],
+                solarflux=L_SUN_RGB[color],
                 splitacc=self.splitacc,
                 outfile=solve_file,
                 )
@@ -488,15 +502,16 @@ class SHDOM(object):
             #
             # Calculate the images.
             #
-            for i, (camX, camY, camZ) in enumerate(self.cameras)):
-                imgbin_file = os.path.join('img_{color}_{i}.bin'.format(color=color, i=i))
-                img_file = os.path.join('img_{color}_{i}.pds'.format(color=color, i=i))
+            for i, (camX, camY, camZ) in enumerate(self.cameras):
+                imgbin_file = os.path.join(results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                img_file = os.path.join(results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
+                imgs_names[color].append(img_file)
                 
                 createImage(
                     nx, ny, nz,
                     prp_file,
                     solve_file,
-                    wavelen=atmotomo.RGB_WAVELENGTH[color],                
+                    wavelen=RGB_WAVELENGTH[color],                
                     imgbinfile=imgbin_file,
                     imgfile=img_file,
                     camX=camX,
@@ -504,12 +519,29 @@ class SHDOM(object):
                     camZ=camZ,
                     camnlines=self.camera_params.resolution[0], 
                     camnsamps=self.camera_params.resolution[1],
-                    solarflux=atmotomo.L_SUN_RGB[color],
+                    solarflux=L_SUN_RGB[color],
                     splitacc=self.splitacc,                    
                     nbytes=self.nbytes,
                     scale=self.scale,
                 )
         
+        for i, chan_names in enumerate(zip(imgs_names.red, imgs_names.green, imgs_names.blue)):
+            img = []
+            for ch_name in chan_names:
+                img.append(loadpds(ch_name))
+        
+            img = np.transpose(np.array(img), (1, 2, 0))
+            
+            if gamma:
+                img = (20*img.astype(np.float)**0.4).astype(np.uint8)
+            
+            im = Image.fromarray(img)
+            img_file = os.path.join(results_path, 'img_{i}.jpg'.format(i=i))
+            im.save(img_file)
+            
+            if imshow:
+                plt.figure()
+                plt.imshow(img)
         
     def reverse(self):
         """Run the SHDOM algorithm to solve the inverse problem."""
