@@ -344,7 +344,7 @@ def createImage(
     cammode = 1
     binfile = 'temp.bin'
     ncdffile = 'NONE'
-    max_memory = 120
+    max_memory = 1000
     grid_factor = 2.2
     spheric_factor = 0.6
     point_ratio = 1.5
@@ -431,11 +431,13 @@ class SHDOM(object):
                 
             sys.excepthook = abortrun
         else:
-            stam = collections.namedtuple('stam', ['rank', 'size', 'Barrier'])
+            import collections
+            stam = collections.namedtuple('stam', ['rank', 'size', 'Barrier', 'bcast'])
             def void():
                 pass
-
-            self.comm = stam(0, 1, void)
+            def bcast(x, root):
+                return x
+            self.comm = stam(0, 1, void, bcast)
 
     def load_configuration(self, config_name, particle_name):
         """Load atmosphere configuration"""
@@ -452,7 +454,7 @@ class SHDOM(object):
         #
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
-    def forward(self, gamma=True, imshow=False, camera_limit=None):
+    def forward(self, gamma=True, imshow=False, cameras_limit=None):
         """Run the SHDOM algorithm in the forward direction."""
         
         if self.comm.rank == 0:
@@ -466,8 +468,8 @@ class SHDOM(object):
 
         results_path = self.comm.bcast(results_path, root=0)
 
-        if camera_limit is not None:
-            self.cameras = self.cameras[:camera_limit]
+        if cameras_limit > 0:
+            self.cameras = self.cameras[:cameras_limit]
             
         #
         # Create the particle file
