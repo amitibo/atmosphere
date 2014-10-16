@@ -437,7 +437,7 @@ class SHDOM(object):
             self.cameras = self.cameras[:camera_limit]
             
         results_path = amitibo.createResultFolder(
-            base_path="/home/amitibo/results",
+            base_path=os.path.expanduser("~/results"),
             params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
             src_path=resource_filename(__name__, '')
         )
