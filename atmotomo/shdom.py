@@ -408,7 +408,7 @@ class SHDOM(object):
     """Wrapper for the SHDOM RTE solver"""
 
     #----------------------------------------------------------------------
-    def __init__(self, maxiter=100, splitacc=-1, nbytes=1, scale=4):
+    def __init__(self, maxiter=100, splitacc=-1, nbytes=1, scale=4, parallel=False):
         """Constructor"""
         
         self.maxiter = maxiter
@@ -416,6 +416,27 @@ class SHDOM(object):
         self.nbytes = nbytes
         self.scale = scale
     
+        if parallel:
+            from mpi4py import MPI
+            import sys
+            import traceback
+            self.comm = MPI.COMM_WORLD
+
+            #
+            # override excepthook so that an exception in one of the childs will cause mpi to abort execution.
+            #
+            def abortrun(type, value, tb):
+                traceback.print_exception(type, value, tb)
+                MPI.COMM_WORLD.Abort(1)
+                
+            sys.excepthook = abortrun
+        else:
+            stam = collections.namedtuple('stam', ['rank', 'size', 'Barrier'])
+            def void():
+                pass
+
+            self.comm = stam(0, 1, void)
+
     def load_configuration(self, config_name, particle_name):
         """Load atmosphere configuration"""
     
@@ -425,6 +446,7 @@ class SHDOM(object):
         self.cameras = []
         for cam in cameras:
             self.cameras.append([0.001*coord for coord in cam])
+ 
         #
         # Convert the grid to KM
         #
@@ -433,80 +455,93 @@ class SHDOM(object):
     def forward(self, gamma=True, imshow=False, camera_limit=None):
         """Run the SHDOM algorithm in the forward direction."""
         
+        if self.comm.rank == 0:
+            results_path = amitibo.createResultFolder(
+                base_path=os.path.expanduser("~/results"),
+                params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
+                src_path=resource_filename(__name__, '')
+            )
+        else:
+            results_path = None
+
+        results_path = self.comm.bcast(results_path, root=0)
+
         if camera_limit is not None:
             self.cameras = self.cameras[:camera_limit]
             
-        results_path = amitibo.createResultFolder(
-            base_path=os.path.expanduser("~/results"),
-            params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
-            src_path=resource_filename(__name__, '')
-        )
-        
         #
         # Create the particle file
         #
-        part_file = os.path.join(results_path, 'part_file.part')
-        createMassContentFile(
-            part_file,
-            self.atmosphere_params,
-            effective_radius=self.particle_params.effective_radius,
-            particle_dist=self.particle_dist,
-            cross_section=self.particle_params.k[0]
+        if self.comm.rank == 0:
+            part_file = os.path.join(results_path, 'part_file.part')
+            createMassContentFile(
+                part_file,
+                self.atmosphere_params,
+                effective_radius=self.particle_params.effective_radius,
+                particle_dist=self.particle_dist,
+                cross_section=self.particle_params.k[0]
             )
         
         grids = self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
 
         #
-        # Create the Mie tables.
+        # 
         #
         imgs_names = ColoredParam([], [], []) 
         for color in ('red', 'green', 'blue'):
             scat_file = os.path.join(results_path, 'mie_table_{color}.scat'.format(color=color))
-            
-            createMieTable(
-                scat_file,
-                wavelen=RGB_WAVELENGTH[color],
-                refindex=self.particle_params.refractive_index[color],
-                density=self.particle_params.density,
-                effective_radius=self.particle_params.effective_radius
-            )
-         
-            #
-            # Create the properties file
-            #
             prp_file = os.path.join(results_path, 'prop_{color}.prp'.format(color=color))
-            
-            createOpticalPropertyFile(
-                outfile=prp_file,
-                scat_file=scat_file,
-                part_file=part_file,
-                wavelen=RGB_WAVELENGTH[color],
-            )
-        
-            #
-            # Solve the RTE problem
-            #
             solve_file = os.path.join(results_path, 'sol_{color}.bin'.format(color=color))
             
-            solveRTE(
-                nx, ny, nz,
-                prp_file,
-                wavelen=RGB_WAVELENGTH[color],                
-                maxiter=self.maxiter,
-                solarflux=L_SUN_RGB[color],
-                splitacc=self.splitacc,
-                outfile=solve_file,
+            if self.comm.rank == 0:
+                #
+                # Create the Mie tables.
+                #
+                createMieTable(
+                    scat_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                    refindex=self.particle_params.refractive_index[color],
+                    density=self.particle_params.density,
+                    effective_radius=self.particle_params.effective_radius
                 )
+             
+                #
+                # Create the properties file
+                #
+                createOpticalPropertyFile(
+                    outfile=prp_file,
+                    scat_file=scat_file,
+                    part_file=part_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                )
+            
+                #
+                # Solve the RTE problem
+                #
+                solveRTE(
+                    nx, ny, nz,
+                    prp_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    maxiter=self.maxiter,
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,
+                    outfile=solve_file,
+                    )
+
+            self.comm.Barrier()
 
             #
             # Calculate the images.
             #
             for i, (camX, camY, camZ) in enumerate(self.cameras):
+                if i % self.comm.size != self.comm.rank:
+                    continue
+
                 imgbin_file = os.path.join(results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
                 img_file = os.path.join(results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
-                imgs_names[color].append(img_file)
-                
+                imgs_names[color].append((i, img_file))
+                print 'rank:{rank} is about to make image:{i}-{color}'.format(rank=self.comm.rank, i=i, color=color)
                 createImage(
                     nx, ny, nz,
                     prp_file,
@@ -524,10 +559,12 @@ class SHDOM(object):
                     nbytes=self.nbytes,
                     scale=self.scale,
                 )
-        
-        for i, chan_names in enumerate(zip(imgs_names.red, imgs_names.green, imgs_names.blue)):
+                print 'rank:{rank} finished making image:{i}-{color}'.format(rank=self.comm.rank, i=i, color=color)
+
+        for chan_names in zip(imgs_names.red, imgs_names.green, imgs_names.blue):
+
             img = []
-            for ch_name in chan_names:
+            for i, ch_name in chan_names:
                 img.append(loadpds(ch_name))
         
             img = np.transpose(np.array(img), (1, 2, 0))

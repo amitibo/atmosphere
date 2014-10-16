@@ -49,7 +49,7 @@ def make_shdom(shdom_dir, script_dir):
     os.system('make')
     os.chdir(current_path)
 
-    for name in ('shdom', 'shdom90', 'propgen', 'make_mie_table', 'gradient'):
+    for name in ('shdom', 'shdom90', 'propgen', 'make_mie_table', 'gradient', 'extinctgen'):
         src_path = os.path.join(shdom_dir, name)
         dst_path = os.path.join(script_dir, name)
         shutil.copyfile(src_path, dst_path)
@@ -73,7 +73,7 @@ class SrcDevelop(develop):
 def scripts_list():
     
     scripts = [
-        'scripts/{name}.py'.format(name=name) for name in ('simulateAtmo3D', 'analyzeAtmo3D', )
+        'scripts/{name}.py'.format(name=name) for name in ('simulateAtmo3D', 'analyzeAtmo3D', 'simulateSHDOM')
     ]
 
     return scripts
