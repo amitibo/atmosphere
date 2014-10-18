@@ -551,7 +551,7 @@ def calcGradient(
     camdelsamp=179.99/camnsamps
     
     runCmd(
-        'Gradient',
+        'gradient',
         runname,
         propfile,
         sfcfile,
@@ -600,7 +600,7 @@ def calcGradient(
         point_ratio
     )
 
-    raw_data = np.fromfile(gradfile)
+    raw_data = np.fromfile(gradfile, dtype=np.float32)
     cost = raw_data[1]
     grad = raw_data[4:-1].reshape(nx, ny, nz)
     
@@ -655,16 +655,16 @@ class SHDOM(object):
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
         if not self.parallel or self.comm.rank == 0:
-            results_path = amitibo.createResultFolder(
+            sys.results_path = amitibo.createResultFolder(
                 base_path=os.path.expanduser("~/results"),
                 params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
                 src_path=resource_filename(__name__, '')
             )
         else:
-            results_path = None
+            sys.results_path = None
             
         if self.parallel:
-            sys.results_path = self.comm.bcast(results_path, root=0)
+            sys.results_path = self.comm.bcast(sys.results_path, root=0)
 
     def forward_serial(self, gamma=True, imshow=False, cameras_limit=None):
         """Run the SHDOM algorithm in the forward direction."""
@@ -942,7 +942,7 @@ class SHDOM(object):
                 #
                 solveRTE(
                     nx, ny, nz,
-                    prp_file,
+                    ext_file,
                     wavelen=RGB_WAVELENGTH[color],                
                     maxiter=self.maxiter,
                     solarflux=L_SUN_RGB[color],
@@ -955,11 +955,13 @@ class SHDOM(object):
             #
             prev_cost = 1e7
             prev_x = x
+            prev_grad = np.zeros_like(x)
             while True:
                 #
                 # Loop on all colors
                 #
                 stepsize = initial_stepsize
+                stepsize_tolerance = 1e-2 * initial_stepsize
                 cost = 0
                 grad = np.zeros(grids.shape)
                 for color in ColoredParam._fields:
@@ -986,7 +988,7 @@ class SHDOM(object):
         
                         cost_part, grad_part = calcGradient(
                             nx, ny, nz,
-                            prp_file,
+                            ext_file,
                             solve_file,
                             wavelen=RGB_WAVELENGTH[color],                
                             imgbinfile=imgbin_file,
@@ -1008,7 +1010,7 @@ class SHDOM(object):
                     x = prev_x
                     grad = prev_grad
                     
-                    if stepsize < step_tol:
+                    if stepsize < stepsize_tolerance:
                         cost = prev_cost
                         break
                     

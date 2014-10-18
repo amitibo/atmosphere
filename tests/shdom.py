@@ -31,7 +31,7 @@ class Test(unittest.TestCase):
             particle_name='spherical_absorbing_0.57_ssa_green_0.94'
         )
     
-        shdom.forward(imshow=True, camera_limit=4)
+        shdom.forward(imshow=True, cameras_limit=4)
         plt.show()
         
     def test_03(self):
@@ -42,7 +42,7 @@ class Test(unittest.TestCase):
             particle_name='spherical_absorbing_0.57_ssa_green_0.94'
         )
     
-        shdom.forward(camera_limit=4)
+        shdom.forward(cameras_limit=4)
         shdom.inverse_serial()
         
     #def setUp(self):
