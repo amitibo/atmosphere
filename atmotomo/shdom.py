@@ -1134,9 +1134,9 @@ class SHDOM(object):
                 #
                 stepsize = initial_stepsize
                 stepsize_tolerance = 1e-2 * initial_stepsize
-                pcost = 0
-                pgrad = np.zeros(grids.shape)
-                cost = np.empty(1)
+                pcost = np.zeros(1, dtype=np.float32)
+                pgrad = np.zeros(grids.shape, dtype=np.float32)
+                cost = np.empty_like(pcost)
                 grad = np.empty_like(pgrad)
                 for color in ColoredParam._fields:
                     coloredcomm = self.comms[color]
@@ -1188,12 +1188,14 @@ class SHDOM(object):
                         pgrad += grad_part
 
                 self.comm.Allreduce(
-                    [pcost, np.float],
-                    [cost, np.float]
+                    [pcost, MPI.FLOAT],
+                    [cost, MPI.FLOAT],
+                    op=MPI.SUM
                 )
                 self.comm.Allreduce(
-                    [pgrad, np.float],
-                    [grad, np.float]
+                    [pgrad, MPI.FLOAT],
+                    [grad, MPI.FLOAT],
+                    op=MPI.SUM
                 )
                 if prev_cost < cost:
                     stepsize = stepsize/2
@@ -1235,13 +1237,14 @@ class SHDOM(object):
         #
         # Save the result
         #
-        sio.savemat(
-            os.path.join(sys.results_path, 'extinction.mat'),
-            {
-                'x': x
-                },
-            do_compression=True
-        )
+        if self.comm.rank == 0:
+            sio.savemat(
+                os.path.join(sys.results_path, 'extinction.mat'),
+                {
+                    'x': x
+                    },
+                do_compression=True
+            )
             
 
 if __name__ == '__main__':
