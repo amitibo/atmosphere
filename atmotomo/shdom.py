@@ -7,6 +7,7 @@ import subprocess as sbp
 from . import loadpds, readConfiguration, RGB_WAVELENGTH, ColoredParam, L_SUN_RGB
 from pkg_resources import resource_filename
 import matplotlib.pyplot as plt
+import scipy.io as sio
 import tempfile
 import amitibo
 import Image
@@ -984,7 +985,7 @@ class SHDOM(object):
                     for i, (camX, camY, camZ) in enumerate(self.cameras):
         
                         imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                        grad_file = os.path.join(sys.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
+                        grad_file = os.path.join(sys.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
         
                         cost_part, grad_part = calcGradient(
                             nx, ny, nz,
@@ -1006,7 +1007,7 @@ class SHDOM(object):
                         grad += grad_part
 
                 if prev_cost < cost:
-                    setpsize = stepsize/2
+                    stepsize = stepsize/2
                     x = prev_x
                     grad = prev_grad
                     
@@ -1043,11 +1044,205 @@ class SHDOM(object):
                 print 'Maximal number of optimization iterations exceeded'
                 break
 
-    def inverse_parallel(self):
+        #
+        # Save the result
+        #
+        sio.savemat(
+            os.path.join(sys.results_path, 'extinction.mat'),
+            {
+                'x': x
+                },
+            do_compression=True
+        )
+        
+    def inverse_parallel(
+        self,
+        max_time=3600,
+        tolerance=1e-4, 
+        max_iter=30,
+        grad_norm_tolerance=1e-1,
+        grad_max_iter=30,
+        initial_stepsize=1e-4
+        ):
         """Run the SHDOM algorithm to solve the inverse problem."""
         
-        pass
-    
+        grids = self.atmosphere_params.cartesian_grids
+        nx, ny, nz = grids.shape
+
+        #
+        # Initial guess
+        #
+        x0 = np.zeros(grids.shape)
+        x = x0
+        eps = amitibo.eps(x)
+
+        #
+        # Loop till convergence
+        #
+        iter_num = 0
+        t0 = time.time()
+        while True: 
+            #
+            # Loop on all colors
+            #
+            for color in ColoredParam._fields:
+                coloredcomm = self.comms[color]
+                if coloredcomm == MPI.COMM_NULL:
+                    continue
+
+                scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
+                ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
+                solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                
+                if coloredcomm.rank == 0:
+                    #
+                    # Create the properties file
+                    #
+                    createExtinctionTableFile(
+                        self.atmosphere_params,
+                        effective_radius=self.particle_params.effective_radius,
+                        extinction=x,
+                        outfile=ext_file,
+                        scat_file=scat_file,
+                        wavelen=RGB_WAVELENGTH[color],
+                    )
+                
+                    #
+                    # Solve the RTE problem
+                    #
+                    solveRTE(
+                        nx, ny, nz,
+                        ext_file,
+                        wavelen=RGB_WAVELENGTH[color],                
+                        maxiter=self.maxiter,
+                        solarflux=L_SUN_RGB[color],
+                        splitacc=self.splitacc,
+                        outfile=solve_file,
+                        )
+
+            self.comm.Barrier()
+                   
+            #
+            # Optimize the current source function.
+            #
+            prev_cost = 1e7
+            prev_x = x
+            prev_grad = np.zeros_like(x)
+            while True:
+                #
+                # Loop on all colors
+                #
+                stepsize = initial_stepsize
+                stepsize_tolerance = 1e-2 * initial_stepsize
+                pcost = 0
+                pgrad = np.zeros(grids.shape)
+                cost = np.empty(1)
+                grad = np.empty_like(pgrad)
+                for color in ColoredParam._fields:
+                    coloredcomm = self.comms[color]
+                    if coloredcomm == MPI.COMM_NULL:
+                        continue
+
+                    scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
+                    ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
+                    solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                    
+                    if coloredcomm.rank == 0:
+                        #
+                        # Create the properties file
+                        #
+                        createExtinctionTableFile(
+                            self.atmosphere_params,
+                            effective_radius=self.particle_params.effective_radius,
+                            extinction=x,
+                            outfile=ext_file,
+                            scat_file=scat_file,
+                            wavelen=RGB_WAVELENGTH[color],
+                        )
+                
+                    coloredcomm.Barrier()
+                
+                    for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
+                        camX, camY, camZ = self.cameras[i]
+        
+                        imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                        grad_file = os.path.join(sys.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
+        
+                        cost_part, grad_part = calcGradient(
+                            nx, ny, nz,
+                            ext_file,
+                            solve_file,
+                            wavelen=RGB_WAVELENGTH[color],                
+                            imgbinfile=imgbin_file,
+                            gradfile=grad_file,
+                            camX=camX,
+                            camY=camY,
+                            camZ=camZ,
+                            camnlines=self.camera_params.resolution[0], 
+                            camnsamps=self.camera_params.resolution[1],
+                            solarflux=L_SUN_RGB[color],
+                            splitacc=self.splitacc,                    
+                            scale=self.scale,
+                        )
+                        pcost += cost_part
+                        pgrad += grad_part
+
+                self.comm.Allreduce(
+                    [pcost, np.float],
+                    [cost, np.float]
+                )
+                self.comm.Allreduce(
+                    [pgrad, np.float],
+                    [grad, np.float]
+                )
+                if prev_cost < cost:
+                    stepsize = stepsize/2
+                    x = prev_x
+                    grad = prev_grad
+                    
+                    if stepsize < stepsize_tolerance:
+                        cost = prev_cost
+                        break
+                else:
+                    prev_cost = cost
+                    prev_grad = grad
+                    prev_x = x
+                    
+                x = x - stepsize*grad
+                x[x<0] = 0
+                grad_norm = np.linalg.norm(grad)
+                
+                if grad_norm < grad_norm_tolerance:
+                    break
+                
+                grad_iter_num += 1
+                if grad_iter_num > grad_max_iter:
+                    break
+                
+            delta_sol =  np.max(np.abs(x-prev_x)/(x+eps)) 
+            
+            if delta_sol < tolerance:
+                print 'Cost converged to tolerance'
+                break
+            if time.time()-t0 > max_time:
+                print 'Optimization time exceeded maximal allowed time'
+                break
+            iter_num += 1
+            if iter_num > max_iter:
+                print 'Maximal number of optimization iterations exceeded'
+                break
+
+        #
+        # Save the result
+        #
+        sio.savemat(
+            os.path.join(sys.results_path, 'extinction.mat'),
+            {
+                'x': x
+                },
+            do_compression=True
+        )
+            
 
 if __name__ == '__main__':
     pass
