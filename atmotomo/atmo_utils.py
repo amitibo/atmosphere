@@ -238,8 +238,6 @@ def readConfiguration(path, highten_atmosphere=False, particle_name=None):
 
     path = os.path.join(base_path, 'configuration.ini')
     
-    print path
-    
     config = ConfigObj(path)
     
     #

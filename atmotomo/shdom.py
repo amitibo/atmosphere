@@ -26,7 +26,7 @@ try:
         MPI.COMM_WORLD.Abort(1)
         
     sys.excepthook = abortrun
-pass:
+except:
     warnings.warn('No MPI support on this computer')
     
 
@@ -622,14 +622,15 @@ class SHDOM(object):
         self.parallel = parallel
         if parallel:
             self.comm = MPI.COMM_WORLD
+            group = self.comm.Get_group()
 
             #
             # Split the processors to color groups
             #
             comms = []
-            for p in chunks(range(comm.size), 3):
+            for p in chunks(range(self.comm.size), 3):
                 newgroup = group.Incl(p)
-                comms.append(comm.Create(newgroup))
+                comms.append(self.comm.Create(newgroup))
             self.comms = ColoredParam(*comms)
             
             self.forward = self.forward_parallel
@@ -871,7 +872,9 @@ class SHDOM(object):
                     nbytes=self.nbytes,
                     scale=self.scale,
                 )
-                
+        
+        self.comm.Barrier()
+        
         for i in range(self.comm.rank, len(self.cameras), self.comm.size):
             img = []
             for color in ColoredParam._fields:
@@ -906,7 +909,8 @@ class SHDOM(object):
         #
         x0 = np.zeros(grids.shape)
         x = x0
-        
+        eps = amitibo.eps(x)
+
         #
         # Loop till convergence
         #
@@ -916,7 +920,7 @@ class SHDOM(object):
             #
             # Loop on all colors
             #
-            for color in ColoredParam._fields::
+            for color in ColoredParam._fields:
                 scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
                 ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
                 solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
@@ -1024,7 +1028,7 @@ class SHDOM(object):
                 if grad_iter_num > grad_max_iter:
                     break
                 
-            delta_sol =  max(abs(xsol(:)-x(:))./(xsol(:)+eps)); 
+            delta_sol =  np.max(np.abs(x-prev_x)/(x+eps)) 
             
             if delta_sol < tolerance:
                 print 'Cost converged to tolerance'

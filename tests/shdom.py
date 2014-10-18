@@ -34,6 +34,17 @@ class Test(unittest.TestCase):
         shdom.forward(imshow=True, camera_limit=4)
         plt.show()
         
+    def test_03(self):
+        
+        shdom = atmotomo.SHDOM()
+        shdom.load_configuration(
+            config_name='two_clouds_high_density_mediumhigh_resolution_smooth',
+            particle_name='spherical_absorbing_0.57_ssa_green_0.94'
+        )
+    
+        shdom.forward(camera_limit=4)
+        shdom.inverse_serial()
+        
     #def setUp(self):
         
         #self.atmosphere_params, self.particle_params, sun_params, camera_params, cameras, air_dist, self.particle_dist = \
