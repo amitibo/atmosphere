@@ -42,6 +42,7 @@ __all__ = (
 )
 
 debug = True
+mpi_log_file_h = None
 
 
 def chunks(l, n):
@@ -58,9 +59,8 @@ def runCmd(cmd, *args):
     Run a cmd as a subprocess and pass a list of args on stdin.
     """
 
-    p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.STDOUT)
+    p = sbp.Popen([cmd], stdout=sbp.PIPE, stdin=sbp.PIPE, stderr=sbp.PIPE)
     
-    #input_string = "\n".join(['"'+os.path.abspath(arg)+'"' if (type(arg)==str and ('/' in arg)) else str(arg) for arg in args ])+"\n"
     input_string = "\n".join([str(arg) for arg in args])+"\n"
     
     res = p.communicate(input=input_string)
@@ -70,6 +70,11 @@ def runCmd(cmd, *args):
         print 'CMD:', cmd
         print 'STDOUT:\n', res[0]
         print 'STDERR:\n', res[1]
+    
+    if mpi_log_file_h is not None:
+        mpi_log_file_h.Write_shared(
+            '='*70+'CMD: {cmd}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n'.format(cmd=cmd, stdout=res[0], stderr=res[1])
+        )
 
     return res
     
@@ -224,6 +229,7 @@ def createExtinctionTableFile(
     effective_radius,
     extinction,
     outfile,
+    lwc_file,
     scat_file,
     wavelen,
     maxnewphase=100,
@@ -235,9 +241,8 @@ def createExtinctionTableFile(
     It is used by aviad's hack.
     """
 
-    part_file = os.path.join(sys.results_path, 'lwc_file.lwc')
     createMassContentFile(
-        part_file,
+        lwc_file,
         atmosphere_params,
         mass_content=extinction,
         effective_radius=effective_radius,
@@ -636,6 +641,7 @@ class SHDOM(object):
             
             self.forward = self.forward_parallel
             self.inverse = self.inverse_parallel
+
         else:
             self.forward = self.forward_serial
             self.inverse = self.inverse_serial
@@ -656,16 +662,16 @@ class SHDOM(object):
         self.atmosphere_params.cartesian_grids = self.atmosphere_params.cartesian_grids.scale(0.001)
     
         if not self.parallel or self.comm.rank == 0:
-            sys.results_path = amitibo.createResultFolder(
+            self.results_path = amitibo.createResultFolder(
                 base_path=os.path.expanduser("~/results"),
                 params=[self.atmosphere_params, self.particle_params, self.sun_params, self.camera_params],
                 src_path=resource_filename(__name__, '')
             )
         else:
-            sys.results_path = None
+            self.results_path = None
             
         if self.parallel:
-            sys.results_path = self.comm.bcast(sys.results_path, root=0)
+            self.results_path = self.comm.bcast(self.results_path, root=0)
 
     def forward_serial(self, gamma=True, imshow=False, cameras_limit=None):
         """Run the SHDOM algorithm in the forward direction."""
@@ -676,7 +682,7 @@ class SHDOM(object):
         #
         # Create the particle file
         #
-        part_file = os.path.join(sys.results_path, 'part_file.part')
+        part_file = os.path.join(self.results_path, 'part_file.part')
         createMassContentFile(
             part_file,
             self.atmosphere_params,
@@ -693,9 +699,9 @@ class SHDOM(object):
         #
         imgs_names = ColoredParam([], [], []) 
         for color in ColoredParam._fields:
-            scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-            prp_file = os.path.join(sys.results_path, 'prop_{color}.prp'.format(color=color))
-            solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            prp_file = os.path.join(self.results_path, 'prop_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
             
             #
             # Create the Mie tables.
@@ -735,8 +741,8 @@ class SHDOM(object):
             # Calculate the images.
             #
             for i, (camX, camY, camZ) in enumerate(self.cameras):
-                imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                img_file = os.path.join(sys.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
+                imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                img_file = os.path.join(self.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
                 imgs_names[color].append((i, img_file))
 
                 createImage(
@@ -769,7 +775,7 @@ class SHDOM(object):
                 img = (20*img.astype(np.float)**0.4).astype(np.uint8)
             
             im = Image.fromarray(img)
-            img_file = os.path.join(sys.results_path, 'img_{i}.jpg'.format(i=i))
+            img_file = os.path.join(self.results_path, 'img_{i}.jpg'.format(i=i))
             im.save(img_file)
             
             if imshow:
@@ -783,9 +789,21 @@ class SHDOM(object):
             self.cameras = self.cameras[:cameras_limit]
                 
         #
+        # Prepare a log file
+        #
+        global mpi_log_file_h
+        mode = MPI.MODE_WRONLY|MPI.MODE_CREATE#|MPI.MODE_APPEND 
+        mpi_log_file_h = MPI.File.Open(
+            self.comm,
+            os.path.join(self.results_path, "forward_logfile.log"),
+            mode
+            ) 
+        mpi_log_file_h.Set_atomicity(True) 
+
+        #
         # Create the particle file
         #
-        part_file = os.path.join(sys.results_path, 'part_file.part')
+        part_file = os.path.join(self.results_path, 'part_file.part')
         if self.comm.rank == 0:
             createMassContentFile(
                 part_file,
@@ -806,9 +824,9 @@ class SHDOM(object):
             if coloredcomm == MPI.COMM_NULL:
                 continue
             
-            scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-            prp_file = os.path.join(sys.results_path, 'prop_{color}.prp'.format(color=color))
-            solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            prp_file = os.path.join(self.results_path, 'prop_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
             
             if coloredcomm.rank == 0:
                 #
@@ -853,8 +871,8 @@ class SHDOM(object):
             for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
                 camX, camY, camZ = self.cameras[i]
 
-                imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                img_file = os.path.join(sys.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
+                imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                img_file = os.path.join(self.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
 
                 createImage(
                     nx, ny, nz,
@@ -879,7 +897,7 @@ class SHDOM(object):
         for i in range(self.comm.rank, len(self.cameras), self.comm.size):
             img = []
             for color in ColoredParam._fields:
-                img_file = os.path.join(sys.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
+                img_file = os.path.join(self.results_path, 'img_{color}_{i}.pds'.format(color=color, i=i))
                 img.append(loadpds(img_file))
         
             img = np.transpose(np.array(img), (1, 2, 0))
@@ -888,9 +906,13 @@ class SHDOM(object):
                 img = (20*img.astype(np.float)**0.4).astype(np.uint8)
             
             im = Image.fromarray(img)
-            img_file = os.path.join(sys.results_path, 'img_{i}.jpg'.format(i=i))
+            img_file = os.path.join(self.results_path, 'img_{i}.jpg'.format(i=i))
             im.save(img_file)
                     
+        mpi_log_file_h.Sync()
+        mpi_log_file_h.Close()
+        mpi_log_file_h = None
+
     def inverse_serial(
         self,
         max_time=3600,
@@ -922,18 +944,20 @@ class SHDOM(object):
             # Loop on all colors
             #
             for color in ColoredParam._fields:
-                scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-                ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
-                solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+                ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+                solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
                 
                 #
                 # Create the properties file
                 #
+                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
                 createExtinctionTableFile(
                     self.atmosphere_params,
                     effective_radius=self.particle_params.effective_radius,
                     extinction=x,
                     outfile=ext_file,
+                    lwc_file=lwc_file,
                     scat_file=scat_file,
                     wavelen=RGB_WAVELENGTH[color],
                 )
@@ -966,26 +990,28 @@ class SHDOM(object):
                 cost = 0
                 grad = np.zeros(grids.shape)
                 for color in ColoredParam._fields:
-                    scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-                    ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
-                    solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                    scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+                    ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+                    solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
                     
                     #
                     # Create the properties file
                     #
+                    lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
                     createExtinctionTableFile(
                         self.atmosphere_params,
                         effective_radius=self.particle_params.effective_radius,
                         extinction=x,
                         outfile=ext_file,
+                        lwc_file=lwc_file,
                         scat_file=scat_file,
                         wavelen=RGB_WAVELENGTH[color],
                     )
                 
                     for i, (camX, camY, camZ) in enumerate(self.cameras):
         
-                        imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                        grad_file = os.path.join(sys.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
+                        imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                        grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
         
                         cost_part, grad_part = calcGradient(
                             nx, ny, nz,
@@ -1048,7 +1074,7 @@ class SHDOM(object):
         # Save the result
         #
         sio.savemat(
-            os.path.join(sys.results_path, 'extinction.mat'),
+            os.path.join(self.results_path, 'extinction.mat'),
             {
                 'x': x
                 },
@@ -1066,6 +1092,18 @@ class SHDOM(object):
         ):
         """Run the SHDOM algorithm to solve the inverse problem."""
         
+        #
+        # Prepare a log file
+        #
+        global mpi_log_file_h
+        mode = MPI.MODE_WRONLY|MPI.MODE_CREATE#|MPI.MODE_APPEND 
+        mpi_log_file_h = MPI.File.Open(
+            self.comm,
+            os.path.join(self.results_path, "inverse_logfile.log"),
+            mode
+            ) 
+        mpi_log_file_h.Set_atomicity(True) 
+
         grids = self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
 
@@ -1090,9 +1128,9 @@ class SHDOM(object):
                 if coloredcomm == MPI.COMM_NULL:
                     continue
 
-                scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-                ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
-                solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+                ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+                solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
                 
                 if coloredcomm.rank == 0:
                     #
@@ -1143,9 +1181,9 @@ class SHDOM(object):
                     if coloredcomm == MPI.COMM_NULL:
                         continue
 
-                    scat_file = os.path.join(sys.results_path, 'mie_table_{color}.scat'.format(color=color))
-                    ext_file = os.path.join(sys.results_path, 'ext_{color}.prp'.format(color=color))
-                    solve_file = os.path.join(sys.results_path, 'sol_{color}.bin'.format(color=color))
+                    scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+                    ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+                    solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
                     
                     if coloredcomm.rank == 0:
                         #
@@ -1165,8 +1203,8 @@ class SHDOM(object):
                     for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
                         camX, camY, camZ = self.cameras[i]
         
-                        imgbin_file = os.path.join(sys.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                        grad_file = os.path.join(sys.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
+                        imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                        grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
         
                         cost_part, grad_part = calcGradient(
                             nx, ny, nz,
@@ -1239,13 +1277,17 @@ class SHDOM(object):
         #
         if self.comm.rank == 0:
             sio.savemat(
-                os.path.join(sys.results_path, 'extinction.mat'),
+                os.path.join(self.results_path, 'extinction.mat'),
                 {
                     'x': x
                     },
                 do_compression=True
             )
             
+        mpi_log_file_h.Sync()
+        mpi_log_file_h.Close()
+        mpi_log_file_h = None
+
 
 if __name__ == '__main__':
     pass

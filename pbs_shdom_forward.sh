@@ -53,7 +53,7 @@
 #
 # resource limits: number and distribution of parallel processes 
 #------------------------------------------------------------------ 
-#PBS -l select=100:ncpus=1:mpiprocs=1 -l place=free
+#PBS -l select=36:ncpus=1:mpiprocs=1 -l place=free
 #
 # comment: this select statement means: use M chunks (nodes), 
 # use N (=< 12) CPUs for N mpi tasks on each of M nodes. 
@@ -68,7 +68,7 @@ cd $PBS_O_WORKDIR
 #
 # running MPI executable with M*N processes  
 #------------------------------------------------------
-#mpirun -np 36 python $HOME/anaconda/bin/simulateSHDOM.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_absorbing_smooth
-mpirun -np 100 python $HOME/anaconda/bin/simulateSHDOM.py --parallel --job_id $PBS_JOBID two_clouds_high_density_high_resolution
+mpirun -np 36 python $HOME/anaconda/bin/simulateSHDOM.py --parallel --job_id $PBS_JOBID two_clouds_high_density_mediumhigh_resolution_absorbing_smooth
+#mpirun -np 100 python $HOME/anaconda/bin/simulateSHDOM.py --parallel --job_id $PBS_JOBID two_clouds_high_density_high_resolution
 
 # comment: the "np" must be equal the number of chunks multiplied by the number of "ncpus"
