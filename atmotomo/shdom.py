@@ -54,6 +54,14 @@ def chunks(l, n):
     yield l[n*newn-newn:]
 
 
+def plog(msg):
+
+    if MPI.COMM_WORLD.rank == 0:
+        
+        mpi_log_file_h.Write_shared(msg)
+
+
+
 def runCmd(cmd, *args):
     """
     Run a cmd as a subprocess and pass a list of args on stdin.
@@ -73,7 +81,7 @@ def runCmd(cmd, *args):
     
     if mpi_log_file_h is not None:
         mpi_log_file_h.Write_shared(
-            '='*70+'CMD: {cmd}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n'.format(cmd=cmd, stdout=res[0], stderr=res[1])
+            '='*70+'\nCMD: {cmd}\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n'.format(cmd=cmd, stdout=res[0], stderr=res[1])
         )
 
     return res
@@ -981,12 +989,13 @@ class SHDOM(object):
             prev_cost = 1e7
             prev_x = x
             prev_grad = np.zeros_like(x)
+            grad_iter_num = 0
+            stepsize = initial_stepsize
+            stepsize_tolerance = 1e-2 * initial_stepsize
             while True:
                 #
                 # Loop on all colors
                 #
-                stepsize = initial_stepsize
-                stepsize_tolerance = 1e-2 * initial_stepsize
                 cost = 0
                 grad = np.zeros(grids.shape)
                 for color in ColoredParam._fields:
@@ -1112,6 +1121,7 @@ class SHDOM(object):
         #
         x0 = np.zeros(grids.shape)
         x = x0
+        old_x = x
         eps = amitibo.eps(x)
 
         #
@@ -1120,6 +1130,8 @@ class SHDOM(object):
         iter_num = 0
         t0 = time.time()
         while True: 
+            plog('='*72+'\n'+'='*72+'\n')
+
             #
             # Loop on all colors
             #
@@ -1165,15 +1177,17 @@ class SHDOM(object):
             #
             # Optimize the current source function.
             #
-            prev_cost = 1e7
+            prev_cost = 1e14
             prev_x = x
             prev_grad = np.zeros_like(x)
+            grad_iter_num = 0
+            stepsize = initial_stepsize
+            stepsize_tolerance = 1e-2 * initial_stepsize
             while True:
+                plog('='*72+'\n')
                 #
                 # Loop on all colors
                 #
-                stepsize = initial_stepsize
-                stepsize_tolerance = 1e-2 * initial_stepsize
                 pcost = np.zeros(1, dtype=np.float32)
                 pgrad = np.zeros(grids.shape, dtype=np.float32)
                 cost = np.empty_like(pcost)
@@ -1240,11 +1254,30 @@ class SHDOM(object):
                     op=MPI.SUM
                 )
                 if prev_cost < cost:
+                    plog(
+                            '\nINVERSE LOG: prev cost:{prev_cost} smaller then current cost:{cost}, reducing stepsize:{stepsize}\n'.format(
+                            prev_cost=prev_cost,
+                            cost=cost,
+                            stepsize=stepsize
+                        )
+                    )
                     stepsize = stepsize/2
+                    plog(
+                            '\nINVERSE LOG: new stepsize:{stepsize}\n'.format(
+                            stepsize=stepsize
+                        )
+                    )
+
                     x = prev_x
                     grad = prev_grad
                     
                     if stepsize < stepsize_tolerance:
+                        plog(
+                            '\nINVERSE LOG: stepsize:{stepsize}, smaller then tollerance:{stepsize_tolerance}\n'.format(
+                                stepsize=stepsize,
+                                stepsize_tolerance=stepsize_tolerance
+                            )
+                        )
                         cost = prev_cost
                         break
                 else:
@@ -1252,28 +1285,41 @@ class SHDOM(object):
                     prev_grad = grad
                     prev_x = x
                     
+                plog('\nINVERSE LOG: x norm before update: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
                 x = x - stepsize*grad
+                plog('\nINVERSE LOG: x norm after update: {x_norm}, positive values:{nn}\n'.format(x_norm=np.linalg.norm(x), nn=(x>0).sum()))
                 x[x<0] = 0
+                plog('\nINVERSE LOG: x norm after zeroing: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
                 grad_norm = np.linalg.norm(grad)
                 
+                plog(
+                    '\nINVERSE LOG: grad_norm:{grad_norm}, step_size:{stepsize}\n'.format(
+                        grad_norm=grad_norm,
+                        stepsize=stepsize
+                    )
+                )
+
                 if grad_norm < grad_norm_tolerance:
+                    plog('\nINVERSE LOG: Gradient descent achieved grad norm tolerance\n')
                     break
                 
                 grad_iter_num += 1
                 if grad_iter_num > grad_max_iter:
+                    plog('\nINVERSE LOG: Gradient descent exited due to iteration number\n')
                     break
                 
-            delta_sol =  np.max(np.abs(x-prev_x)/(x+eps)) 
-            
+            delta_sol =  np.max(np.abs(x-old_x)/(x+eps)) 
+            old_x = x
+
             if delta_sol < tolerance:
-                print 'Cost converged to tolerance'
+                plog('\nINVERSE LOG: Max change in x : {delta_sol}, converged to tolerance: {tolerance}\n'.format(delta_sol=delta_sol, tolerance=tolerance))
                 break
             if time.time()-t0 > max_time:
-                print 'Optimization time exceeded maximal allowed time'
+                plog('\nINVERSE LOG: Optimization time exceeded maximal allowed time\n')
                 break
             iter_num += 1
             if iter_num > max_iter:
-                print 'Maximal number of optimization iterations exceeded'
+                plog('\nINVERSE LOG: Maximal number of optimization iterations exceeded\n')
                 break
 
         #
