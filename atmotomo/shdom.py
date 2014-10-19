@@ -85,6 +85,7 @@ def MPI_LOG(msg):
         
         mpi_log_file_h.Write_shared(msg)
 
+        mpi_log_file_h.Sync()
 
 
 def runCmd(cmd, *args):
@@ -1192,10 +1193,10 @@ class SHDOM(object):
         maxiter=30
         ):
         
-        bounds = [(0, None)]*x0.size
-        res = minimize(
+        bounds = [[0, None]]*x0.size
+        res = optimize.minimize(
             self._calc_cost_gradient_p,
-            x0,
+            x0.ravel(),
             method='L-BFGS-B',
             jac=True,
             options={'maxiter':maxiter, 'disp':False},
@@ -1305,6 +1306,8 @@ class SHDOM(object):
         grids = self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
 
+        x = x.reshape(grids.shape)
+
         #
         # Loop on all colors
         #
@@ -1376,7 +1379,7 @@ class SHDOM(object):
         
         MPI_LOG('='*72+'\nCost in cost_gradient step:{cost}\n'.format(cost=cost))
         
-        return cost, grad
+        return cost, grad.ravel().astype(np.float)
     
 
     def _opt_solve_step_parallel(self, x):
