@@ -8,6 +8,7 @@ from . import loadpds, readConfiguration, RGB_WAVELENGTH, ColoredParam, L_SUN_RG
 from pkg_resources import resource_filename
 import matplotlib.pyplot as plt
 import scipy.io as sio
+import scipy.optimize as optimize
 import tempfile
 import amitibo
 import Image
@@ -42,7 +43,31 @@ __all__ = (
 )
 
 debug = True
+
 mpi_log_file_h = None
+
+def createLogMPI(path):
+    global mpi_log_file_h
+    
+    mode = MPI.MODE_WRONLY|MPI.MODE_CREATE#|MPI.MODE_APPEND 
+    
+    mpi_log_file_h = MPI.File.Open(
+        MPI.COMM_WORLD,
+        path,
+        mode
+        ) 
+    
+    mpi_log_file_h.Set_atomicity(True) 
+
+    return mpi_log_file_h
+               
+               
+def closeLogMPI():
+    global mpi_log_file_h
+    
+    mpi_log_file_h.Sync()
+    mpi_log_file_h.Close()
+    mpi_log_file_h = None
 
 
 def chunks(l, n):
@@ -54,7 +79,7 @@ def chunks(l, n):
     yield l[n*newn-newn:]
 
 
-def plog(msg):
+def MPI_LOG(msg):
 
     if MPI.COMM_WORLD.rank == 0:
         
@@ -799,14 +824,7 @@ class SHDOM(object):
         #
         # Prepare a log file
         #
-        global mpi_log_file_h
-        mode = MPI.MODE_WRONLY|MPI.MODE_CREATE#|MPI.MODE_APPEND 
-        mpi_log_file_h = MPI.File.Open(
-            self.comm,
-            os.path.join(self.results_path, "forward_logfile.log"),
-            mode
-            ) 
-        mpi_log_file_h.Set_atomicity(True) 
+        log_file = createLogMPI(os.path.join(self.results_path, "forward_logfile.log"))
 
         #
         # Create the particle file
@@ -917,17 +935,16 @@ class SHDOM(object):
             img_file = os.path.join(self.results_path, 'img_{i}.jpg'.format(i=i))
             im.save(img_file)
                     
-        mpi_log_file_h.Sync()
-        mpi_log_file_h.Close()
-        mpi_log_file_h = None
+        closeLogMPI()
+        
 
     def inverse_serial(
         self,
         max_time=3600,
         tolerance=1e-4, 
-        max_iter=30,
+        maxiter=30,
         grad_norm_tolerance=1e-1,
-        grad_max_iter=30,
+        grad_maxiter=30,
         initial_stepsize=1e-4
         ):
         """Run the SHDOM algorithm to solve the inverse problem."""
@@ -993,54 +1010,7 @@ class SHDOM(object):
             stepsize = initial_stepsize
             stepsize_tolerance = 1e-2 * initial_stepsize
             while True:
-                #
-                # Loop on all colors
-                #
-                cost = 0
-                grad = np.zeros(grids.shape)
-                for color in ColoredParam._fields:
-                    scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
-                    ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
-                    solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
-                    
-                    #
-                    # Create the properties file
-                    #
-                    lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
-                    createExtinctionTableFile(
-                        self.atmosphere_params,
-                        effective_radius=self.particle_params.effective_radius,
-                        extinction=x,
-                        outfile=ext_file,
-                        lwc_file=lwc_file,
-                        scat_file=scat_file,
-                        wavelen=RGB_WAVELENGTH[color],
-                    )
-                
-                    for i, (camX, camY, camZ) in enumerate(self.cameras):
-        
-                        imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                        grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
-        
-                        cost_part, grad_part = calcGradient(
-                            nx, ny, nz,
-                            ext_file,
-                            solve_file,
-                            wavelen=RGB_WAVELENGTH[color],                
-                            imgbinfile=imgbin_file,
-                            gradfile=grad_file,
-                            camX=camX,
-                            camY=camY,
-                            camZ=camZ,
-                            camnlines=self.camera_params.resolution[0], 
-                            camnsamps=self.camera_params.resolution[1],
-                            solarflux=L_SUN_RGB[color],
-                            splitacc=self.splitacc,                    
-                            scale=self.scale,
-                        )
-                        cost += cost_part
-                        grad += grad_part
-
+                cost = self._calc_gradient_serial(x)
                 if prev_cost < cost:
                     stepsize = stepsize/2
                     x = prev_x
@@ -1063,7 +1033,7 @@ class SHDOM(object):
                     break
                 
                 grad_iter_num += 1
-                if grad_iter_num > grad_max_iter:
+                if grad_iter_num > grad_maxiter:
                     break
                 
             delta_sol =  np.max(np.abs(x-prev_x)/(x+eps)) 
@@ -1075,7 +1045,7 @@ class SHDOM(object):
                 print 'Optimization time exceeded maximal allowed time'
                 break
             iter_num += 1
-            if iter_num > max_iter:
+            if iter_num > maxiter:
                 print 'Maximal number of optimization iterations exceeded'
                 break
 
@@ -1089,39 +1059,82 @@ class SHDOM(object):
                 },
             do_compression=True
         )
+
+    def _calc_gradient_serial(self, x):
+
+        grids = self.atmosphere_params.cartesian_grids
+        nx, ny, nz = grids.shape
+
+        #
+        # Loop on all colors
+        #
+        cost = 0
+        grad = np.zeros(grids.shape)
+        for color in ColoredParam._fields:
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
+            
+            #
+            # Create the properties file
+            #
+            lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+            createExtinctionTableFile(
+                self.atmosphere_params,
+                effective_radius=self.particle_params.effective_radius,
+                extinction=x,
+                outfile=ext_file,
+                lwc_file=lwc_file,
+                scat_file=scat_file,
+                wavelen=RGB_WAVELENGTH[color],
+            )
+        
+            for i, (camX, camY, camZ) in enumerate(self.cameras):
+        
+                imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
+        
+                cost_part, grad_part = calcGradient(
+                    nx, ny, nz,
+                    ext_file,
+                    solve_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    imgbinfile=imgbin_file,
+                    gradfile=grad_file,
+                    camX=camX,
+                    camY=camY,
+                    camZ=camZ,
+                    camnlines=self.camera_params.resolution[0], 
+                    camnsamps=self.camera_params.resolution[1],
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,                    
+                    scale=self.scale,
+                )
+                cost += cost_part
+                grad += grad_part
+
+        return cost
         
     def inverse_parallel(
         self,
-        max_time=3600,
-        tolerance=1e-4, 
-        max_iter=30,
-        grad_norm_tolerance=1e-1,
-        grad_max_iter=30,
-        initial_stepsize=1e-4
+        max_run_time=3600,
+        x_change_tolerance=1e-4, 
+        maxiter=30,
         ):
         """Run the SHDOM algorithm to solve the inverse problem."""
         
         #
         # Prepare a log file
         #
-        global mpi_log_file_h
-        mode = MPI.MODE_WRONLY|MPI.MODE_CREATE#|MPI.MODE_APPEND 
-        mpi_log_file_h = MPI.File.Open(
-            self.comm,
-            os.path.join(self.results_path, "inverse_logfile.log"),
-            mode
-            ) 
-        mpi_log_file_h.Set_atomicity(True) 
-
+        log_file = createLogMPI(os.path.join(self.results_path, "inverse_logfile.log"))
         grids = self.atmosphere_params.cartesian_grids
         nx, ny, nz = grids.shape
 
         #
         # Initial guess
         #
-        x0 = np.zeros(grids.shape)
-        x = x0
-        old_x = x
+        x = np.zeros(grids.shape)
+        x_prev = x
         eps = amitibo.eps(x)
 
         #
@@ -1130,196 +1143,33 @@ class SHDOM(object):
         iter_num = 0
         t0 = time.time()
         while True: 
-            plog('='*72+'\n'+'='*72+'\n')
+            MPI_LOG('='*72+'\n'+'='*72+'\n')
 
             #
-            # Loop on all colors
+            # First: do the solve step to calculate radiance for given extinction (x)
             #
-            for color in ColoredParam._fields:
-                coloredcomm = self.comms[color]
-                if coloredcomm == MPI.COMM_NULL:
-                    continue
+            self._opt_solve_step_parallel(x)
 
-                scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
-                ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
-                solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
-                
-                if coloredcomm.rank == 0:
-                    #
-                    # Create the properties file
-                    #
-                    lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
-                    createExtinctionTableFile(
-                        self.atmosphere_params,
-                        effective_radius=self.particle_params.effective_radius,
-                        extinction=x,
-                        outfile=ext_file,
-                        lwc_file=lwc_file,
-                        scat_file=scat_file,
-                        wavelen=RGB_WAVELENGTH[color],
-                    )
-                
-                    #
-                    # Solve the RTE problem
-                    #
-                    solveRTE(
-                        nx, ny, nz,
-                        ext_file,
-                        wavelen=RGB_WAVELENGTH[color],                
-                        maxiter=self.maxiter,
-                        solarflux=L_SUN_RGB[color],
-                        splitacc=self.splitacc,
-                        outfile=solve_file,
-                        )
-
-            self.comm.Barrier()
-                   
             #
-            # Optimize the current source function.
+            # Second: do the gradient descent on the extinction given the radiances (calculated in the first step)
             #
-            prev_cost = 1e14
-            prev_x = x
-            prev_grad = np.zeros_like(x)
-            grad_iter_num = 0
-            stepsize = initial_stepsize
-            stepsize_tolerance = 1e-2 * initial_stepsize
-            while True:
-                plog('='*72+'\n')
-                #
-                # Loop on all colors
-                #
-                pcost = np.zeros(1, dtype=np.float32)
-                pgrad = np.zeros(grids.shape, dtype=np.float32)
-                cost = np.empty_like(pcost)
-                grad = np.empty_like(pgrad)
-                for color in ColoredParam._fields:
-                    coloredcomm = self.comms[color]
-                    if coloredcomm == MPI.COMM_NULL:
-                        continue
+            x = self._opt_extinct_step_p(x)
+            
+            #
+            # Check stop criterions
+            #
+            x_max_change =  np.max(np.abs(x-x_prev)/(x+eps)) 
+            x_prev = x
 
-                    scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
-                    ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
-                    solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
-                    
-                    if coloredcomm.rank == 0:
-                        #
-                        # Create the properties file
-                        #
-                        lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
-                        createExtinctionTableFile(
-                            self.atmosphere_params,
-                            effective_radius=self.particle_params.effective_radius,
-                            extinction=x,
-                            outfile=ext_file,
-                            lwc_file=lwc_file,
-                            scat_file=scat_file,
-                            wavelen=RGB_WAVELENGTH[color],
-                        )
-                
-                    coloredcomm.Barrier()
-                
-                    for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
-                        camX, camY, camZ = self.cameras[i]
-        
-                        imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
-                        grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
-        
-                        cost_part, grad_part = calcGradient(
-                            nx, ny, nz,
-                            ext_file,
-                            solve_file,
-                            wavelen=RGB_WAVELENGTH[color],                
-                            imgbinfile=imgbin_file,
-                            gradfile=grad_file,
-                            camX=camX,
-                            camY=camY,
-                            camZ=camZ,
-                            camnlines=self.camera_params.resolution[0], 
-                            camnsamps=self.camera_params.resolution[1],
-                            solarflux=L_SUN_RGB[color],
-                            splitacc=self.splitacc,                    
-                            scale=self.scale,
-                        )
-                        pcost += cost_part
-                        pgrad += grad_part
-
-                self.comm.Allreduce(
-                    [pcost, MPI.FLOAT],
-                    [cost, MPI.FLOAT],
-                    op=MPI.SUM
-                )
-                self.comm.Allreduce(
-                    [pgrad, MPI.FLOAT],
-                    [grad, MPI.FLOAT],
-                    op=MPI.SUM
-                )
-                if prev_cost < cost:
-                    plog(
-                            '\nINVERSE LOG: prev cost:{prev_cost} smaller then current cost:{cost}, reducing stepsize:{stepsize}\n'.format(
-                            prev_cost=prev_cost,
-                            cost=cost,
-                            stepsize=stepsize
-                        )
-                    )
-                    stepsize = stepsize/2
-                    plog(
-                            '\nINVERSE LOG: new stepsize:{stepsize}\n'.format(
-                            stepsize=stepsize
-                        )
-                    )
-
-                    x = prev_x
-                    grad = prev_grad
-                    
-                    if stepsize < stepsize_tolerance:
-                        plog(
-                            '\nINVERSE LOG: stepsize:{stepsize}, smaller then tollerance:{stepsize_tolerance}\n'.format(
-                                stepsize=stepsize,
-                                stepsize_tolerance=stepsize_tolerance
-                            )
-                        )
-                        cost = prev_cost
-                        break
-                else:
-                    prev_cost = cost
-                    prev_grad = grad
-                    prev_x = x
-                    
-                plog('\nINVERSE LOG: x norm before update: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
-                x = x - stepsize*grad
-                plog('\nINVERSE LOG: x norm after update: {x_norm}, positive values:{nn}\n'.format(x_norm=np.linalg.norm(x), nn=(x>0).sum()))
-                x[x<0] = 0
-                plog('\nINVERSE LOG: x norm after zeroing: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
-                grad_norm = np.linalg.norm(grad)
-                
-                plog(
-                    '\nINVERSE LOG: grad_norm:{grad_norm}, step_size:{stepsize}\n'.format(
-                        grad_norm=grad_norm,
-                        stepsize=stepsize
-                    )
-                )
-
-                if grad_norm < grad_norm_tolerance:
-                    plog('\nINVERSE LOG: Gradient descent achieved grad norm tolerance\n')
-                    break
-                
-                grad_iter_num += 1
-                if grad_iter_num > grad_max_iter:
-                    plog('\nINVERSE LOG: Gradient descent exited due to iteration number\n')
-                    break
-                
-            delta_sol =  np.max(np.abs(x-old_x)/(x+eps)) 
-            old_x = x
-
-            if delta_sol < tolerance:
-                plog('\nINVERSE LOG: Max change in x : {delta_sol}, converged to tolerance: {tolerance}\n'.format(delta_sol=delta_sol, tolerance=tolerance))
+            if x_max_change < x_change_tolerance:
+                MPI_LOG('\nINVERSE LOG: Max change in x : {delta_sol}, converged to tolerance: {tolerance}\n'.format(delta_sol=x_max_change, tolerance=x_change_tolerance))
                 break
-            if time.time()-t0 > max_time:
-                plog('\nINVERSE LOG: Optimization time exceeded maximal allowed time\n')
+            if time.time()-t0 > max_run_time:
+                MPI_LOG('\nINVERSE LOG: Optimization time exceeded maximal allowed time\n')
                 break
             iter_num += 1
-            if iter_num > max_iter:
-                plog('\nINVERSE LOG: Maximal number of optimization iterations exceeded\n')
+            if iter_num > maxiter:
+                MPI_LOG('\nINVERSE LOG: Maximal number of optimization iterations exceeded\n')
                 break
 
         #
@@ -1333,10 +1183,248 @@ class SHDOM(object):
                     },
                 do_compression=True
             )
+        
+        closeLogMPI()
+
+    def _opt_extinct_step_p(
+        self,
+        x0,
+        maxiter=30
+        ):
+        
+        bounds = [(0, None)]*x0.size
+        res = minimize(
+            self._calc_cost_gradient_p,
+            x0,
+            method='L-BFGS-B',
+            jac=True,
+            options={'maxiter':maxiter, 'disp':False},
+            bounds=bounds
+        )
+        
+        return res.x
+    
+    def _opt_extinct_step_p_old(
+        self,
+        x,
+        stepsize=1e-4,        
+        grad_norm_tolerance=1e-1,
+        maxiter=30
+        ):
+        
+        #
+        # Optimize the current source function.
+        #
+        cost_prev = 1e14
+        x_prev = x
+        grad_prev = np.zeros_like(x)
+        iter_num = 0
+        stepsize_tolerance = 1e-2 * stepsize
+        
+        while True:
+            MPI_LOG('='*72+'\n')
             
-        mpi_log_file_h.Sync()
-        mpi_log_file_h.Close()
-        mpi_log_file_h = None
+            #
+            # Calculate the cost and gradient.
+            #
+            cost, grad = self._calc_cost_gradient_p(x)
+            
+            #
+            # Check if the last step went too far.
+            #
+            if cost_prev < cost:
+                #
+                # Rewind the previous step and decrease the stepsize.
+                #
+                MPI_LOG(
+                        '\nINVERSE LOG: prev cost:{prev_cost} smaller then current cost:{cost}, reducing stepsize:{stepsize}\n'.format(
+                        prev_cost=cost_prev,
+                        cost=cost,
+                        stepsize=stepsize
+                    )
+                )
+                stepsize = stepsize/2
+                MPI_LOG(
+                        '\nINVERSE LOG: new stepsize:{stepsize}\n'.format(
+                        stepsize=stepsize
+                    )
+                )
+
+                x = x_prev
+                grad = grad_prev
+                
+                if stepsize < stepsize_tolerance:
+                    MPI_LOG(
+                        '\nINVERSE LOG: stepsize:{stepsize}, smaller then tollerance:{stepsize_tolerance}\n'.format(
+                            stepsize=stepsize,
+                            stepsize_tolerance=stepsize_tolerance
+                        )
+                    )
+                    cost = cost_prev
+                    break
+                
+                continue
+            
+            #
+            # Update x
+            #
+            cost_prev = cost
+            grad_prev = grad
+            x_prev = x
+                
+            MPI_LOG('\nINVERSE LOG: x norm before update: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
+            x = x - stepsize*grad
+            MPI_LOG('\nINVERSE LOG: x norm after update: {x_norm}, positive values:{nn}\n'.format(x_norm=np.linalg.norm(x), nn=(x>0).sum()))
+            x[x<0] = 0
+            MPI_LOG('\nINVERSE LOG: x norm after zeroing: {x_norm}\n'.format(x_norm=np.linalg.norm(x)))
+            grad_norm = np.linalg.norm(grad)
+            
+            MPI_LOG(
+                '\nINVERSE LOG: grad_norm:{grad_norm}, step_size:{stepsize}\n'.format(
+                    grad_norm=grad_norm,
+                    stepsize=stepsize
+                )
+            )
+
+            #
+            # Check stop criterions
+            #
+            if grad_norm < grad_norm_tolerance:
+                MPI_LOG('\nINVERSE LOG: Gradient descent achieved grad norm tolerance\n')
+                break
+            
+            iter_num += 1
+            if iter_num > maxiter:
+                MPI_LOG('\nINVERSE LOG: Gradient descent exited due to iteration number\n')
+                break
+            
+        return x
+
+    def _calc_cost_gradient_p(self, x):
+
+        grids = self.atmosphere_params.cartesian_grids
+        nx, ny, nz = grids.shape
+
+        #
+        # Loop on all colors
+        #
+        pcost = np.zeros(1, dtype=np.float32)
+        pgrad = np.zeros(grids.shape, dtype=np.float32)
+        cost = np.empty_like(pcost)
+        grad = np.empty_like(pgrad)
+        for color in ColoredParam._fields:
+            coloredcomm = self.comms[color]
+            if coloredcomm == MPI.COMM_NULL:
+                continue
+
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
+            
+            if coloredcomm.rank == 0:
+                #
+                # Create the properties file
+                #
+                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                createExtinctionTableFile(
+                    self.atmosphere_params,
+                    effective_radius=self.particle_params.effective_radius,
+                    extinction=x,
+                    outfile=ext_file,
+                    lwc_file=lwc_file,
+                    scat_file=scat_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                )
+        
+            coloredcomm.Barrier()
+        
+            for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
+                camX, camY, camZ = self.cameras[i]
+        
+                imgbin_file = os.path.join(self.results_path, 'img_{color}_{i}.bin'.format(color=color, i=i))
+                grad_file = os.path.join(self.results_path, 'grad_{color}_{i}.bin'.format(color=color, i=i))
+        
+                cost_part, grad_part = calcGradient(
+                    nx, ny, nz,
+                    ext_file,
+                    solve_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    imgbinfile=imgbin_file,
+                    gradfile=grad_file,
+                    camX=camX,
+                    camY=camY,
+                    camZ=camZ,
+                    camnlines=self.camera_params.resolution[0], 
+                    camnsamps=self.camera_params.resolution[1],
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,                    
+                    scale=self.scale,
+                )
+                pcost += cost_part
+                pgrad += grad_part
+
+        self.comm.Allreduce(
+            [pcost, MPI.FLOAT],
+            [cost, MPI.FLOAT],
+            op=MPI.SUM
+        )
+        self.comm.Allreduce(
+            [pgrad, MPI.FLOAT],
+            [grad, MPI.FLOAT],
+            op=MPI.SUM
+        )
+        
+        MPI_LOG('='*72+'\nCost in cost_gradient step:{cost}\n'.format(cost=cost))
+        
+        return cost, grad
+    
+
+    def _opt_solve_step_parallel(self, x):
+        
+        grids = self.atmosphere_params.cartesian_grids
+        nx, ny, nz = grids.shape
+        
+        #
+        # Loop on all colors
+        #
+        for color in ColoredParam._fields:
+            coloredcomm = self.comms[color]
+            if coloredcomm == MPI.COMM_NULL:
+                continue
+
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
+            
+            if coloredcomm.rank == 0:
+                #
+                # Create the properties file
+                #
+                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                createExtinctionTableFile(
+                    self.atmosphere_params,
+                    effective_radius=self.particle_params.effective_radius,
+                    extinction=x,
+                    outfile=ext_file,
+                    lwc_file=lwc_file,
+                    scat_file=scat_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                )
+            
+                #
+                # Solve the RTE problem
+                #
+                solveRTE(
+                    nx, ny, nz,
+                    ext_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    maxiter=self.maxiter,
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,
+                    outfile=solve_file,
+                    )
+
+        self.comm.Barrier()
 
 
 if __name__ == '__main__':
