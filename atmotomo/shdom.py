@@ -263,7 +263,7 @@ def createExtinctionTableFile(
         nscattab,
         scat_file,
         scatnums,
-        part_file,
+        lwc_file,
         maxnewphase,
         asymtol,
         fracphasetol,
@@ -1136,11 +1136,13 @@ class SHDOM(object):
                     #
                     # Create the properties file
                     #
+                    lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
                     createExtinctionTableFile(
                         self.atmosphere_params,
                         effective_radius=self.particle_params.effective_radius,
                         extinction=x,
                         outfile=ext_file,
+                        lwc_file=lwc_file,
                         scat_file=scat_file,
                         wavelen=RGB_WAVELENGTH[color],
                     )
@@ -1189,11 +1191,13 @@ class SHDOM(object):
                         #
                         # Create the properties file
                         #
+                        lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
                         createExtinctionTableFile(
                             self.atmosphere_params,
                             effective_radius=self.particle_params.effective_radius,
                             extinction=x,
                             outfile=ext_file,
+                            lwc_file=lwc_file,
                             scat_file=scat_file,
                             wavelen=RGB_WAVELENGTH[color],
                         )
