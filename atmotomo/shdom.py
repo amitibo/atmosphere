@@ -1193,6 +1193,8 @@ class SHDOM(object):
         maxiter=30
         ):
         
+        grids = self.atmosphere_params.cartesian_grids
+
         bounds = [[0, None]]*x0.size
         res = optimize.minimize(
             self._calc_cost_gradient_p,
@@ -1203,7 +1205,7 @@ class SHDOM(object):
             bounds=bounds
         )
         
-        return res.x
+        return res.x.reshape(grids.shape)
     
     def _opt_extinct_step_p_old(
         self,
