@@ -5,3 +5,4 @@ from .densities import *
 from .models import *
 from .shdom import *
 from ._src import __src_path__
+from .FortranFile import FortranFile
