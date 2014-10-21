@@ -29,7 +29,7 @@ def main():
     )
     
     tamnun.qsub(
-        cmd='$HOME/anaconda/bin/analyzeSHDOM.py',
+        cmd='$HOME/anaconda/bin/simulateSHDOM.py',
         params=params,
         M=args.cores_num,
         N=1,

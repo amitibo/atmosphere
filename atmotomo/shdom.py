@@ -940,6 +940,9 @@ class SHDOM(object):
     def forward_extinction(self, extinction, gamma=True, imshow=False, cameras_limit=None):
         """Run the SHDOM algorithm in the forward direction on an extinction file."""
         
+        grids = self.atmosphere_params.cartesian_grids
+        nx, ny, nz = grids.shape
+        
         if cameras_limit > 0:
             self.cameras = self.cameras[:cameras_limit]
                 
@@ -951,12 +954,89 @@ class SHDOM(object):
             #
             extinction = sio.loadmat(extinction)['x']
             
+        extinction[extinction<0.000001] = 0
+
         #
-        # First: do the solve step to calculate radiance for given extinction (x)
+        # Loop on all colors
         #
-        self._opt_solve_step(extinction)
+        for color in ColoredParam._fields:
+            coloredcomm = self.comms[color]
+            if coloredcomm == MPI.COMM_NULL:
+                continue
+            
+            scat_file = os.path.join(self.results_path, 'mie_table_{color}.scat'.format(color=color))
+            ext_file = os.path.join(self.results_path, 'ext_{color}.prp'.format(color=color))
+            solve_file = os.path.join(self.results_path, 'sol_{color}.bin'.format(color=color))
+            
+            if coloredcomm.rank == 0:
+                #
+                # Create the Mie tables.
+                #
+                createMieTable(
+                    scat_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                    refindex=self.particle_params.refractive_index[color],
+                    density=self.particle_params.density,
+                    effective_radius=self.particle_params.effective_radius
+                )
+
+                #
+                # Create the properties file
+                #
+                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                createExtinctionTableFile(
+                    self.atmosphere_params,
+                    effective_radius=self.particle_params.effective_radius,
+                    extinction=extinction,
+                    outfile=ext_file,
+                    lwc_file=lwc_file,
+                    scat_file=scat_file,
+                    wavelen=RGB_WAVELENGTH[color],
+                )
+            
+                #
+                # Solve the RTE problem
+                #
+                solveRTE(
+                    nx, ny, nz,
+                    ext_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    maxiter=self.maxiter,
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,
+                    outfile=solve_file,
+                    )
+
+            coloredcomm.Barrier()
         
+            #
+            # Calculate the images.
+            #
+            for i in range(coloredcomm.rank, len(self.cameras), coloredcomm.size):
+                camX, camY, camZ = self.cameras[i]
+
+                imgbin_file = os.path.join(self.results_path, 'img_ext_{color}_{i}.bin'.format(color=color, i=i))
+                img_file = os.path.join(self.results_path, 'img_ext_{color}_{i}.pds'.format(color=color, i=i))
+
+                createImage(
+                    nx, ny, nz,
+                    ext_file,
+                    solve_file,
+                    wavelen=RGB_WAVELENGTH[color],                
+                    imgbinfile=imgbin_file,
+                    imgfile=img_file,
+                    camX=camX,
+                    camY=camY,
+                    camZ=camZ,
+                    camnlines=self.camera_params.resolution[0], 
+                    camnsamps=self.camera_params.resolution[1],
+                    solarflux=L_SUN_RGB[color],
+                    splitacc=self.splitacc,                    
+                    nbytes=self.nbytes,
+                    scale=self.scale,
+                )
         
+        self.comm.Barrier()
         for i in range(self.comm.rank, len(self.cameras), self.comm.size):
             img = []
             for color in ColoredParam._fields:
