@@ -1,0 +1,71 @@
+from enaml.layout.api import vbox, hbox, spacer
+from enaml.widgets.api import Window, Container, MPLCanvas, CheckBox, PushButton, Form, Label
+from enaml.stdlib.fields import IntField, FloatField
+
+enamldef Main(Window):
+    attr model
+
+    Container:
+        constraints = [
+            vbox(
+                hbox(settings, spacer),
+                hbox(btn, check1, check2, spacer),
+                hbox(canvas1, canvas2)
+            ),
+            btn.v_center == check1.v_center,
+            check2.v_center == check1.v_center,
+        ]
+        
+        Form: settings:
+            Label:
+                text = 'Quantum Efficiency'
+            FloatField: QE:
+                value := model.QE
+            Label:
+                text = 'Full Well Depth'
+            IntField: F:
+                value := model.F
+            Label:
+                text = 'Bit num'
+            IntField: B:
+                value := model.B
+            Label:
+                text = 'gray/electrons'
+            FloatField: alpha:
+                read_only = True
+                value << model.alpha
+            Label:
+                text = 'Dark Noise mean'
+            FloatField: DN_mean:
+                value := model.DN_mean
+            Label:
+                text = 'Dark Noise sigma'
+            FloatField: DN_sigma:
+                value := model.DN_sigma
+            Label:
+                text = 'Exposure time'
+            IntField: t:
+                value := model.t
+            Label:
+                text = 'SNR'
+            FloatField: SNR:
+                value := model.snr
+
+        PushButton: btn:
+            text = 'Update'
+            clicked :: model.process()
+
+        CheckBox: check1:
+            text = 'Tools'
+            checked := canvas1.toolbar_visible
+
+        CheckBox: check2:
+            text = 'Tools'
+            checked := canvas2.toolbar_visible
+
+        MPLCanvas: canvas1:
+            figure << model.figure1
+
+        MPLCanvas: canvas2:
+            figure << model.figure2
+
