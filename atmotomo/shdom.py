@@ -641,7 +641,7 @@ def calcGradient(
         point_ratio
     )
 
-    f = FF(gradfile)
+    f = FF.FortranFile(gradfile)
     cost = f.readReals()
     grad = f.readReals().reshape(nx, ny, nz)
     
@@ -1158,6 +1158,11 @@ class SHDOM(object):
         nx, ny, nz = grids.shape
 
         x = x.reshape(grids.shape)
+        
+        #
+        # Truncating low values as not to create memory errors due to large number of legndre coefficients.
+        #
+        x[x<0.00001] = 0
 
         #
         # Loop on all colors
