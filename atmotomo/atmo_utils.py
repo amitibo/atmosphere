@@ -49,7 +49,8 @@ __all__ = [
     "fixmat",
     "weighted_laplace",
     "ColoredParam",
-    "loadpds"
+    "loadpds",
+    "NoiseModel"
 ]
 
 
@@ -400,7 +401,79 @@ def loadpds(file_path):
     h, w = labels['IMAGE_LINES'], labels['LINE_SAMPLES']
     array = np.fromstring(rest_of_file[-h*w*sample_size:], dtype=dtype).reshape((h, w))
     return array
+
+
+class NoiseModel(object):
+    """The data model of the client."""
+
+    def __init__(self, QE=0.3, F=20000, B=8, DN_mean=6, DN_sigma=2, t=10):
+        """
+        Noise model that simulates the creation of an image in a 'real' camera.
+        im
+        """
+        self.QE = QE
+        self.F = F
+        self.B = B
+        self.DN_mean = DN_mean
+        self.DN_sigma = DN_sigma
+        self.t = t
+        self.alpha = 2**self.B/self.F
+        
+    def processNoise(self, photons):
+        
+        #
+        # Calculate the number of photons
+        #
+        photons = photons.astype(np.float) * self.t
+        photons = np.random.poisson(photons)
+        photons[photons>self.F] = self.F
+        
+        #
+        # Convert to electrons and add the dark noise
+        # based on Baer, Richard L. "A model for dark current characterization and simulation."
+        # Electronic Imaging 2006. International Society for Optics and Photonics, 2006.
+        #
+        electrons = self.QE*photons
+        DN_noise = np.random.lognormal(
+            mean=np.log(self.DN_mean),
+            sigma=np.log(self.DN_sigma),
+            size=electrons.shape
+            ).astype(np.uint)
+        electrons += DN_noise
+        
+        #
+        # Convert to gray level
+        #
+        g = electrons * self.alpha
+        
+        #
+        # Quantisize
+        #
+        g_q = np.floor(g)
+        g_q[g_q>2**self.B] = 2**self.B
+
+        return g_q
     
+    def processNoNoise(self, photons):
+        
+        #
+        # Calculate the number of photons
+        #
+        photons = photons.astype(np.float) * self.t
+        
+        #
+        # Convert to electrons and add the dark noise
+        # based on Baer, Richard L. "A model for dark current characterization and simulation."
+        # Electronic Imaging 2006. International Society for Optics and Photonics, 2006.
+        #
+        electrons = self.QE*photons
+        
+        #
+        # Convert to gray level
+        #
+        g = electrons * self.alpha
+        
+        return g
 
 
 if __name__ == '__main__':

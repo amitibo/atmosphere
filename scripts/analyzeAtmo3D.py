@@ -622,6 +622,7 @@ def slave(
     camera_params,
     camera_positions,
     ref_images,
+    noise_model,
     use_simulated=False,
     mask_sun=None,
     save_cams=False
@@ -745,7 +746,12 @@ def slave(
             # Note, I change ref_images in place so that ref_img is also effected.
             #
             ref_images[i] /= ref_ratio
-                
+    
+    #
+    # Add noise to the ref_images
+    #
+    ref_images = [noise_model.processNoise(im) for im in ref_images]
+    
     #
     # Save the ref images
     #
@@ -785,11 +791,22 @@ def slave(
                     cam = Camera().load(cam)
                     cam.setA_air(A_air)
 
+                #
+                # Calculate the image based on the camera model
+                #
                 img = cam.calcImage(
                     A_aerosols=A_aerosols,
                     particle_params=particle_params
                 )
                 
+                #
+                # Process (scale to same values) the img using the noise_model
+                #
+                img = noise_model.processNoNoise(img)
+                
+                #
+                # Calculate the objective
+                #
                 temp = ((ref_img - img) * sun_mask).reshape((-1, 1))
                 obj += np.dot(temp.T, temp)
             
@@ -803,11 +820,22 @@ def slave(
                     cam = Camera().load(cam)
                     cam.setA_air(A_air)
                     
+                #
+                # Calculate the image based on the camera model
+                #
                 img = cam.calcImage(
                     A_aerosols=A_aerosols,
                     particle_params=particle_params
                 )
     
+                #
+                # Process (scale to same values) the img using the noise_model
+                #
+                img = noise_model.processNoNoise(img)
+                
+                #
+                # Calculate the gradient
+                #
                 temp = cam.calcImageGradient(
                     img_err=(ref_img-img)*sun_mask**2,
                     A_aerosols=A_aerosols,
@@ -905,6 +933,7 @@ def main(
     highten_atmosphere=False,
     zero_TOA=0,
     camera_num=-1,
+    noise_params=None,
     run_arguments=None
     ):
     
@@ -912,6 +941,11 @@ def main(
     
     #import wingdbstub
 
+    if noise_params is None:
+        noise_model = atmotomo.NoiseModel()
+    else:
+        noise_model = atmotomo.NoiseModel(*noise_params)
+        
     #
     # Load the simulation params
     #
@@ -989,6 +1023,7 @@ def main(
             camera_params=camera_params,
             camera_positions=camera_positions,
             ref_images=ref_images,
+            noise_model=noise_model,
             use_simulated=use_simulated,
             mask_sun=mask_sun,
             save_cams=save_cams
@@ -1018,6 +1053,7 @@ if __name__ == '__main__':
     parser.add_argument('--highten_atmosphere', action='store_true', help='Extend the atmosphere up with empty voxels.')
     parser.add_argument('--zero_TOA', type=int, default=0, help='Number of TOA rows to zero (default=0).')
     parser.add_argument('--camera_num', type=int, default=-1, help='Number of cameras to use (default=-1 -> use all cameras).')
+    parser.add_argument('--noise_params', type=float, nargs='+', default=None, help='Parameters of the noise model (QE=0.3, F=20000, B=8, DN_mean=6, DN_sigma=2, t=10)')    
     args = parser.parse_args()
 
     main(
@@ -1038,5 +1074,6 @@ if __name__ == '__main__':
         highten_atmosphere=args.highten_atmosphere,
         zero_TOA=args.zero_TOA,
         camera_num=args.camera_num,
+        noise_params=args.noise_params,
         run_arguments=args
     )
