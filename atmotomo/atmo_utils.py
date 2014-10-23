@@ -413,9 +413,9 @@ class NoiseModel(object):
         """
         self.QE = QE
         self.F = F
-        self.B = B
-        self.DN_mean = DN_mean
-        self.DN_sigma = DN_sigma
+        self.B = int(B)
+        self.DN_mean = int(DN_mean)
+        self.DN_sigma = int(DN_sigma)
         self.t = t
         self.alpha = 2**self.B/self.F
         
