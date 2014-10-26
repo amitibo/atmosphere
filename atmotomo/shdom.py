@@ -982,8 +982,11 @@ class SHDOM(object):
 
                 #
                 # Create the properties file
+                # Note:
+                # There is no real need to have a separate lwc_file for each color. The
+                # reason is that I don't want to synchronize all threads to comm.rank == 0.
                 #
-                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                lwc_file = os.path.join(self.results_path, 'lwc_file_{color}.lwc'.format(color=color))
                 createExtinctionTableFile(
                     self.atmosphere_params,
                     effective_radius=self.particle_params.effective_radius,
@@ -1183,8 +1186,11 @@ class SHDOM(object):
             if coloredcomm.rank == 0:
                 #
                 # Create the properties file
+                # Note:
+                # There is no real need to have a separate lwc_file for each color. The
+                # reason is that I don't want to synchronize all threads to comm.rank == 0.
                 #
-                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                lwc_file = os.path.join(self.results_path, 'lwc_file_{color}.lwc'.format(color=color))
                 createExtinctionTableFile(
                     self.atmosphere_params,
                     effective_radius=self.particle_params.effective_radius,
@@ -1258,8 +1264,11 @@ class SHDOM(object):
             if coloredcomm.rank == 0:
                 #
                 # Create the properties file
+                # Note:
+                # There is no real need to have a separate lwc_file for each color. The
+                # reason is that I don't want to synchronize all threads to comm.rank == 0.
                 #
-                lwc_file = os.path.join(self.results_path, 'lwc_file.lwc')
+                lwc_file = os.path.join(self.results_path, 'lwc_file_{color}.lwc'.format(color=color))
                 createExtinctionTableFile(
                     self.atmosphere_params,
                     effective_radius=self.particle_params.effective_radius,
