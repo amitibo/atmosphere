@@ -73,7 +73,7 @@ class SrcDevelop(develop):
 def scripts_list():
     
     scripts = [
-        'scripts/{name}.py'.format(name=name) for name in ('simulateAtmo3D', 'analyzeAtmo3D', 'simulateSHDOM', 'analyzeSHDOM', 'pbsSHDOM')
+        'scripts/{name}.py'.format(name=name) for name in ('simulateAtmo3D', 'analyzeAtmo3D', 'simulateSHDOM', 'analyzeSHDOM', 'pbsSHDOM', 'pbsAnalyzeNoise', 'echoResults')
     ]
 
     return scripts
