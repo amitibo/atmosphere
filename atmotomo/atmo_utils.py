@@ -409,7 +409,18 @@ class NoiseModel(object):
     def __init__(self, QE=0.3, F=20000, B=8, DN_mean=6, DN_sigma=2, t=10):
         """
         Noise model that simulates the creation of an image in a 'real' camera.
-        im
+        
+        Parameters:
+        -----------
+        QE: float, (default=0.3)
+            Quantum efficiency
+        
+        F:  int, (default=20000)
+            Photon
+        
+        DN_mean - Temporal dark noise mean
+        
+        DN_sigma - Temporal dark noise sigma
         """
         self.QE = QE
         self.F = F
